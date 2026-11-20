@@ -209,9 +209,22 @@ public sealed class OutboxRelayTests(PostgresDatabase database, RabbitMqBroker b
 
         await relay.RelayBatchAsync(NotesSchema.Schema, CancellationToken);
 
-        var kept = await _consumer.BasicGetAsync(unrouted, autoAck: true, CancellationToken);
-        kept.Should().NotBeNull();
-        kept!.BasicProperties.MessageId.Should().Be(events[0].EventId.ToString());
+        // The relay publishes every unpublished row of the schema, so earlier rows may land here first;
+        // look for this test's event among a bounded number of messages.
+        var expected = events[0].EventId.ToString();
+        var found = false;
+        for (var i = 0; i < 100 && !found; i++)
+        {
+            var kept = await _consumer.BasicGetAsync(unrouted, autoAck: true, CancellationToken);
+            if (kept is null)
+            {
+                break;
+            }
+
+            found = kept.BasicProperties.MessageId == expected;
+        }
+
+        found.Should().BeTrue("the event must be kept in the unrouted queue when no queue is bound");
     }
 
     [Theory]
