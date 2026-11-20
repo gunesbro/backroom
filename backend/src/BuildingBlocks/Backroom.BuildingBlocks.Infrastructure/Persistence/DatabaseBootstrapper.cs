@@ -3,7 +3,7 @@ using Npgsql;
 namespace Backroom.BuildingBlocks.Infrastructure.Persistence;
 
 /// <summary>
-/// Development only: creates the three database roles with their passwords and gives them access to
+/// Development only: creates the four database roles with their passwords and gives them access to
 /// the database, as an administrator. Idempotent and safe to run concurrently; on later runs it
 /// updates the passwords and attributes. Deployments provision the roles themselves and never run this.
 /// </summary>
@@ -17,8 +17,15 @@ public static class DatabaseBootstrapper
     private const string StorePasswordsSql = """
         SELECT set_config('backroom.migrator_password', $1, false),
                set_config('backroom.application_password', $2, false),
-               set_config('backroom.relay_password', $3, false)
+               set_config('backroom.relay_password', $3, false),
+               set_config('backroom.maintenance_password', $4, false)
         """;
+
+    // Role-level timeouts of the maintenance role: a statement may run 30 s, waiting for a lock gives up
+    // after 5 s and an open transaction that does nothing is ended after 60 s.
+    internal const string MaintenanceStatementTimeout = "30s";
+    internal const string MaintenanceLockTimeout = "5s";
+    internal const string MaintenanceIdleInTransactionTimeout = "60s";
 
     private const string CreateRolesSql = $$"""
         DO $bootstrap$
@@ -32,7 +39,8 @@ public static class DatabaseBootstrapper
                 SELECT * FROM (VALUES
                     ('{{DatabaseRoles.Migrator}}', 'backroom.migrator_password', 'NOBYPASSRLS INHERIT'),
                     ('{{DatabaseRoles.Application}}', 'backroom.application_password', 'NOBYPASSRLS NOINHERIT'),
-                    ('{{DatabaseRoles.Relay}}', 'backroom.relay_password', 'BYPASSRLS NOINHERIT')
+                    ('{{DatabaseRoles.Relay}}', 'backroom.relay_password', 'BYPASSRLS NOINHERIT'),
+                    ('{{DatabaseRoles.Maintenance}}', 'backroom.maintenance_password', 'BYPASSRLS NOINHERIT')
                 ) AS roles(name, setting, attributes)
             LOOP
                 BEGIN
@@ -47,10 +55,16 @@ public static class DatabaseBootstrapper
                 END;
             END LOOP;
 
-            -- Only the three roles may connect; PUBLIC gets neither CONNECT nor TEMP.
+            -- Maintenance jobs give up and retry in their next run instead of queueing behind a lock
+            -- (for example a migration's ALTER TABLE) and never hold locks while idle (docs/adr/0010).
+            EXECUTE 'ALTER ROLE {{DatabaseRoles.Maintenance}} SET statement_timeout = ''{{MaintenanceStatementTimeout}}''';
+            EXECUTE 'ALTER ROLE {{DatabaseRoles.Maintenance}} SET lock_timeout = ''{{MaintenanceLockTimeout}}''';
+            EXECUTE 'ALTER ROLE {{DatabaseRoles.Maintenance}} SET idle_in_transaction_session_timeout = ''{{MaintenanceIdleInTransactionTimeout}}''';
+
+            -- Only the four roles may connect; PUBLIC gets neither CONNECT nor TEMP.
             EXECUTE format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database());
             EXECUTE format('GRANT CONNECT, CREATE ON DATABASE %I TO {{DatabaseRoles.Migrator}}', current_database());
-            EXECUTE format('GRANT CONNECT ON DATABASE %I TO {{DatabaseRoles.Application}}, {{DatabaseRoles.Relay}}', current_database());
+            EXECUTE format('GRANT CONNECT ON DATABASE %I TO {{DatabaseRoles.Application}}, {{DatabaseRoles.Relay}}, {{DatabaseRoles.Maintenance}}', current_database());
             REVOKE CREATE ON SCHEMA public FROM PUBLIC;
         END
         $bootstrap$;
@@ -61,12 +75,14 @@ public static class DatabaseBootstrapper
         string migratorPassword,
         string applicationPassword,
         string relayPassword,
+        string maintenancePassword,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(administratorConnectionString);
         ArgumentException.ThrowIfNullOrWhiteSpace(migratorPassword);
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationPassword);
         ArgumentException.ThrowIfNullOrWhiteSpace(relayPassword);
+        ArgumentException.ThrowIfNullOrWhiteSpace(maintenancePassword);
 
         // Unpooled: the session settings holding the passwords end with this connection.
         var connectionString = new NpgsqlConnectionStringBuilder(administratorConnectionString) { Pooling = false, IncludeErrorDetail = false };
@@ -83,6 +99,7 @@ public static class DatabaseBootstrapper
             store.Parameters.Add(new NpgsqlParameter<string> { TypedValue = migratorPassword });
             store.Parameters.Add(new NpgsqlParameter<string> { TypedValue = applicationPassword });
             store.Parameters.Add(new NpgsqlParameter<string> { TypedValue = relayPassword });
+            store.Parameters.Add(new NpgsqlParameter<string> { TypedValue = maintenancePassword });
             await store.ExecuteNonQueryAsync(cancellationToken);
         }
 

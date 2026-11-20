@@ -27,8 +27,9 @@ public static class MigrationServiceCollectionExtensions
                 options => string.IsNullOrEmpty(options.BootstrapConnectionString)
                     || (!string.IsNullOrWhiteSpace(options.MigratorPassword)
                         && !string.IsNullOrWhiteSpace(options.ApplicationPassword)
-                        && !string.IsNullOrWhiteSpace(options.RelayPassword)),
-                "The role bootstrap needs the migrator, application and relay passwords.")
+                        && !string.IsNullOrWhiteSpace(options.RelayPassword)
+                        && !string.IsNullOrWhiteSpace(options.MaintenancePassword)),
+                "The role bootstrap needs the migrator, application, relay and maintenance passwords.")
             .ValidateOnStart();
     }
 }

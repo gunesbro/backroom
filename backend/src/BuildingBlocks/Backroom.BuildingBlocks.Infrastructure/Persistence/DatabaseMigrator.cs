@@ -8,8 +8,8 @@ namespace Backroom.BuildingBlocks.Infrastructure.Persistence;
 
 /// <summary>
 /// Applies every registered module's migrations as the migrator role: prepares the module's schema
-/// (owned by the migrator; the application and relay roles may use it, and the application role
-/// gets data access to the tables created in it), runs the EF Core migrations, and checks
+/// (owned by the migrator; the application, relay and maintenance roles may use it, and only the
+/// application role gets data access to the tables created in it by default), runs the EF Core migrations, and checks
 /// organization-scoped schemas with <see cref="RowLevelSecurityAudit"/>. A violation fails the run,
 /// so a host never starts on a schema that breaks organization isolation.
 /// </summary>
@@ -38,6 +38,7 @@ public sealed partial class DatabaseMigrator(
                 settings.MigratorPassword!,
                 settings.ApplicationPassword!,
                 settings.RelayPassword!,
+                settings.MaintenancePassword!,
                 cancellationToken);
             LogBootstrapped(logger);
         }
@@ -94,7 +95,7 @@ public sealed partial class DatabaseMigrator(
         OrganizationRowLevelSecurity.ValidateIdentifier(schema, nameof(schema));
         var sql = $"""
             CREATE SCHEMA IF NOT EXISTS "{schema}";
-            GRANT USAGE ON SCHEMA "{schema}" TO {DatabaseRoles.Application}, {DatabaseRoles.Relay};
+            GRANT USAGE ON SCHEMA "{schema}" TO {DatabaseRoles.Application}, {DatabaseRoles.Relay}, {DatabaseRoles.Maintenance};
             ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {DatabaseRoles.Application};
             ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" GRANT USAGE, SELECT ON SEQUENCES TO {DatabaseRoles.Application};
             """;
@@ -111,7 +112,7 @@ public sealed partial class DatabaseMigrator(
         var table = OrganizationRowLevelSecurity.QualifiedName(schema, PersistenceServiceCollectionExtensions.MigrationsHistoryTable);
         await using var connection = new NpgsqlConnection(migratorConnectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand($"REVOKE ALL ON {table} FROM {DatabaseRoles.Application}, {DatabaseRoles.Relay}", connection);
+        await using var command = new NpgsqlCommand($"REVOKE ALL ON {table} FROM {DatabaseRoles.Application}, {DatabaseRoles.Relay}, {DatabaseRoles.Maintenance}", connection);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

@@ -51,13 +51,17 @@ public static class ServiceDefaultsExtensions
             .WithMetrics(metrics => metrics
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
-                .AddRuntimeInstrumentation())
+                .AddRuntimeInstrumentation()
+                // Maintenance job rows, failed runs, backlog and oldest due age (Backroom.BuildingBlocks.Infrastructure.Maintenance).
+                .AddMeter("Backroom.Maintenance"))
             .WithTracing(tracing => tracing
                 .AddSource(builder.Environment.ApplicationName)
                 // Npgsql's built-in activity source: one span per command (SQL text, no parameter values).
                 .AddSource("Npgsql")
                 // Outbox publish and event consume spans (Backroom.BuildingBlocks.Infrastructure.Messaging).
                 .AddSource("Backroom.Messaging")
+                // Maintenance job runs (Backroom.BuildingBlocks.Infrastructure.Maintenance).
+                .AddSource("Backroom.Maintenance")
                 // Settling cell link messages (Backroom.Modules.CellManagement.Application.Link).
                 .AddSource("Backroom.CellLink")
                 // Email sends with their delivery ids (Backroom.Modules.Email.Application.Deliveries).

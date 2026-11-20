@@ -1,6 +1,6 @@
 # 0010. A maintenance database role for cross-organization jobs
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-20
 
 ## Context
@@ -23,6 +23,7 @@ The control plane is out of scope: its invitation jobs run as its application ro
 
 - By default the role has **no table privileges**. It is never named in `ALTER DEFAULT PRIVILEGES`, and it never gets `EXECUTE` on `SECURITY DEFINER` functions. The migration of the module that owns a job grants exactly the columns that job needs.
 - PostgreSQL needs `SELECT` on every column a query references, including the columns in `WHERE`, so a job may filter only on state and time columns (ids, `org_id`, status, timestamps). It never gets `SELECT` on content columns (message bodies, file names, email addresses or email content). A job that erases content gets `UPDATE` of those columns only, and finds its rows through a non-content marker. For example, invitation retention sets `email = NULL, email_erased_at = $now` and filters on `email_erased_at IS NULL` instead of `email IS NOT NULL`.
+- `FOR UPDATE SKIP LOCKED` needs `UPDATE` privilege on at least one column of the table (checked when the building block was implemented), so a job that only deletes also gets `UPDATE` on its least sensitive column, a state or time column, never content.
 - `DELETE` is granted only to a job that deletes whole rows, together with `SELECT` on its filter columns. Foreign keys with `ON DELETE CASCADE` run as the table owner and so reach tables the role has no grants on. A migration that grants `DELETE` lists the cascades it can trigger, and every cascade stays inside the owning module's schema.
 
 ### Runner and jobs

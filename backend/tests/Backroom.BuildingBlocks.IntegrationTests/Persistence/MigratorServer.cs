@@ -19,6 +19,8 @@ public sealed class MigratorServer : IAsyncLifetime
 
     public string RelayPassword { get; } = NewPassword();
 
+    public string MaintenancePassword { get; } = NewPassword();
+
     /// <summary>The administrator's connection string.</summary>
     public string AdministratorConnectionString => _container.GetConnectionString();
 

@@ -31,12 +31,6 @@ public sealed partial class OutboxRelay : BackgroundService
 
     private static readonly TimeSpan s_maxBackoff = TimeSpan.FromSeconds(30);
 
-    // BYPASSRLS to read every organization's outbox, but neither a superuser nor an owner of tables
-    // (an owner could read and change everything). Without BYPASSRLS it would silently see no rows.
-    private const string RelayRoleSql =
-        "SELECT rolbypassrls AND NOT " + DatabaseRoleGuard.MemberOfSuperuserSql + " AND NOT " + DatabaseRoleGuard.OwnsObjectsSql +
-        " FROM pg_catalog.pg_roles WHERE rolname = current_user";
-
     private readonly OutboxRelayOptions _options;
     private readonly RabbitMqConnection _rabbitMq;
     private readonly TimeProvider _timeProvider;
@@ -308,11 +302,11 @@ public sealed partial class OutboxRelay : BackgroundService
             return;
         }
 
-        await using var command = new NpgsqlCommand(RelayRoleSql, connection);
-        if (await command.ExecuteScalarAsync(cancellationToken) is not true)
+        // BYPASSRLS to read every organization's outbox, but neither a superuser nor an owner of tables.
+        if (!await DatabaseRoleGuard.IsDedicatedBypassRoleAsync(connection, cancellationToken))
         {
             throw new InvalidOperationException(
-                "The outbox relay role must have BYPASSRLS and must be neither a superuser nor an owner of database objects.");
+                "The outbox relay role must have BYPASSRLS, must be neither a superuser nor an owner of database objects, must hold no server privileges and must have no role memberships.");
         }
 
         _roleVerified = true;

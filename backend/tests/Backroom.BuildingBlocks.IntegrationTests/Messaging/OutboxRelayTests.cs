@@ -217,11 +217,34 @@ public sealed class OutboxRelayTests(PostgresDatabase database, RabbitMqBroker b
     [Theory]
     [InlineData("superuser")]
     [InlineData("member-of-owner")]
-    public async Task RelayBatch_WithRoleThatOwnsOrIsSuperuser_ThrowsAsync(string kind)
+    [InlineData("member-of-plain-role")]
+    [InlineData("has-members")]
+    [InlineData("server-privileges")]
+    public async Task RelayBatch_WithRoleThatOwnsIsSuperuserOrHasMembershipsOrServerPrivileges_ThrowsAsync(string kind)
     {
-        var connectionString = kind == "superuser"
-            ? database.SuperuserConnectionString
-            : await database.CreateLoginRoleAsync($"relay_owner_{Guid.CreateVersion7().ToString("N")[^12..]}", "BYPASSRLS", PostgresDatabase.MigratorRole);
+        var name = $"relay_x_{Guid.CreateVersion7().ToString("N")[^12..]}";
+        string connectionString;
+        switch (kind)
+        {
+            case "superuser":
+                connectionString = database.SuperuserConnectionString;
+                break;
+            case "member-of-owner":
+                connectionString = await database.CreateLoginRoleAsync(name, "BYPASSRLS", PostgresDatabase.MigratorRole);
+                break;
+            case "member-of-plain-role":
+                await database.ExecuteAsSuperuserAsync($"CREATE ROLE {name}_parent NOLOGIN");
+                connectionString = await database.CreateLoginRoleAsync(name, "BYPASSRLS", $"{name}_parent");
+                break;
+            case "has-members":
+                connectionString = await database.CreateLoginRoleAsync(name, "BYPASSRLS");
+                await database.ExecuteAsSuperuserAsync($"CREATE ROLE {name}_child NOLOGIN IN ROLE {name}");
+                break;
+            default:
+                connectionString = await database.CreateLoginRoleAsync(name, "BYPASSRLS", "pg_read_server_files");
+                break;
+        }
+
         using var relay = CreateRelay(databaseConnectionString: connectionString);
 
         var relayBatch = () => relay.RelayBatchAsync(NotesSchema.Schema, CancellationToken);
