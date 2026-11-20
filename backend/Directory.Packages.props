@@ -27,7 +27,7 @@
 
   <!-- Authentication (hosts, through BuildingBlocks.Presentation) -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.15" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
   </ItemGroup>
 
