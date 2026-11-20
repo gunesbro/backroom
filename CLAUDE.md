@@ -16,7 +16,7 @@ Read the relevant section of the requirements before starting any task. If a tas
 - Talk to the user in Turkish.
 - Everything in the repository is English: code, identifiers, code comments, commit messages, log messages, CLAUDE.md files, READMEs and ADRs.
 - Turkish appears only in UI translation files (and in the Turkish design and requirements documents under `docs/`).
-- Never name other products or companies we compete with (team chat, video meeting or virtual office products) anywhere visible: code, docs, UI texts, commit messages, branch names, PR titles, descriptions and comments. Describe features generically. The repository may become public. Technologies we use or build on (Keycloak, LiveKit, Envoy and so on) may be named.
+- Never name other products or companies we compete with (team chat, video meeting or virtual office products) anywhere visible: code, docs, UI texts, commit messages, branch names, PR titles, descriptions and comments. Describe features generically. The repository is public. Technologies we use or build on (Keycloak, LiveKit, Envoy and so on) may be named.
 
 ## License
 
@@ -41,7 +41,7 @@ Read the relevant section of the requirements before starting any task. If a tas
 
 - CI: gitleaks (full history), Semgrep CE (SAST for C#, TypeScript, React, GitHub Actions, package manager settings, secrets), .NET security and performance analyzers as errors (`AnalysisModeSecurity=All`, `AnalysisModePerformance=All`), web bundle-size budget, NuGet audit including transitive packages, `buf breaking` for the cell link, actionlint, `cargo clippy -D warnings` for the desktop shell.
 - The desktop shell (Rust) is formatted, linted and tested on Windows and Linux in every PR that touches `frontend/apps/desktop` (`desktop-check.yml`; only `main` saves its cache). Installers and macOS are built only by the manually triggered "Desktop packages" workflow: run it when a change could break packaging or Linux-only code.
-- GitHub: Dependabot alerts and security updates are on; version updates wait 7 days (cooldown). Secret scanning, CodeQL and private vulnerability reporting are not available for private repositories on the free plan; turn them on if the repository becomes public.
+- GitHub: Dependabot alerts and security updates are on; version updates wait 7 days (cooldown). Secret scanning with push protection, CodeQL (default setup) and private vulnerability reporting are on. When Dependabot opens several npm PRs that touch `pnpm-lock.yaml`, combine them into one PR with a regenerated lock file, because each merge makes the others conflict.
 - pnpm refuses packages younger than 7 days (`minimumReleaseAge`), exotic transitive sources and trust downgrades; exceptions go into `pnpm-workspace.yaml` with a reason. When an urgent security fix is younger than 7 days (Dependabot security PRs skip the cooldown and would fail), add that exact version to `minimumReleaseAgeExclude` in the same PR and remove it once it is older.
 - Cargo has no such setting, but the same 7-day rule applies to crates: check the release date on crates.io of every crate a change adds to `Cargo.lock`, transitive ones included, move a young one back with `cargo update -p <crate> --precise <version>`, and pin a direct dependency with `=` while its newest release is too young.
 - Semgrep rulesets are fetched when the job runs, so new rules can flag unchanged code; fix the finding or suppress it inline with a `nosemgrep` comment and a reason.
@@ -132,7 +132,7 @@ No role, plan or organization setting can change these. A change that breaks one
 - Pin container image versions; never use `latest` (project convention, generalized from the Mailpit rule).
 - Lock files are committed and enforced: `packages.lock.json` per .NET project (CI restores in locked mode; after changing `Directory.Packages.props` or a project's references run `dotnet restore` locally and commit the lock files), `pnpm-lock.yaml` (`--frozen-lockfile`) and `Cargo.lock` (`--locked`). NuGet packages come only from nuget.org (`backend/nuget.config` source mapping).
 - Dependabot opens grouped weekly update PRs and immediate security PRs; review them like any other PR.
-- Dependabot's NuGet PRs often update only some `packages.lock.json` files and fail the locked restore (`NU1004`). Replace them with one PR that bumps the same versions in `Directory.Packages.props` and regenerates every lock file (`dotnet restore backend/Backroom.slnx --force-evaluate`), then close them with a link to it. A .NET servicing release can be a security release: check `releases.json` and move the other Microsoft packages of that release along.
+- Dependabot's NuGet PRs often update only some `packages.lock.json` files and fail the locked restore (`NU1004`). Replace them with one PR that bumps the same versions in `Directory.Packages.props` and regenerates every lock file (`dotnet restore backend/Backroom.slnx --force-evaluate`), then close them with a link to it. A .NET servicing release can be a security release: check `releases.json` and move the other Microsoft packages of that release along, and the SDK in `global.json` with them. Stay on the Microsoft package line that matches the target framework (10.x for .NET 10); a new major line comes with a deliberate framework upgrade.
 
 ## Repository layout
 
@@ -205,5 +205,5 @@ Project conventions (agreed in Phase 0):
 
 - Branch names: `feat/…`, `fix/…`, `chore/…`, `docs/…`, `test/…`, `ci/…`, `perf/…`, `sec/…`, `spike/…`.
 - PRs are squash-merged after review and the user's approval.
-- GitHub branch protection is not available for this private repository on the free plan, so `.claude/settings.json` denies direct and force pushes to `main` for agents.
+- The `main` ruleset requires a PR with one approving review, resolved conversations, linear history, squash merges only and the five `*-required` status checks; force pushes and deletion are blocked. The owner approves PRs on GitHub; agents never approve on the owner's behalf or merge with `--admin`. `.claude/settings.json` also denies direct and force pushes to `main` for agents.
 - Commit messages are English, imperative mood, and end with the co-author line the environment provides.
