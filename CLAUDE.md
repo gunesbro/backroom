@@ -205,5 +205,5 @@ Project conventions (agreed in Phase 0):
 
 - Branch names: `feat/…`, `fix/…`, `chore/…`, `docs/…`, `test/…`, `ci/…`, `perf/…`, `sec/…`, `spike/…`.
 - PRs are squash-merged after review and the user's approval.
-- The `main` ruleset requires a PR with one approving review, resolved conversations, linear history, squash merges only and the five `*-required` status checks; force pushes and deletion are blocked. The owner approves PRs on GitHub; agents never approve on the owner's behalf or merge with `--admin`. `.claude/settings.json` also denies direct and force pushes to `main` for agents.
+- The `main` ruleset requires a PR with one approving review, resolved conversations, linear history, squash merges only and the five `*-required` status checks; force pushes and deletion are blocked. Agents open PRs from the owner's account, which cannot approve its own PRs, so the owner reviews them and merges with the ruleset's admin bypass for PRs; outside contributions need the approval. Agents never approve, never merge with `--admin`, and merge only what the owner has said to merge. `.claude/settings.json` also denies direct and force pushes to `main` for agents.
 - Commit messages are English, imperative mood, and end with the co-author line the environment provides.
