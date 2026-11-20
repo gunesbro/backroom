@@ -39,6 +39,11 @@ public sealed partial class MaintenancePoolTests
             .Check(s_architecture);
     }
 
+    // Building each host's service collection here is not feasible: the hosts need Keycloak, RabbitMQ and database
+    // settings to start, and this project only loads assemblies. The static scan below covers the same ground at the
+    // source level: no file outside the runner mentions the maintenance role or its settings (the
+    // role name, MaintenanceJobOptions, MaintenanceJobs, MaintenanceConnectionString) together with a data source,
+    // so no NpgsqlDataSource registration can use backroom_maintenance.
     [Fact]
     public void Sources_DoNotRegisterOrBuildADataSourceForTheMaintenanceRoleOutsideTheRunner()
     {

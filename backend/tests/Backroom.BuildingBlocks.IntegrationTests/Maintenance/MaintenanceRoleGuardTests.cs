@@ -111,6 +111,41 @@ public sealed class MaintenanceRoleGuardTests(PostgresDatabase database) : IAsyn
     }
 
     [Fact]
+    public async Task VerifyRole_WithAnAdminOnlyMembershipOfACreateRoleAdministrator_PassesAsync()
+    {
+        // PostgreSQL 16+: a non-superuser CREATEROLE administrator gets an ADMIN-only membership (no INHERIT, no SET)
+        // in every role it creates.
+        var role = NewRoleName();
+        var connectionString = await database.CreateLoginRoleAsync(role, "BYPASSRLS");
+        await database.ExecuteAsSuperuserAsync($"""
+            CREATE ROLE {role}_admin NOLOGIN CREATEROLE;
+            GRANT {role} TO {role}_admin WITH ADMIN OPTION, INHERIT FALSE, SET FALSE;
+            """);
+
+        var verify = Verify(connectionString);
+
+        await verify.Should().NotThrowAsync();
+    }
+
+    [Theory]
+    [InlineData("INHERIT TRUE, SET FALSE", true)]
+    [InlineData("INHERIT FALSE, SET TRUE", true)]
+    [InlineData("INHERIT FALSE, SET FALSE", false)]
+    public async Task VerifyRole_WithAMemberThatCanUseTheRole_ThrowsAsync(string options, bool memberCanCreateRoles)
+    {
+        var role = NewRoleName();
+        var connectionString = await database.CreateLoginRoleAsync(role, "BYPASSRLS");
+        await database.ExecuteAsSuperuserAsync($"""
+            CREATE ROLE {role}_member NOLOGIN {(memberCanCreateRoles ? "CREATEROLE" : "NOCREATEROLE")};
+            GRANT {role} TO {role}_member WITH ADMIN OPTION, {options};
+            """);
+
+        var verify = Verify(connectionString);
+
+        await verify.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
     public async Task MaintenanceRole_WithoutGrants_CannotReadAnyTableAsync()
     {
         await using var connection = new NpgsqlConnection(database.MaintenanceConnectionString);

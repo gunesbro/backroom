@@ -14,7 +14,7 @@ public sealed class MaintenanceJobOptions
     /// </summary>
     public string ConnectionString { get; set; } = string.Empty;
 
-    /// <summary>Connections of the runner's own pool; the runner uses one at a time.</summary>
+    /// <summary>Connections of the runner's own pool; it is also the number of jobs that run at the same time.</summary>
     public int MaxPoolSize { get; set; } = 2;
 
     /// <summary>Most batches of one job per run; whatever is left waits for the next run.</summary>

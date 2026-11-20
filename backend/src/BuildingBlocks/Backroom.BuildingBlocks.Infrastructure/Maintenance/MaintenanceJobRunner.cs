@@ -13,7 +13,8 @@ namespace Backroom.BuildingBlocks.Infrastructure.Maintenance;
 /// (docs/adr/0010). A run handles batches, each in its own transaction, until a batch handles fewer rows than
 /// the job's batch size or <see cref="MaintenanceJobOptions.MaxBatchesPerRun"/> is reached. A failing run is
 /// logged and counted and the job retries at its next interval; a job never stops the host or the other jobs.
-/// Logs and spans carry the job name and counts only.
+/// At most <see cref="MaintenanceJobOptions.MaxPoolSize"/> jobs run at the same time. Logs and spans carry the
+/// job name, counts and the exception type and SQLSTATE only, never messages (they can carry row values).
 /// </summary>
 public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisposable
 {
@@ -22,6 +23,7 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<MaintenanceJobRunner> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly SemaphoreSlim _slots;
     private MaintenanceDataSource? _dataSource;
 
     public MaintenanceJobRunner(
@@ -35,6 +37,7 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(loggerFactory);
         _jobs = jobs.ToList();
+        _slots = new SemaphoreSlim(options.Value.MaxPoolSize);
         _options = options.Value;
         _timeProvider = timeProvider;
         _loggerFactory = loggerFactory;
@@ -48,9 +51,10 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
             return;
         }
 
-        _dataSource = new MaintenanceDataSource(_options, _loggerFactory);
+        _dataSource ??= new MaintenanceDataSource(_options, _loggerFactory);
         // A role that is not fit stops the worker: nothing runs with a role that could do more than it should.
-        await _dataSource.VerifyRoleAsync(stoppingToken);
+        // An unreachable server is not that: wait for it with a capped back-off.
+        await VerifyRoleWithRetryAsync(stoppingToken);
         try
         {
             await Task.WhenAll(_jobs.Select(job => RunLoopAsync(job, stoppingToken)));
@@ -64,6 +68,7 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
     public async ValueTask DisposeAsync()
     {
         Dispose();
+        _slots.Dispose();
         if (_dataSource is not null)
         {
             await _dataSource.DisposeAsync();
@@ -83,17 +88,31 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
     /// backlog measurement. Failures are logged and counted, never thrown (except cancellation). Returns the
     /// rows handled.
     /// </summary>
-    [SuppressMessage("Design", "CA1031", Justification = "A failing job must not stop the host or the other jobs; it is logged and retried in its next run.")]
     internal async Task<int> RunOnceAsync(IMaintenanceJob job, CancellationToken cancellationToken)
     {
         _dataSource ??= new MaintenanceDataSource(_options, _loggerFactory);
+        // The pool holds MaxPoolSize connections; the other jobs wait here instead of for a connection.
+        await _slots.WaitAsync(cancellationToken);
+        try
+        {
+            return await RunOnceCoreAsync(job, cancellationToken);
+        }
+        finally
+        {
+            _slots.Release();
+        }
+    }
+
+    [SuppressMessage("Design", "CA1031", Justification = "A failing job must not stop the host or the other jobs; it is logged and retried in its next run.")]
+    private async Task<int> RunOnceCoreAsync(IMaintenanceJob job, CancellationToken cancellationToken)
+    {
         using var activity = MaintenanceTelemetry.Source.StartActivity("maintenance.run", ActivityKind.Internal);
         activity?.SetTag("maintenance.job", job.Name);
 
         var total = 0;
         try
         {
-            await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+            await using var connection = await _dataSource!.OpenConnectionAsync(cancellationToken);
             var batches = 0;
             while (batches < _options.MaxBatchesPerRun)
             {
@@ -118,7 +137,7 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
             MaintenanceTelemetry.RecordFailedRun(job.Name);
             activity?.SetStatus(ActivityStatusCode.Error);
             activity?.SetTag("maintenance.rows", total);
-            LogRunFailed(_logger, exception, job.Name, total);
+            LogRunFailed(_logger, job.Name, total, exception.GetType().Name, SqlStateOf(exception));
         }
 
         return total;
@@ -154,7 +173,8 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            LogBacklogFailed(_logger, exception, job.Name);
+            MaintenanceTelemetry.RecordFailedMeasurement(job.Name);
+            LogBacklogFailed(_logger, job.Name, exception.GetType().Name, SqlStateOf(exception));
         }
     }
 
@@ -181,9 +201,38 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
     [LoggerMessage(Level = LogLevel.Debug, Message = "Maintenance job {Job} handled {Rows} rows in {Batches} batches.")]
     private static partial void LogRunFinished(ILogger logger, string job, int rows, int batches);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Maintenance job {Job} failed after handling {Rows} rows; retrying in its next run.")]
-    private static partial void LogRunFailed(ILogger logger, Exception exception, string job, int rows);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Maintenance job {Job} failed after handling {Rows} rows ({ExceptionType}, SQLSTATE {SqlState}); retrying in its next run.")]
+    private static partial void LogRunFailed(ILogger logger, string job, int rows, string exceptionType, string sqlState);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Measuring the backlog of maintenance job {Job} failed.")]
-    private static partial void LogBacklogFailed(ILogger logger, Exception exception, string job);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Measuring the backlog of maintenance job {Job} failed ({ExceptionType}, SQLSTATE {SqlState}).")]
+    private static partial void LogBacklogFailed(ILogger logger, string job, string exceptionType, string sqlState);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The database for maintenance jobs is not reachable yet ({ExceptionType}, SQLSTATE {SqlState}); retrying in {Seconds} s.")]
+    private static partial void LogVerifyRetry(ILogger logger, string exceptionType, string sqlState, int seconds);
+
+    // Exception messages and stack traces can carry row values, so logs get the type and SQLSTATE only.
+    private static string SqlStateOf(Exception exception) => exception is PostgresException postgres ? postgres.SqlState : "-";
+
+    private static bool IsTransient(Exception exception) =>
+        exception is NpgsqlException { IsTransient: true } or System.Net.Sockets.SocketException or TimeoutException;
+
+    [SuppressMessage("Design", "CA1031", Justification = "Only transient errors are retried; the filter rethrows everything else.")]
+    private async Task VerifyRoleWithRetryAsync(CancellationToken cancellationToken)
+    {
+        var delay = TimeSpan.FromSeconds(1);
+        while (true)
+        {
+            try
+            {
+                await _dataSource!.VerifyRoleAsync(cancellationToken);
+                return;
+            }
+            catch (Exception exception) when (IsTransient(exception) && !cancellationToken.IsCancellationRequested)
+            {
+                LogVerifyRetry(_logger, exception.GetType().Name, SqlStateOf(exception), (int)delay.TotalSeconds);
+                await Task.Delay(delay, _timeProvider, cancellationToken);
+                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 30));
+            }
+        }
+    }
 }

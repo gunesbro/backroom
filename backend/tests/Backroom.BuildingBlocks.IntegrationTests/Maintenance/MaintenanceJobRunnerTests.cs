@@ -175,20 +175,46 @@ public sealed class MaintenanceJobRunnerTests(PostgresDatabase database) : IAsyn
     public async Task Runner_WhenAJobKeepsFailing_KeepsRunningItsLoopAsync()
     {
         await SeedAsync(5);
-        var job = new DeleteNotesJob(batchSize: 10) { Interval = TimeSpan.FromMilliseconds(20), FailOnBatch = 1 };
-        await using var runner = CreateRunner(job, maxStartDelay: TimeSpan.Zero);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var job = new DeleteNotesJob(batchSize: 10) { Interval = TimeSpan.FromSeconds(10), FailOnBatch = 1 };
+        await using var runner = CreateRunner(job, maxStartDelay: TimeSpan.Zero, time: time);
 
         await runner.StartAsync(CancellationToken);
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
-        while (await CountNotesAsync() > 0 && DateTimeOffset.UtcNow < deadline)
-        {
-            await Task.Delay(50, CancellationToken);
-        }
-
+        await AdvanceUntilAsync(time, async () => await CountNotesAsync() == 0);
         await runner.StopAsync(CancellationToken);
 
         job.Batches.Should().BeGreaterThan(1);
         (await CountNotesAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Runner_WhenTheDatabaseIsNotReachable_RetriesInsteadOfStoppingAsync()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var job = new DeleteNotesJob(batchSize: 10);
+        var unreachable = new NpgsqlConnectionStringBuilder(database.MaintenanceConnectionString) { Host = "127.0.0.1", Port = 1, Timeout = 2 }.ConnectionString;
+        await using var runner = CreateRunner(job, time: time, connectionString: unreachable);
+
+        await runner.StartAsync(CancellationToken);
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            await Task.Delay(100, CancellationToken);
+            time.Advance(TimeSpan.FromSeconds(31));
+        }
+
+        runner.ExecuteTask!.IsCompleted.Should().BeFalse();
+        await runner.StopAsync(CancellationToken);
+        job.Batches.Should().Be(0);
+    }
+
+    private static async Task AdvanceUntilAsync(Microsoft.Extensions.Time.Testing.FakeTimeProvider time, Func<Task<bool>> done)
+    {
+        // Each step moves the fake clock past one interval plus its jitter and gives the loop a moment to run.
+        for (var step = 0; step < 100 && !await done(); step++)
+        {
+            await Task.Delay(100, CancellationToken);
+            time.Advance(TimeSpan.FromSeconds(11));
+        }
     }
 
     [Fact]

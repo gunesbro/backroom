@@ -46,11 +46,18 @@ public sealed class DatabaseRoleGuard
                   AND pg_catalog.pg_has_role(current_user, r.oid, 'MEMBER'))
         """;
 
-    /// <summary>True when the current role is a member of another role, or another role is a member of it.</summary>
+    /// <summary>
+    /// True when the current role is a member of another role, or another role can use its privileges.
+    /// Memberships in it that carry neither INHERIT nor SET are ignored when the member can create roles:
+    /// since PostgreSQL 16 a non-superuser administrator with CREATEROLE (the managed-cloud case) gets such an
+    /// ADMIN-only membership in every role it creates. The provisioning role is trusted, and a service role that
+    /// passes this guard cannot have CREATEROLE itself, so it can never be the member of another service role.
+    /// </summary>
     internal const string HasRoleMembershipsSql = """
-        EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m
-                JOIN pg_catalog.pg_roles r ON r.rolname = current_user
-                WHERE m.member = r.oid OR m.roleid = r.oid)
+        EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.rolname = current_user
+                WHERE m.member = r.oid
+                   OR (m.roleid = r.oid AND (m.inherit_option OR m.set_option
+                       OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles a WHERE a.oid = m.member AND a.rolcreaterole))))
         """;
 
     /// <summary>

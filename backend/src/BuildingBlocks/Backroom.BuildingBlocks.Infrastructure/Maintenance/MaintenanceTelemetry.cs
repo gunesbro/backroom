@@ -23,6 +23,9 @@ public static class MaintenanceTelemetry
     private static readonly Counter<long> s_failedRuns =
         s_meter.CreateCounter<long>("backroom.maintenance.failed_runs", "{run}", "Maintenance job runs that failed.");
 
+    private static readonly Counter<long> s_failedMeasurements =
+        s_meter.CreateCounter<long>("backroom.maintenance.failed_measurements", "{measurement}", "Backlog measurements that failed.");
+
     // One entry per registered job, so the dictionary is bounded by the number of jobs.
     private static readonly ConcurrentDictionary<string, (long Backlog, double OldestDueAgeSeconds)> s_latest = new(StringComparer.Ordinal);
 
@@ -46,4 +49,11 @@ public static class MaintenanceTelemetry
 
     internal static void RecordBacklog(string job, int backlog, TimeSpan oldestDueAge) =>
         s_latest[job] = (backlog, Math.Max(0, oldestDueAge.TotalSeconds));
+
+    internal static void RecordFailedMeasurement(string job)
+    {
+        // A stale value would hide that the job is not being measured.
+        s_latest.TryRemove(job, out _);
+        s_failedMeasurements.Add(1, new KeyValuePair<string, object?>("job", job));
+    }
 }
