@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>İki adımlı doğrulama</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&amp;family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2f4bb8;font-weight:600;text-decoration:none}a:hover{color:#1f3a99;text-decoration:underline}
+.pg{--pn:#fff;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--bg:#f6f7f9;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;align-items:center;justify-content:center;gap:24px;font-size:14px;padding:24px;box-sizing:border-box}
+.col{display:flex;flex-direction:column;gap:10px}
+.st{font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase;font-weight:600}
+.c{width:312px;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:22px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--acc)}
+.c h2{margin:0;font-size:21px}
+p{margin:0;line-height:1.5}
+.mut{color:var(--mut)}
+.ctr{text-align:center}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font-weight:600;font-size:13px}
+.f input{height:40px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;font:inherit;color:var(--ink);box-sizing:border-box;width:100%}
+.mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace}
+.otp{display:flex;gap:8px}
+.otp input{width:36px;height:46px;padding:0;box-sizing:border-box;text-align:center;font:inherit;font-size:20px;font-weight:600;border:1px solid var(--ln);border-radius:8px;color:var(--ink)}
+.otp input.cur{border-color:var(--acc);box-shadow:0 0 0 3px var(--accs)}
+.note{font-size:12px;color:var(--mut);line-height:1.5;padding:10px;border-radius:8px;background:var(--bg)}
+.go{height:44px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600}
+.sec{height:44px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink);font-weight:600}
+.ic{width:44px;height:44px;border-radius:12px;background:var(--accs);color:var(--accd);display:flex;align-items:center;justify-content:center}
+.qrw{align-self:center;padding:6px;border:1px solid var(--ln);border-radius:10px;line-height:0}
+.key{font-size:12px;color:var(--mut);line-height:1.5}
+.key code{display:inline-block;margin-top:2px;padding:2px 6px;border-radius:4px;background:var(--bg);color:var(--ink);font-size:12px;letter-spacing:.04em}
+.codes{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;padding:12px;border-radius:10px;background:var(--bg);font-size:13px;margin:0;list-style:none}
+.row2{display:flex;gap:8px}
+.row2 .sec{flex:1;height:36px;font-size:13px}
+.cb{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45}
+.cb input{margin:2px 0 0;width:16px;height:16px;flex:none}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col"><span class="st">1 · Girişte kod</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"></path></svg></span>
+<h2>İki adımlı doğrulama</h2>
+<p class="mut">Doğrulayıcı uygulamandaki 6 haneli kodu gir.</p>
+<div class="otp" role="group" aria-label="6 haneli kod"><input aria-label="1. hane" value="4"><input aria-label="2. hane" value="8"><input aria-label="3. hane" value="2"><input aria-label="4. hane" value="9"><input aria-label="5. hane" value="1"><input aria-label="6. hane" class="cur" value=""></div>
+<button class="go">Doğrula</button>
+<a href="#" class="ctr">Yedek kod kullan</a>
+</div></div>
+<div class="col"><span class="st">2 · Yedek kodla giriş</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="M11 12l8-8M16 7l2 2M14 9l2 2"></path></svg></span>
+<h2>Yedek kodla giriş</h2>
+<p class="mut">Kaydettiğin yedek kodlardan birini gir.</p>
+<div class="f"><label for="bk">Yedek kod</label><input id="bk" class="mono" value="k7m2-9xq4"></div>
+<div class="note">Her yedek kod bir kez kullanılır. Kalan kodlarını Hesap ayarları › İki adımlı doğrulama bölümünde görürsün.</div>
+<button class="go">Doğrula</button>
+<a href="#" class="ctr">Doğrulayıcı koduna dön</a>
+</div></div>
+<div class="col"><span class="st">3 · Kurulum: uygulamayı bağla</span>
+<div class="c">
+<h2>İki adımlı doğrulamayı aç</h2>
+<p class="mut">1. Doğrulayıcı uygulamayla bu kareyi tara.</p>
+<span class="qrw"><svg width="132" height="132" viewBox="-4 -4 133 133" role="img" aria-label="Kurulum için QR kodu (örnek)"><rect x="-4" y="-4" width="133" height="133" fill="#fff"></rect><path fill="#1f2430" d="M0 0h35v5h-35zM40 0h10v5h-10zM55 0h5v5h-5zM65 0h10v5h-10zM80 0h5v5h-5zM90 0h35v5h-35zM0 5h5v5h-5zM30 5h5v5h-5zM40 5h20v5h-20zM65 5h10v5h-10zM90 5h5v5h-5zM120 5h5v5h-5zM0 10h5v5h-5zM10 10h15v5h-15zM30 10h5v5h-5zM45 10h5v5h-5zM55 10h5v5h-5zM65 10h20v5h-20zM90 10h5v5h-5zM100 10h15v5h-15zM120 10h5v5h-5zM0 15h5v5h-5zM10 15h15v5h-15zM30 15h5v5h-5zM45 15h5v5h-5zM60 15h5v5h-5zM70 15h15v5h-15zM90 15h5v5h-5zM100 15h15v5h-15zM120 15h5v5h-5zM0 20h5v5h-5zM10 20h15v5h-15zM30 20h5v5h-5zM45 20h10v5h-10zM60 20h10v5h-10zM80 20h5v5h-5zM90 20h5v5h-5zM100 20h15v5h-15zM120 20h5v5h-5zM0 25h5v5h-5zM30 25h5v5h-5zM60 25h5v5h-5zM70 25h10v5h-10zM90 25h5v5h-5zM120 25h5v5h-5zM0 30h35v5h-35zM40 30h5v5h-5zM50 30h5v5h-5zM60 30h5v5h-5zM70 30h5v5h-5zM80 30h5v5h-5zM90 30h35v5h-35zM40 35h5v5h-5zM50 35h5v5h-5zM75 35h5v5h-5zM10 40h5v5h-5zM25 40h10v5h-10zM40 40h5v5h-5zM65 40h10v5h-10zM80 40h25v5h-25zM110 40h15v5h-15zM5 45h10v5h-10zM40 45h15v5h-15zM65 45h20v5h-20zM95 45h20v5h-20zM20 50h5v5h-5zM30 50h5v5h-5zM50 50h15v5h-15zM70 50h55v5h-55zM10 55h20v5h-20zM35 55h5v5h-5zM50 55h5v5h-5zM60 55h20v5h-20zM85 55h10v5h-10zM105 55h5v5h-5zM115 55h5v5h-5zM15 60h20v5h-20zM50 60h10v5h-10zM90 60h5v5h-5zM100 60h25v5h-25zM10 65h5v5h-5zM35 65h25v5h-25zM75 65h5v5h-5zM90 65h5v5h-5zM115 65h10v5h-10zM5 70h5v5h-5zM20 70h15v5h-15zM45 70h15v5h-15zM70 70h5v5h-5zM90 70h5v5h-5zM100 70h10v5h-10zM5 75h5v5h-5zM20 75h10v5h-10zM35 75h10v5h-10zM50 75h15v5h-15zM70 75h10v5h-10zM90 75h5v5h-5zM115 75h10v5h-10zM0 80h10v5h-10zM15 80h10v5h-10zM30 80h5v5h-5zM40 80h5v5h-5zM60 80h5v5h-5zM70 80h10v5h-10zM105 80h5v5h-5zM45 85h5v5h-5zM55 85h5v5h-5zM80 85h5v5h-5zM100 85h25v5h-25zM0 90h35v5h-35zM40 90h5v5h-5zM60 90h5v5h-5zM75 90h5v5h-5zM90 90h5v5h-5zM100 90h5v5h-5zM120 90h5v5h-5zM0 95h5v5h-5zM30 95h5v5h-5zM40 95h5v5h-5zM50 95h15v5h-15zM70 95h5v5h-5zM80 95h15v5h-15zM105 95h5v5h-5zM0 100h5v5h-5zM10 100h15v5h-15zM30 100h5v5h-5zM40 100h15v5h-15zM60 100h15v5h-15zM85 100h10v5h-10zM110 100h10v5h-10zM0 105h5v5h-5zM10 105h15v5h-15zM30 105h5v5h-5zM40 105h10v5h-10zM65 105h5v5h-5zM75 105h5v5h-5zM85 105h10v5h-10zM105 105h10v5h-10zM120 105h5v5h-5zM0 110h5v5h-5zM10 110h15v5h-15zM30 110h5v5h-5zM40 110h30v5h-30zM75 110h5v5h-5zM85 110h25v5h-25zM120 110h5v5h-5zM0 115h5v5h-5zM30 115h5v5h-5zM40 115h5v5h-5zM50 115h5v5h-5zM60 115h5v5h-5zM75 115h5v5h-5zM95 115h5v5h-5zM115 115h10v5h-10zM0 120h35v5h-35zM40 120h15v5h-15zM60 120h15v5h-15zM90 120h35v5h-35z"></path></svg></span>
+<p class="key">Tarayamıyor musun? Kurulum anahtarını uygulamaya elle gir:<br><code class="mono">JBSW Y3DP EHPK 3PXP</code></p>
+<p class="mut">2. Uygulamanın gösterdiği kodu gir.</p>
+<div class="otp" role="group" aria-label="6 haneli kod"><input aria-label="1. hane" class="cur" value=""><input aria-label="2. hane" value=""><input aria-label="3. hane" value=""><input aria-label="4. hane" value=""><input aria-label="5. hane" value=""><input aria-label="6. hane" value=""></div>
+<button class="go">Devam</button>
+</div></div>
+<div class="col"><span class="st">4 · Kurulum: yedek kodlar</span>
+<div class="c">
+<h2>Yedek kodlarını sakla</h2>
+<p class="mut">Telefonuna erişemezsen bu kodlarla giriş yaparsın. Her kod bir kez kullanılır.</p>
+<ul class="codes mono" aria-label="Yedek kodlar"><li>k7m2-9xq4</li><li>p3vd-8hs2</li><li>x9qa-4mt7</li><li>c2rf-7wk5</li><li>h8ne-3yp6</li><li>u5zb-2dg9</li><li>m4tj-6qa1</li><li>r7kc-1vx8</li><li>w3hy-9bn2</li><li>e6pq-5ts4</li><li>a1gw-8mf3</li><li>n9dx-4re7</li></ul>
+<div class="row2"><button class="sec">İndir</button><button class="sec">Kopyala</button></div>
+<div class="cb"><input type="checkbox" id="kd"><label for="kd">Kodları güvenli bir yere kaydettim.</label></div>
+<button class="go">Bitir</button>
+</div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

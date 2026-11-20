@@ -1,0 +1,7 @@
+{
+  "$comment": "Engineering budget, gzip kB (1000 bytes). Initial = entry chunks and their static imports with CSS (from the Vite manifest); lazy = each dynamically imported chunk with its own imports and CSS. Raise a budget only with a measured reason in the PR.",
+  "apps": {
+    "web": { "initialJs": 170, "initialCss": 30, "lazyChunk": 200 },
+    "ops": { "initialJs": 170, "initialCss": 30, "lazyChunk": 200 }
+  }
+}

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Aspire\Backroom.ServiceDefaults\Backroom.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
+    <ProjectReference Include="..\..\Modules\Organization\Backroom.Modules.Organization.Infrastructure\Backroom.Modules.Organization.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Organization\Backroom.Modules.Organization.Presentation\Backroom.Modules.Organization.Presentation.csproj" />
+    <ProjectReference Include="..\..\Modules\Permissions\Backroom.Modules.Permissions.Infrastructure\Backroom.Modules.Permissions.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Email\Backroom.Modules.Email.Infrastructure\Backroom.Modules.Email.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\ControlPlaneConnector\Backroom.Modules.ControlPlaneConnector.Infrastructure\Backroom.Modules.ControlPlaneConnector.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Mesajı ilet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.pg{--pn:#fff;--bg:#f6f7f9;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#5b6170;height:760px;display:flex;align-items:center;justify-content:center;gap:32px;padding:24px;box-sizing:border-box;font-size:14px}
+.ico{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.col{display:flex;flex-direction:column;gap:10px}
+.st{font-size:11px;letter-spacing:.05em;color:#e9ecf2;text-transform:uppercase;font-weight:600}
+.dlg{width:460px;background:var(--pn);border-radius:16px;box-shadow:0 24px 60px rgba(10,12,18,.35);display:flex;flex-direction:column;overflow:hidden}
+.dh{display:flex;align-items:center;gap:10px;padding:16px 20px 8px}
+.dh h2{margin:0;font-size:18px}
+.x{margin-left:auto;width:32px;height:32px;border:0;border-radius:8px;background:none;color:var(--mut);font:inherit;font-size:18px}
+.db{padding:4px 20px 16px;display:flex;flex-direction:column;gap:12px}
+.mut{color:var(--mut)}
+.lb{font-weight:600;font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:42px;padding:6px 8px;border:1px solid var(--acc);border-radius:8px;box-shadow:0 0 0 3px var(--accs);box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 4px 0 8px;border-radius:13px;background:var(--sd);font-size:12px}
+.chip button{width:18px;height:18px;border:0;border-radius:50%;background:none;color:var(--mut);padding:0;font-size:13px}
+.ph{color:var(--mut);font-size:13px}
+.sug{display:flex;flex-direction:column;border:1px solid var(--ln);border-radius:10px;overflow:hidden}
+.sg{display:flex;align-items:center;gap:10px;padding:8px 10px;font-size:13px;border-top:1px solid #edf0f3}
+.sg:first-child{border-top:0}
+.sg.on{background:var(--accs)}
+.sg small{margin-left:auto;color:var(--mut);font-size:12px}
+.av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex:none}
+.hs{width:26px;height:26px;border-radius:6px;background:var(--sd);display:flex;align-items:center;justify-content:center;color:var(--mut);font-weight:700;flex:none}
+.in{min-height:40px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px;color:var(--mut);font-size:13px;box-sizing:border-box}
+.fwd{border:1px solid var(--ln);border-left:3px solid #8d95a3;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:13px;background:var(--bg)}
+.fh{display:flex;align-items:center;gap:8px}
+.fh .av{width:20px;height:20px;font-size:8px}
+.fm{font-size:12px;color:var(--mut)}
+.file{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid var(--ln);border-radius:8px;max-width:260px;background:var(--pn)}
+.fi{width:30px;height:30px;border-radius:6px;background:var(--accs);color:var(--accd);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.warn{padding:9px 12px;border-radius:10px;background:#fff1e0;color:#6b2f00;font-size:12px;line-height:1.5;display:flex;gap:8px}
+.df{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--ln);background:var(--bg)}
+.btn{height:38px;padding:0 16px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:14px;color:var(--ink)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.chat{width:520px;background:var(--pn);border-radius:16px;box-shadow:0 24px 60px rgba(10,12,18,.35);overflow:hidden}
+.chd{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--ln)}
+.dot{width:8px;height:8px;border-radius:50%;background:#2f9e44}
+.msgs{padding:16px;display:flex;flex-direction:column;gap:16px}
+.m{display:flex;gap:10px}
+.m .av{width:36px;height:36px;border-radius:8px;font-size:13px}
+.lnk{border:0;background:none;font:inherit;font-size:12px;color:var(--accd);font-weight:600;padding:0;align-self:flex-start}
+.fwd .fh .av{width:20px;height:20px;font-size:8px;border-radius:50%}
+.del{border:1px dashed var(--ln);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--mut);font-style:italic}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col">
+<span class="st">1 · İletme penceresi</span>
+<div class="dlg" role="dialog" aria-label="Mesajı ilet">
+<div class="dh"><h2>Mesajı ilet</h2><button class="x" aria-label="Kapat">×</button></div>
+<div class="db">
+<div style="display: flex; flex-direction: column; gap: 6px"><span class="lb">Kime</span>
+<div class="chips"><span class="chip">Veli Yılmaz<button aria-label="Kaldır">×</button></span><span class="chip"># duyurular<button aria-label="Kaldır">×</button></span><span class="ph">Kişi, grup veya kanal ara…</span></div></div>
+<div class="sug">
+<div class="sg"><span class="av" style="background: #e5dbff">ZA</span>Zeynep Arslan<small>DM</small></div>
+<div class="sg on"><span class="hs">#</span>tasarım-ekibi<small>Özel kanal · 8 üye</small></div>
+<div class="sg"><span class="av" style="background: #ffd8a8">AD</span>Ayşe, Veli, Mert<small>Grup DM</small></div>
+</div>
+<div class="in">Bir not ekle… (isteğe bağlı)</div>
+<div class="fwd">
+<div class="fh"><span class="av" style="background: #ffd8a8">AD</span><b>Ayşe Demir</b><span class="fm"># genel · Bugün 10:15</span></div>
+<span>Yeni sürüm hazır.</span>
+<div class="file"><span class="fi">PDF</span><span><b>tasarim-v2.pdf</b><br><span class="fm">2,4 MB</span></span></div>
+</div>
+<div class="warn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 16px; height: 16px; margin-top: 1px"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg><span># duyurular'daki 120 kişi bu mesajı görecek. Ekli dosya da paylaşılacak.</span></div>
+</div>
+<div class="df"><button class="btn">Vazgeç</button><button class="btn pri">İlet</button></div>
+</div>
+</div>
+<div class="col">
+<span class="st">2 · Veli Yılmaz ile DM'de görünümü</span>
+<div class="chat">
+<div class="chd"><span class="dot"></span><b>Veli Yılmaz</b></div>
+<div class="msgs">
+<div class="m"><span class="av" style="background: #c5d0fa">AK</span><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px"><div><b>Ali Kaya</b> <span class="fm">11:42</span></div><span>Son sürüme bakabilir misin?</span>
+<div class="fwd">
+<div class="fh"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; color: #555d6b"><path d="M15 5l6 6-6 6"></path><path d="M21 11H10a6 6 0 0 0-6 6v2"></path></svg><span class="fm">İletildi</span></div>
+<div class="fh"><span class="av" style="background: #ffd8a8">AD</span><b>Ayşe Demir</b><span class="fm"># genel · Bugün 10:15</span></div>
+<span>Yeni sürüm hazır.</span>
+<div class="file"><span class="fi">PDF</span><span><b>tasarim-v2.pdf</b><br><span class="fm">2,4 MB</span></span></div>
+<button class="lnk">Orijinal mesaja git</button>
+</div></div></div>
+<div class="m"><span class="av" style="background: #c5d0fa">AK</span><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px"><div><b>Ali Kaya</b> <span class="fm">11:46</span></div>
+<div class="fwd">
+<div class="fh"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; color: #555d6b"><path d="M15 5l6 6-6 6"></path><path d="M21 11H10a6 6 0 0 0-6 6v2"></path></svg><span class="fm">İletildi</span></div>
+<div class="fh"><span class="av" style="background: #e5dbff">ZA</span><b>Zeynep Arslan</b><span class="fm"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2; vertical-align: -1px"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg> Özel kanal · Dün 16:20</span></div>
+<span>Lansman tarihi 12 Kasım olarak kesinleşti.</span>
+</div></div></div>
+<div class="m"><span class="av" style="background: #c5d0fa">AK</span><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px"><div><b>Ali Kaya</b> <span class="fm">11:50</span></div>
+<div class="del">İletilen mesaj, sahibi tarafından silindi.</div></div></div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Project rules for Semgrep (run in the Security workflow with --config .semgrep).
+rules:
+  - id: organization-setting-outside-unit-of-work
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Only the unit of work sets the organization context in the database (docs/adr/0005). Code must
+      not change app.org_id, call set_config, switch roles or turn row security off. Matched on the
+      source text, so it covers every kind of string literal (and comments: reword those).
+    pattern-regex: (?i)(app\.org_id|set_config|\bset\s+(local\s+|session\s+)?role\b|\breset\s+(role|all|session)\b|row_security|session\s+authorization)
+    paths:
+      include:
+        - /backend/src/
+      exclude:
+        - /backend/src/BuildingBlocks/Backroom.BuildingBlocks.Infrastructure/Persistence/

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Organizasyon SSO adımı</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2f4bb8;font-weight:600;text-decoration:none}a:hover{color:#1f3a99;text-decoration:underline}
+.pg{--pn:#fff;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--bg:#f6f7f9;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;align-items:center;justify-content:center;gap:28px;font-size:14px;padding:24px;box-sizing:border-box}
+.col{display:flex;flex-direction:column;gap:10px}
+.st{font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase;font-weight:600}
+.c{width:360px;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+.c.ext{background:transparent;border:1.5px dashed #aab2bf}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--acc)}
+.c h2{margin:0;font-size:22px}
+p{margin:0;line-height:1.5}
+.mut{color:var(--mut)}
+.acct{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;line-height:1.35;font-size:13px}
+.acct small{display:block;color:var(--mut);font-size:12px}
+.av{width:32px;height:32px;border-radius:50%;background:#c5d0fa;color:#1f2430;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.tag{align-self:flex-start;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:#eef0f4;color:var(--mut)}
+.ph{height:150px;border-radius:10px;background:#eef0f4;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:13px}
+.note{font-size:12px;color:var(--mut);line-height:1.5;padding:10px;border-radius:8px;background:var(--bg)}
+.go{height:44px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600}
+.sec{height:44px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink);font-weight:600}
+.ic{width:44px;height:44px;border-radius:12px;background:var(--accs);color:var(--accd);display:flex;align-items:center;justify-content:center}
+.ic.warn{background:#fff1e0;color:#a84300}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col"><span class="st">1 · Kurum girişi isteniyor</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>Acme</div>
+<h2>Acme kurum girişi istiyor</h2>
+<p class="mut">Acme'ye girmek için Acme'nin kimlik sisteminde de doğrulanman gerekiyor.</p>
+<div class="acct"><span class="av">AK</span><span><b>Ali Kaya</b><small>ali.kaya@acme.com</small></span></div>
+<div class="note">Bu adım yalnızca Acme için. Diğer organizasyonlarına girişin değişmez.</div>
+<button class="go">Acme ile devam et</button>
+<button class="sec">Başka bir organizasyona geç</button>
+</div></div>
+<div class="col"><span class="st">2 · Kurumun giriş sayfası</span>
+<div class="c ext">
+<span class="tag">Acme'nin kimlik sağlayıcısı</span>
+<p class="mut">Acme'nin kendi giriş sayfası açılır (OIDC ya da SAML). Doğrulama bitince otomatik olarak Acme'ye dönersin.</p>
+<div class="ph">[Kurumun giriş sayfası]</div>
+</div></div>
+<div class="col"><span class="st">3 · Kurum erişimi kaldırdı</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>Acme</div>
+<span class="ic warn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"></circle><path d="M2 21c0-3.5 3-6 7-6s7 2.5 7 6"></path><path d="M17 8l4 4M21 8l-4 4"></path></svg></span>
+<h2>Acme'deki erişimin kapatıldı</h2>
+<p class="mut">Acme'nin kimlik sisteminde hesabın kaldırılmış ya da devre dışı bırakılmış. Bu yüzden Acme'de deaktif oldun.</p>
+<div class="note">Diğer organizasyonlarına erişimin sürüyor. Bir hata olduğunu düşünüyorsan Acme'nin yöneticisine başvur.</div>
+<button class="go">Başka bir organizasyona geç</button>
+</div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

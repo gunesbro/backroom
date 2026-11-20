@@ -1,0 +1,68 @@
+# Weekly dependency updates, grouped per ecosystem so they arrive as a few reviewable PRs.
+# Security updates are raised as soon as an advisory appears, independent of this schedule.
+# Version updates wait 7 days after a release (cooldown), so a compromised release is usually
+# caught by the ecosystem before it reaches us.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: nuget
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      aspire:
+        patterns: ["Aspire.*", "CommunityToolkit.Aspire.*"]
+      opentelemetry:
+        patterns: ["OpenTelemetry.*"]
+      microsoft-extensions:
+        patterns: ["Microsoft.Extensions.*"]
+      testing:
+        patterns: ["xunit*", "AwesomeAssertions", "NSubstitute", "TngTech.ArchUnitNET*"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 8
+    groups:
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      build-and-test:
+        patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*", "jsdom", "@testing-library/*"]
+      lint-and-format:
+        patterns: ["eslint", "@eslint/*", "eslint-plugin-*", "typescript-eslint", "prettier", "globals"]
+      tauri:
+        patterns: ["@tauri-apps/*"]
+    ignore:
+      # typescript-eslint does not support TypeScript 7 yet; upgrade both together (CLAUDE.md).
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # Node type definitions follow the Node.js LTS we run (24); move them with the runtime.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: cargo
+    directory: /frontend/apps/desktop/src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      tauri:
+        patterns: ["tauri", "tauri-*", "webkit2gtk"]

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Shared HTTP presentation: problem details for errors, result-to-HTTP helpers, the unit of work filter and access token authentication. -->
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Backroom.BuildingBlocks.Domain\Backroom.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\Backroom.BuildingBlocks.Application\Backroom.BuildingBlocks.Application.csproj" />
+  </ItemGroup>
+
+</Project>

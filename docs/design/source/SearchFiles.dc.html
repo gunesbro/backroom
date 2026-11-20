@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Arama ve dosyalar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.pg{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--ok:#2f9e44;--oks:#e6f4ea;--okd:#1e6b34;--bad:#c92a2a;--bads:#fff0f0;--warn:#fff8e6;--warnd:#5a3d00;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#5b6170;height:760px;display:flex;align-items:flex-start;justify-content:center;gap:24px;padding:28px 24px;box-sizing:border-box;font-size:14px;position:relative;overflow:hidden}
+.col{display:flex;flex-direction:column;gap:10px;position:relative}
+.st{font-size:11px;letter-spacing:.05em;color:#e9ecf2;text-transform:uppercase;font-weight:600}
+.card{background:var(--pn);border-radius:14px;box-shadow:0 18px 48px rgba(10,12,18,.28);display:flex;flex-direction:column;overflow:hidden;position:relative}
+.ch{display:flex;align-items:center;gap:10px;padding:14px 18px 8px}
+.ch h2{margin:0;font-size:17px}
+.cb{padding:6px 18px 14px;display:flex;flex-direction:column;gap:10px}
+.cf{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--ln);background:var(--bg)}
+.x{margin-left:auto;width:30px;height:30px;border:0;border-radius:8px;background:none;color:var(--mut);font:inherit;font-size:18px}
+.mut{color:var(--mut)}
+.sm{font-size:12px}
+.lb{font-size:12px;font-weight:600;color:var(--mut)}
+.f{display:flex;flex-direction:column;gap:4px}
+.inp{height:36px;padding:0 10px;border:1px solid var(--ln);border-radius:8px;display:flex;align-items:center;gap:6px;font-size:14px;background:var(--pn)}
+.inp.on{border-color:var(--acc);box-shadow:0 0 0 3px var(--accs)}
+.row{display:flex;gap:8px;align-items:center}
+.row > .f{flex:1}
+.btn{height:34px;padding:0 14px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:13px;color:var(--ink);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.ico{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#1f2430;flex:none;background:#c5d0fa}
+.avs{display:flex}.avs .av{margin-left:-6px;border:2px solid var(--pn)}.avs .av:first-child{margin-left:0}
+.tag{font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;background:var(--sd);color:var(--mut);white-space:nowrap}
+.tag.ok{background:var(--oks);color:var(--okd)}.tag.bad{background:var(--bads);color:var(--bad)}.tag.acc{background:var(--accs);color:var(--accd)}.tag.warn{background:#fff3bf;color:var(--warnd)}
+.tg{width:34px;height:20px;border-radius:10px;background:#c9ced6;position:relative;flex:none}
+.tg::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.tg.on{background:var(--acc)}.tg.on::after{left:16px}
+.menu{background:var(--pn);border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 36px rgba(15,18,24,.22);padding:6px;display:flex;flex-direction:column;font-size:13px;z-index:10}
+.menu .g{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);padding:8px 10px 4px}
+.menu .mi{display:flex;align-items:center;gap:10px;min-height:32px;padding:4px 10px;border-radius:7px}
+.menu .mi.on{background:var(--accs)}
+.menu .mi small{display:block;font-size:11.5px;color:var(--mut)}
+.menu .mi .r{margin-left:auto;font-size:12px;color:var(--mut);white-space:nowrap}
+.menu .hr{height:1px;background:var(--ln);margin:4px 0}
+.comp{border:1px solid var(--ln);border-radius:10px;background:var(--pn);display:flex;flex-direction:column}
+.comp .tx{padding:12px;font-size:14px;min-height:22px}
+.comp .bt{display:flex;align-items:center;gap:8px;padding:6px 8px;color:var(--mut);font-size:12px}
+.sendg{margin-left:auto;display:flex;border-radius:8px;overflow:hidden}
+.sendg span{height:30px;display:flex;align-items:center;justify-content:center;background:var(--acc);color:#fff}
+.sendg span:first-child{width:34px}.sendg span:last-child{width:24px;border-left:1px solid rgba(255,255,255,.35)}
+.sendg span.op{background:var(--accd)}
+.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px;margin-left:1px}
+.ment{color:var(--accd);background:var(--accs);border-radius:4px;padding:0 3px;font-weight:600}
+.note{font-size:12px;color:#e9ecf2;line-height:1.45}
+.sr{width:700px}
+.sbox{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:14px 16px 8px;padding:6px 10px;min-height:38px;box-sizing:border-box;border:1px solid var(--acc);border-radius:10px;box-shadow:0 0 0 3px var(--accs);font-size:14px}
+.tok{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:6px;background:var(--accs);color:var(--accd);font-size:12.5px;font-weight:600}
+.tok i{font-style:normal;color:var(--mut);font-weight:400}
+.flt{display:flex;gap:6px;padding:0 16px 10px;flex-wrap:wrap}
+.flt span{height:28px;padding:0 10px;border:1px solid var(--ln);border-radius:14px;display:flex;align-items:center;gap:4px;font-size:12px}
+.flt span.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.tabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--ln)}
+.tab{padding:8px 10px;font-size:13px;color:var(--mut);border-bottom:2px solid transparent}
+.tab.on{color:var(--accd);border-color:var(--acc);font-weight:600}
+.hit{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid #edf0f3}
+.hit .t{flex:1;font-size:13px;line-height:1.45}
+.hit .t small{color:var(--mut);font-size:12px}
+.hit mark{background:#fff3bf;color:inherit;border-radius:3px;padding:0 1px}
+.fcard{display:flex;align-items:center;gap:10px;margin-top:6px;padding:8px 10px;border:1px solid var(--ln);border-radius:8px;width:fit-content}
+.fi{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex:none}
+.fi.pdf{background:#ffe3e3;color:#c92a2a}.fi.fig{background:#e5dbff;color:#5f3dc4}.fi.xls{background:#d3f9d8;color:#2b8a3e}.fi.img{background:#d0ebff;color:#1971c2}.fi.lnk{background:var(--sd);color:var(--mut)}
+.fp{width:420px}
+.fl{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid #edf0f3;font-size:13px}
+.fl .t{flex:1;min-width:0;line-height:1.35}
+.fl .t small{display:block;color:var(--mut);font-size:12px}
+
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col"><span class="st">1 · Arama filtreleri</span>
+<div class="card sr">
+<div class="sbox"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span class="tok"><i>kimden:</i>Veli Yılmaz</span><span class="tok"><i>nerede:</i>#genel</span><span class="tok"><i>tarih:</i>son 30 gün</span><span>ikon seti</span></div>
+<div class="flt"><span class="on">Tümü</span><span>Dosya içeren</span><span>Bağlantı içeren</span><span>Benden bahsedenler</span><span>Thread'ler</span><span>Kişi ▾</span><span>Kanal ▾</span><span>Tarih ▾</span></div>
+<div class="tabs"><span class="tab on">Mesajlar 6</span><span class="tab">Dosyalar 2</span><span class="tab">Kanallar 0</span><span class="tab">Kişiler 0</span></div>
+<div class="hit"><span class="av" style="background:#c5d0fa">VY</span><span class="t"><b>Veli Yılmaz</b> <small># genel · 21 Eki</small><br>Yeni <mark>ikon seti</mark>ni Figma'ya yükledim, yorumlarınızı bekliyorum.<br><span class="fcard"><span class="fi fig">FIG</span><span><b>ikon-seti-v3.fig</b><br><small>14,2 MB</small></span></span></span></div>
+<div class="hit"><span class="av" style="background:#c5d0fa">VY</span><span class="t"><b>Veli Yılmaz</b> <small># genel · 14 Eki · thread'de 4 yanıt</small><br>Eski <mark>ikon seti</mark> ile yenisini yan yana koyalım mı?</span></div>
+<div class="hit" style="border-bottom:0"><span class="av" style="background:#c5d0fa">VY</span><span class="t"><b>Veli Yılmaz</b> <small># genel · 2 Eki</small><br><mark>İkon</mark> boyutlarını 16/20/24 olarak sabitleyelim.</span></div>
+</div>
+<span class="note">Filtreler yazarak da eklenir: "kimden:", "nerede:", "tarih:", "dosya:pdf". Arama sadece senin erişebildiğin kanal ve konuşmalarda yapılır.</span>
+</div>
+<div class="col"><span class="st">2 · Kanalın dosyaları</span>
+<div class="card fp">
+<div class="ch" style="padding-bottom:4px"><h2># genel</h2><span class="mut sm">128 üye</span></div>
+<div class="tabs"><span class="tab">Mesajlar</span><span class="tab on">Dosyalar 38</span><span class="tab">Bağlantılar 21</span><span class="tab">Sabitlenenler 3</span></div>
+<div class="flt" style="padding-top:10px"><span class="on">Tümü</span><span>Belgeler</span><span>Görseller</span><span>Tablolar</span><span>Paylaşan ▾</span></div>
+<div class="fl"><span class="fi fig">FIG</span><span class="t"><b>ikon-seti-v3.fig</b><small>Veli Yılmaz · 21 Eki · 14,2 MB</small></span></div>
+<div class="fl"><span class="fi pdf">PDF</span><span class="t"><b>tasarim-v2.pdf</b><small>Ayşe Demir · 23 Eki · 2,4 MB</small></span></div>
+<div class="fl"><span class="fi xls">XLS</span><span class="t"><b>sprint-takvimi.xlsx</b><small>Mert Şahin · 18 Eki · 86 KB</small></span></div>
+<div class="fl"><span class="fi img">PNG</span><span class="t"><b>ana-ekran-taslak.png</b><small>Zeynep Arslan · 16 Eki · 1,1 MB</small></span></div>
+<div class="fl" style="border-bottom:0"><span class="fi lnk"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg></span><span class="t"><b>Ürün yol haritası</b><small>Bağlantı · notion.so · Can Öztürk · 12 Eki</small></span></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

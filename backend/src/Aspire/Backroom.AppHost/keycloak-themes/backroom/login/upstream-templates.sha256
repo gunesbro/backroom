@@ -1,0 +1,11 @@
+# SHA-256 of the keycloak.v2 login templates our theme copies, as shipped in Keycloak 26.8.1
+# (org.keycloak.keycloak-themes jar). A test compares them with the Keycloak the tests run; when one
+# changes on an upgrade, merge Keycloak's change into our copy, then update the hash and the version here.
+# Only keycloak.v2 login copies belong here; a copy of a base-only page or a template of our own needs the tests
+# (KeycloakRealmTests, KeycloakVersionTests) extended first.
+66ef8a11259236a60c16463d7888e29348b1fd6cdc2e3555548c294556324452  login-reset-password.ftl
+0cea2ddf59acc4ac36c7d849dc7c1a554466cf0cc6679f18ae08daee28f6258e  login-update-password.ftl
+990458482c0f7be9478ed61509df69e0853e14c03c5f3d4b39f0af9ad4222528  login-verify-email.ftl
+c9ec5c28a14aa30f0d6887044f431c2c04cbe1ad7732c1bf4a1c3c89250efe31  login.ftl
+75661cb29cd3139aa7b8bcfed5bad9192cb3a2f4788f88c98777f0888725dc24  register.ftl
+6221a3176c73a3fd67abc97076deb9cef112378ce157735a78bd865800315b37  template.ftl

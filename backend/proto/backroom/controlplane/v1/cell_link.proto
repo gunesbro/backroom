@@ -1,0 +1,228 @@
+syntax = "proto3";
+
+// The link between a cell and the control plane (docs/adr/0003, docs/contracts/phase-1.md).
+// Compatibility rules (checked by `buf breaking`): fields are only added with new numbers;
+// existing fields are never removed or renumbered; removed fields are reserved.
+// A receiver that does not know a payload variant answers Nack with code "unsupported_type"
+// and retryable = false; the control plane only sends types the cell's Hello.version supports.
+package backroom.controlplane.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Backroom.ControlPlane.Contracts.V1";
+
+// Opened by the cell, never by the control plane. The bearer token of every call is the cell's
+// short-lived Keycloak token; the cell id is taken from the token (azp = "cell-{id}"), never from
+// the payload. The control plane closes the stream when that token expires; the cell reconnects
+// with a fresh token before expiry. One stream per cell: a new stream supersedes the old one.
+service CellLinkService {
+  // One long-lived bidirectional stream. Every durable message carries a message_id and is
+  // answered with an Ack or a Nack for that id once the receiver has committed its handling.
+  // Control messages (Hello, Welcome, Heartbeat, Ack, Nack) are not persisted and not acknowledged.
+  rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
+
+  // The full state the cell must hold. Called on connect and periodically to repair drift.
+  // FullSync never deletes data in the cell; a missing organization raises an operations alert.
+  rpc FullSync(FullSyncRequest) returns (FullSyncResponse);
+}
+
+// Upstream: cell → control plane.
+message ConnectRequest {
+  Envelope envelope = 1;
+
+  oneof payload {
+    Hello hello = 10;
+    Ack ack = 11;
+    Nack nack = 12;
+    Heartbeat heartbeat = 13;
+    MembershipChanged membership_changed = 14;
+    OrganizationUpdated organization_updated = 15;
+    InvitationRegistered invitation_registered = 16;
+    MembershipDigest membership_digest = 17;
+    MembershipSnapshot membership_snapshot = 18;
+    InvitationRevoked invitation_revoked = 19;
+  }
+}
+
+// Downstream: control plane → cell.
+message ConnectResponse {
+  Envelope envelope = 1;
+
+  oneof payload {
+    Welcome welcome = 10;
+    Ack ack = 11;
+    Nack nack = 12;
+    OrganizationProvisioned organization_provisioned = 13;
+    SessionRevoked session_revoked = 14;
+    InvitationAccepted invitation_accepted = 15;
+    MembershipSnapshotRequested membership_snapshot_requested = 16;
+  }
+}
+
+message Envelope {
+  // UUIDv7 of a durable message; empty for control messages. Receivers de-duplicate by it.
+  string message_id = 1;
+  // Per-direction counter for diagnostics and ordering of resends; not used for acknowledgement.
+  uint64 sequence = 2;
+  google.protobuf.Timestamp sent_at = 3;
+  // W3C trace context of the operation that produced the message.
+  string traceparent = 4;
+  string tracestate = 5;
+}
+
+// First message on a new stream. The cell id comes from the token; cell_id here is diagnostic
+// and the stream is rejected when it does not match.
+message Hello {
+  string cell_id = 1;
+  string version = 2;
+}
+
+message Welcome {
+  // How often the cell should run FullSync and send a MembershipDigest.
+  uint32 full_sync_interval_seconds = 1;
+}
+
+message Ack {
+  string message_id = 1;
+}
+
+message Nack {
+  string message_id = 1;
+  // Stable error code, e.g. "organization.invitation_not_pending" or "unsupported_type".
+  string code = 2;
+  // Diagnostic text without personal data.
+  string detail = 3;
+  // true: the sender retries with backoff. false: the sender parks the message as rejected
+  // (visible in the operations panel) and continues with the next one.
+  bool retryable = 4;
+}
+
+message Heartbeat {
+  string version = 1;
+  CellHealth health = 2;
+  uint32 organization_count = 3;
+  uint32 connected_clients = 4;
+}
+
+enum CellHealth {
+  CELL_HEALTH_UNSPECIFIED = 0;
+  CELL_HEALTH_HEALTHY = 1;
+  CELL_HEALTH_DEGRADED = 2;
+  CELL_HEALTH_MAINTENANCE = 3;
+}
+
+message MembershipChanged {
+  string organization_id = 1;
+  string account_id = 2;
+  MembershipStatus status = 3;
+  // Monotonic per (organization, account) in the cell; the control plane applies only newer versions.
+  uint64 version = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
+
+enum MembershipStatus {
+  MEMBERSHIP_STATUS_UNSPECIFIED = 0;
+  MEMBERSHIP_STATUS_ACTIVE = 1;
+  MEMBERSHIP_STATUS_REMOVED = 2;
+  MEMBERSHIP_STATUS_DEACTIVATED = 3;
+}
+
+message OrganizationUpdated {
+  string organization_id = 1;
+  string name = 2;
+  // Monotonic per organization; the control plane applies only newer versions.
+  uint64 version = 3;
+}
+
+// Upsert by invitation_id: a resend registers a new code hash with a higher code_version. The control plane applies it only
+// while the invitation is pending and only if code_version is newer; it never changes the status.
+message InvitationRegistered {
+  string organization_id = 1;
+  string invitation_id = 2;
+  // SHA-256 of the invitation code (the code is a 256-bit HMAC output, so a plain hash is safe), as 64
+  // lower-case hexadecimal characters. The hash is taken over the code's 43 base64url characters.
+  string code_hash = 3;
+  // Normalized invited email (trim, Unicode NFC, invariant lower case). The control plane stores
+  // only an HMAC of it and compares it with the accepting account's verified email.
+  string email = 4;
+  string role = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  // Incremented on every resend; the cell sends the email only after this version is acknowledged.
+  uint32 code_version = 7;
+}
+
+message InvitationRevoked {
+  string organization_id = 1;
+  string invitation_id = 2;
+}
+
+// Periodic summary so the control plane can detect missed MembershipChanged messages.
+message MembershipDigest {
+  repeated OrganizationMembershipDigest organizations = 1;
+}
+
+message OrganizationMembershipDigest {
+  string organization_id = 1;
+  uint32 active_member_count = 2;
+  // SHA-256 over the sorted active account ids.
+  string active_members_hash = 3;
+}
+
+// Answer to MembershipSnapshotRequested: the complete membership of one organization.
+message MembershipSnapshot {
+  string organization_id = 1;
+  repeated MembershipChanged members = 2;
+}
+
+message OrganizationProvisioned {
+  string organization_id = 1;
+  string name = 2;
+  string owner_account_id = 3;
+  string owner_display_name = 4;
+  string owner_email = 5;
+  // BCP 47 locale for the owner, e.g. "tr-TR".
+  string owner_locale = 6;
+}
+
+message SessionRevoked {
+  string account_id = 1;
+  // Keycloak session id ("sid" claim). Empty means every session of the account.
+  string session_id = 2;
+  google.protobuf.Timestamp revoked_at = 3;
+  // The cell keeps the revocation until this time (the longest token lifetime after revoked_at).
+  google.protobuf.Timestamp keep_until = 4;
+}
+
+// The control plane verified the code, its expiry and that the signed-in account's verified email matches the
+// invitation. The cell still checks: the invitation is pending, accepted_at <= expires_at + 60 s, the email equals the
+// stored invited email, the inviter may still grant the role, and the person is not a deactivated member. Otherwise it
+// answers a non-retryable Nack with organization.invitation_not_pending | invitation_expired | invitation_email_mismatch |
+// inviter_not_authorized | member_deactivated. An existing active member is accepted without changes.
+message InvitationAccepted {
+  string organization_id = 1;
+  string invitation_id = 2;
+  string account_id = 3;
+  string display_name = 4;
+  string email = 5;
+  string locale = 6;
+  // When the control plane accepted; the cell checks it against the invitation's expiry.
+  google.protobuf.Timestamp accepted_at = 7;
+}
+
+message MembershipSnapshotRequested {
+  string organization_id = 1;
+}
+
+message FullSyncRequest {}
+
+message FullSyncResponse {
+  // Organizations the control plane assigns to this cell.
+  repeated OrganizationAssignment organizations = 1;
+  // Only revocations of accounts that are members of an organization in this cell.
+  repeated SessionRevoked revoked_sessions = 2;
+}
+
+message OrganizationAssignment {
+  string organization_id = 1;
+  string name = 2;
+}

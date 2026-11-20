@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the main window. Kept minimal; widen only with a reason.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-auth-status",
+    "allow-sign-in",
+    "allow-reopen-sign-in",
+    "allow-sign-in-link",
+    "allow-cancel-sign-in",
+    "allow-access-token",
+    "allow-forget-session",
+    "allow-sign-out"
+  ]
+}

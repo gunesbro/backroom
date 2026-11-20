@@ -1,0 +1,67 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+secrets.json
+*.jks
+*.keystore
+*.p8
+id_rsa*
+id_ed25519*
+.npmrc
+appsettings.*.local.json
+playwright/.auth/
+.claude/settings.local.json
+
+# OS and editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vs/
+.idea/
+*.swp
+*.user
+*.suo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# .NET
+bin/
+obj/
+artifacts/
+TestResults/
+*.received.*
+coverage/
+*.coverage
+*.coveragexml
+
+# Node / frontend
+node_modules/
+.pnpm-store/
+*.local
+vite.config.*.timestamp-*
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+.eslintcache
+playwright-report/
+test-results/
+blob-report/
+npm-debug.log*
+pnpm-debug.log*
+
+# Rust / Tauri
+target/
+**/src-tauri/gen/schemas/
+
+# Logs
+*.log
+logs/

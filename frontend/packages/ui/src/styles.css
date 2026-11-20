@@ -1,0 +1,495 @@
+/*
+ * Design tokens and base components, from the design canvas (docs/design/source): IBM Plex Sans, light
+ * panels on a grey page, blue accent; the dark theme follows MainDark. Colors come only from these tokens.
+ */
+:root {
+  --ph-page: #f6f7f9;
+  --ph-panel: #fff;
+  --ph-subtle: #eef0f4;
+  --ph-line: #d5dae1;
+  --ph-ink: #1f2430;
+  --ph-muted: #555d6b;
+  --ph-accent: #3b5bdb;
+  --ph-accent-soft: #e3e9ff;
+  --ph-accent-strong: #2f4bb8;
+  --ph-on-accent: #fff;
+  /* Filled controls; white text on it is at least 4.5:1 (WCAG AA) in both themes. */
+  --ph-accent-fill: #3b5bdb;
+  /* A person's initials (docs/design: Onboarding). */
+  --ph-avatar: #c5d0fa;
+  --ph-on-avatar: #1f2430;
+  /* Link text; at least 4.5:1 on the panel in both themes. */
+  --ph-link: #3b5bdb;
+  --ph-note: #eef2ff;
+  --ph-on-note: #1f2a5c;
+  --ph-danger: #b02525;
+  --ph-danger-soft: #fdecec;
+  --ph-focus: 0 0 0 3px var(--ph-accent-soft);
+  --ph-font: 'IBM Plex Sans', system-ui, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ph-page: #12151a;
+    --ph-panel: #1c2028;
+    --ph-subtle: #12151a;
+    --ph-line: #2c323d;
+    --ph-ink: #e6e9ef;
+    --ph-muted: #a3abb9;
+    --ph-accent: #5c7cfa;
+    --ph-accent-soft: #262f4d;
+    --ph-accent-strong: #aebfff;
+    --ph-avatar: #262f4d;
+    --ph-on-avatar: #aebfff;
+    --ph-link: #6b8afb;
+    --ph-on-accent: #fff;
+    --ph-note: #262f4d;
+    --ph-on-note: #dbe2ff;
+    --ph-danger: #ff8a8a;
+    --ph-danger-soft: #3a1f22;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --ph-page: #12151a;
+  --ph-panel: #1c2028;
+  --ph-subtle: #12151a;
+  --ph-line: #2c323d;
+  --ph-ink: #e6e9ef;
+  --ph-muted: #a3abb9;
+  --ph-accent: #5c7cfa;
+  --ph-accent-soft: #262f4d;
+  --ph-accent-strong: #aebfff;
+  --ph-avatar: #262f4d;
+  --ph-on-avatar: #aebfff;
+  --ph-link: #6b8afb;
+  --ph-on-accent: #fff;
+  --ph-note: #262f4d;
+  --ph-on-note: #dbe2ff;
+  --ph-danger: #ff8a8a;
+  --ph-danger-soft: #3a1f22;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--ph-page);
+  color: var(--ph-ink);
+  font-family: var(--ph-font);
+  font-size: 14px;
+}
+
+.ph-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.ph-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 760px;
+}
+
+.ph-card {
+  background: var(--ph-panel);
+  border: 1px solid var(--ph-line);
+  border-radius: 14px;
+  padding: 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ph-card--medium {
+  max-width: 424px;
+  width: 100%;
+}
+
+/* Two cards side by side (Onboarding: create and join), stacked on narrow screens. */
+.ph-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 424px));
+  justify-content: center;
+  align-items: start;
+  gap: 16px;
+  width: 100%;
+  max-width: 864px;
+}
+
+.ph-card--narrow {
+  max-width: 360px;
+  width: 100%;
+  align-self: center;
+}
+
+.ph-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.ph-brand__logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--ph-accent);
+}
+
+.ph-heading {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+/* Focused by script when a screen appears; not a control, so no ring. */
+.ph-heading:focus {
+  outline: none;
+}
+
+.ph-subheading {
+  margin: 0;
+  font-size: 16px;
+}
+
+.ph-muted {
+  color: var(--ph-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Forms and progress stack like the card itself (docs/design: GuestJoin). */
+.ph-form,
+.ph-status {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ph-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ph-field__label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ph-field__hint {
+  font-size: 12px;
+  color: var(--ph-muted);
+}
+
+.ph-field__error {
+  font-size: 12px;
+  color: var(--ph-danger);
+}
+
+.ph-input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--ph-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ph-ink);
+  background: var(--ph-panel);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.ph-input:focus-visible,
+.ph-button:focus-visible,
+.ph-link:focus-visible,
+.ph-list__item:focus-visible {
+  outline: 1px solid var(--ph-accent);
+  box-shadow: var(--ph-focus);
+}
+
+.ph-input[aria-invalid='true'] {
+  border-color: var(--ph-danger);
+}
+
+.ph-button {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--ph-line);
+  background: var(--ph-panel);
+  color: var(--ph-ink);
+}
+
+.ph-button--primary {
+  border-color: var(--ph-accent-fill);
+  background: var(--ph-accent-fill);
+  color: var(--ph-on-accent);
+}
+
+.ph-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ph-note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--ph-note);
+  color: var(--ph-on-note);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ph-alert {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--ph-danger-soft);
+  color: var(--ph-danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ph-spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 4px solid var(--ph-accent-soft);
+  border-top-color: var(--ph-accent);
+  box-sizing: border-box;
+  align-self: center;
+  animation: ph-spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-spinner {
+    animation: none;
+  }
+}
+
+@keyframes ph-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ph-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ph-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--ph-line);
+  border-radius: 10px;
+  background: var(--ph-panel);
+  color: var(--ph-ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ph-list__item:hover {
+  border-color: var(--ph-accent);
+}
+
+.ph-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--ph-accent-soft);
+  color: var(--ph-accent-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+.ph-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--ph-link);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.ph-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Signed-in screens (docs/design: Onboarding): a top bar, then centered content. */
+.ph-app-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ph-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+}
+
+.ph-app-page__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px 24px;
+}
+
+.ph-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+/* A long name is cut with an ellipsis; on phones only the initials show (the name stays for screen readers). */
+.ph-account__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ph-topbar .ph-brand {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 479px) {
+  .ph-account__name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+.ph-avatar--person {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ph-avatar);
+  color: var(--ph-on-avatar);
+  font-size: 11px;
+}
+
+/* The account an action will use (docs/design: InviteAccept); a long name or address wraps. */
+.ph-account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--ph-line);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ph-account-row__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ph-account-row small {
+  display: block;
+  color: var(--ph-muted);
+  font-size: 12px;
+}
+
+.ph-page-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 640px;
+  text-align: center;
+}
+
+.ph-page-title .ph-heading {
+  font-size: 26px;
+}
+
+.ph-radio-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ph-radio-cards legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.ph-radio-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--ph-line);
+  border-radius: 8px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.ph-radio-card small {
+  display: block;
+  color: var(--ph-muted);
+  font-size: 12px;
+}
+
+.ph-radio-card:has(input:checked) {
+  border-color: var(--ph-accent);
+  background: var(--ph-accent-soft);
+}
+
+.ph-radio-card input {
+  accent-color: var(--ph-accent);
+}
+
+.ph-radio-card:has(input:focus-visible) {
+  outline: 1px solid var(--ph-accent);
+  box-shadow: var(--ph-focus);
+}

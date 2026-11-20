@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Directory's control-plane endpoints on a test server with real Keycloak and PostgreSQL (Docker). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\CellManagement\Backroom.Modules.CellManagement.Infrastructure\Backroom.Modules.CellManagement.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Directory\Backroom.Modules.Directory.Infrastructure\Backroom.Modules.Directory.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Directory\Backroom.Modules.Directory.Presentation\Backroom.Modules.Directory.Presentation.csproj" />
+    <ProjectReference Include="..\..\..\Backroom.Testing\Backroom.Testing.csproj" />
+  </ItemGroup>
+
+  <!-- The development realm, imported into a Keycloak container. -->
+  <ItemGroup>
+    <None Include="..\..\..\..\src\Aspire\Backroom.AppHost\keycloak-dev\backroom-realm.json" Link="keycloak\backroom-realm.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

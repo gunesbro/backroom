@@ -1,0 +1,58 @@
+[package]
+name = "backroom-desktop"
+version = "0.0.0"
+description = "Backroom desktop app (Tauri shell around the web app)"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[lib]
+# The _lib suffix avoids a name clash with the binary on Windows (cargo issue 8519).
+name = "backroom_desktop_lib"
+# Desktop only needs rlib; add staticlib and cdylib when mobile targets arrive.
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+# Checks the release issuer (src/auth/issuer.rs).
+url = "2.5.8"
+
+[features]
+# Phase 0 spike: grants media permissions without asking in release builds (see src/lib.rs).
+spike = []
+
+[dependencies]
+tauri = { version = "2.12.5", features = [] }
+# Sign-in (src/auth): the system browser, one running instance, the OS secure store and token requests.
+tauri-plugin-opener = "2.7.2"
+tauri-plugin-single-instance = "=2.5.5"
+# The URL scheme of the completion page: it only starts the app or brings it forward.
+tauri-plugin-deep-link = "2.6.3"
+keyring = "4.2.0"
+# Entries with modifiers (Windows: local persistence, never roaming); the version keyring 4.2.0 uses.
+keyring-core = "1.0.1"
+# TLS through rustls with the ring provider and the operating system's certificate store (platform verifier);
+# the default aws-lc provider needs NASM to build on Windows.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "http2", "system-proxy", "json", "form"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1.54.1", features = ["net", "io-util", "time", "sync", "macros"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+url = "2.5.8"
+sha2 = "0.11.1"
+base64 = "0.23.1"
+getrandom = "0.4.3"
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros"] }
+
+# Same webkit2gtk major version Tauri uses; v2_38 exposes the enable-webrtc setting.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "2.0", features = ["v2_38"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

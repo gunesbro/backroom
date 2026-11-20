@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\Backroom.Modules.CellManagement.Application\Backroom.Modules.CellManagement.Application.csproj" />
+    <ProjectReference Include="..\Backroom.Modules.CellManagement.Contracts\Backroom.Modules.CellManagement.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Backroom.Modules.CellManagement.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Entegrasyonlar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;overflow:hidden}
+.ico{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.top{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--pn);border-bottom:1px solid var(--ln)}
+.logo{width:22px;height:22px;border-radius:6px;background:var(--acc)}
+.ib{height:30px;padding:0 10px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:13px;color:var(--ink)}
+.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.body{flex:1;display:flex;min-height:0}
+.nav{width:248px;flex:none;background:var(--sd);border-right:1px solid var(--ln);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px}
+.nav h4{margin:10px 8px 4px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.nv{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:6px;background:none;font:inherit;color:var(--ink)}
+.nv.on{background:var(--accs);color:var(--accd);font-weight:600}
+.mut{color:var(--mut)}
+.main{flex:1;padding:18px 24px;display:grid;grid-template-columns:1fr 400px;gap:20px;overflow:hidden;min-width:0}
+.colm{display:flex;flex-direction:column;gap:10px;min-width:0}
+h1{margin:0;font-size:20px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--ln)}
+.tab{height:34px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:none;font:inherit;color:var(--mut)}
+.tab.on{border-bottom-color:var(--acc);color:var(--accd);font-weight:600}
+.app2{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--pn);border:1px solid var(--ln);border-radius:12px}
+.al{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none}
+.tx{flex:1;line-height:1.4;min-width:0}
+.tx small{display:block;color:var(--mut);font-size:12px}
+.st{font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:#e6f4ea;color:#1e6b34;white-space:nowrap}
+.st.soon{background:var(--sd);color:var(--mut)}
+.det{background:var(--pn);border:1px solid var(--acc);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.det h2{margin:0;font-size:15px}
+.ch{display:flex;align-items:center;gap:8px;font-size:13px;padding:8px 10px;border:1px solid var(--ln);border-radius:8px}
+.ch b{min-width:110px}
+.ev{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-size:12px;padding:3px 8px;border-radius:12px;background:var(--accs);color:var(--accd)}
+.note{padding:10px 12px;border-radius:10px;background:#eef2ff;color:#1f2a5c;font-size:12px;line-height:1.5}
+.lock{padding:10px 12px;border-radius:10px;background:#fff1e0;color:#6b2f00;font-size:12px}
+.prev{background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:14px}
+.lb{font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase;font-weight:600}
+.m{display:flex;gap:10px}
+.m .av{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+.bot{font-size:10px;font-weight:700;padding:0 4px;border-radius:3px;background:var(--sd);color:var(--mut);margin-left:4px}
+.card{margin-top:6px;border:1px solid var(--ln);border-left-width:1px;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.card .t{font-weight:600;color:var(--accd)}
+.meta{display:flex;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--mut)}
+.badge{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px}
+.b-open{background:#e6f4ea;color:#1e6b34}
+.b-rev{background:#fff1e0;color:#a84300}
+.acts{display:flex;gap:6px}
+.menu{border:1px solid var(--ln);border-radius:10px;box-shadow:0 10px 26px rgba(20,24,33,.14);padding:6px;display:flex;flex-direction:column;gap:2px;width:250px;align-self:flex-end;font-size:13px}
+.mi{display:flex;align-items:center;gap:8px;padding:7px 8px;border:0;border-radius:6px;background:none;font:inherit;color:var(--ink);text-align:left}
+.mi.on{background:var(--accs)}
+.mi .ico{width:16px;height:16px;color:var(--mut)}
+.mini3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mini3 .app2{padding:10px;gap:8px}
+.mini3 .al{width:32px;height:32px;font-size:12px}
+.hr{height:1px;background:var(--ln);margin:2px 4px}
+</style>
+</helmet>
+<div class="app" style="width: 100%">
+<div class="top"><button class="ib">← Uygulamaya dön</button><span class="logo"></span><b>Acme · Organizasyon ayarları</b></div>
+<div class="body">
+<div class="nav">
+<h4>Organizasyon</h4>
+<button class="nv">Genel</button>
+<button class="nv">Üyeler</button>
+<button class="nv">Roller ve izinler</button>
+<button class="nv">Katlar ve odalar</button>
+<button class="nv">Davetler</button>
+<button class="nv">Misafirler</button>
+<button class="nv">Kimlik ve giriş (SSO)</button>
+<h4>Uygulamalar</h4>
+<button class="nv on">Entegrasyonlar</button>
+<button class="nv">Aktiviteler (oyunlar)</button>
+<h4>Yönetim</h4>
+<button class="nv">Moderasyon</button>
+<button class="nv">Denetim kaydı</button>
+<button class="nv">Altyapı ve veri</button>
+<button class="nv">Plan ve kota</button>
+</div>
+<div class="main">
+<div class="colm">
+<div style="display: flex; align-items: center; gap: 10px"><h1>Entegrasyonlar</h1><span class="lock" style="padding: 4px 10px">Ücretli plan özelliği</span></div>
+<div class="tabs"><button class="tab on">Bağlı · 1</button><button class="tab">Katalog</button></div>
+<div class="det">
+<div style="display: flex; align-items: center; gap: 12px"><span class="al" style="background: #2457b8">BB</span><span class="tx"><b>Bitbucket</b><small>Acme workspace · Zeynep Arslan bağladı · 12 Ekim</small></span><span class="st">Bağlı</span><button class="ib">Bağlantıyı kes</button></div>
+<h2>Kanal bildirimleri</h2>
+<div class="ch"><b># tasarım</b><span class="ev"><span class="pill">PR açıldı</span><span class="pill">PR onaylandı</span><span class="pill">PR birleştirildi</span></span><button class="ib" style="margin-left: auto">Düzenle</button></div>
+<div class="ch"><b># duyurular</b><span class="ev"><span class="pill">Sürüm etiketi</span></span><button class="ib" style="margin-left: auto">Düzenle</button></div>
+<button class="ib" style="align-self: flex-start">+ Kanal ekle</button>
+<h2>Diğer yetenekler</h2>
+<label style="display: flex; gap: 8px; align-items: center; font-size: 13px"><input type="checkbox" checked> Bağlantı önizlemesi (PR ve commit linkleri kart olarak açılır)</label>
+<label style="display: flex; gap: 8px; align-items: center; font-size: 13px"><input type="checkbox" checked> Mesajdan işlem (mesajdan issue oluştur)</label>
+<div class="note">Entegrasyon yalnızca eklendiği kanallara mesaj gönderebilir. Mesaj içeriğini yalnızca bir kullanıcı ona açıkça gönderdiğinde (link önizlemesi, mesajdan işlem) görür; kanalları okuyamaz.</div>
+</div>
+<div class="mini3"><div class="app2"><span class="al" style="background: #1f2430">GH</span><span class="tx"><b>GitHub</b><small>PR, issue</small></span><button class="ib pri">Bağla</button></div><div class="app2"><span class="al" style="background: #a84300">GL</span><span class="tx"><b>GitLab</b><small>MR, issue</small></span><button class="ib pri">Bağla</button></div><div class="app2"><span class="al" style="background: #5b6170">JR</span><span class="tx"><b>Jira</b><small>İş takibi</small></span><span class="st soon">Yakında</span></div></div>
+</div>
+<div class="colm">
+<div class="prev">
+<span class="lb">Kanalda böyle görünür · # tasarım</span>
+<div class="m"><span class="av" style="background: #2457b8; color: #fff">BB</span><div style="flex: 1; min-width: 0"><div><b>Bitbucket</b><span class="bot">UYGULAMA</span> <span class="mut" style="font-size: 12px">11:02</span></div>
+<div class="card"><span class="t">#412 · Toplantı kontrollerini ikonlara çevir</span><span class="meta"><span class="badge b-rev">İnceleme bekliyor</span><span>feature/meet-icons → main</span><span>+184 −96</span></span><span class="meta">Açan: Zeynep Arslan · İnceleyen: Ali Kaya</span><span class="acts"><button class="ib">PR'ı aç</button><button class="ib">Onayla</button></span></div></div></div>
+<div class="m"><span class="av" style="background: #e5dbff">VY</span><div style="flex: 1; min-width: 0"><div><b>Veli Yılmaz</b> <span class="mut" style="font-size: 12px">11:15</span></div><div>Bunu da birleştirelim mi? github.com/acme/app/pull/97</div>
+<div class="card"><span class="t">acme/app #97 · Takvim saat dilimi düzeltmesi</span><span class="meta"><span class="badge b-open">Açık</span><span>Mert Şahin · 2 onay</span></span></div></div></div>
+<div class="menu" role="menu" aria-label="Mesaj işlemleri">
+<button class="mi"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Thread'de yanıtla</button>
+<button class="mi"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>Kaydet</button>
+<div class="hr"></div>
+<button class="mi on"><span class="al" style="width: 18px; height: 18px; border-radius: 4px; font-size: 8px; background: #1f2430">GH</span>GitHub'da issue oluştur</button>
+<button class="mi"><span class="al" style="width: 18px; height: 18px; border-radius: 4px; font-size: 8px; background: #2457b8">BB</span>Bitbucket'ta issue oluştur</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

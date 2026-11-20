@@ -1,0 +1,20 @@
+{
+  "name": "@backroom/ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Design tokens and shared components.",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "react": "19.3.1"
+  }
+}

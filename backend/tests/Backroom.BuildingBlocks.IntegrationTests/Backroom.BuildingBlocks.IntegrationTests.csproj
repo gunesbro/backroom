@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Building blocks against a real PostgreSQL (Testcontainers; requires Docker). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
+    <ProjectReference Include="..\Backroom.Testing\Backroom.Testing.csproj" />
+  </ItemGroup>
+
+  <!-- The development realm, imported into a Keycloak container by the token tests. -->
+  <ItemGroup>
+    <None Include="..\..\src\Aspire\Backroom.AppHost\keycloak-dev\backroom-realm.json" Link="keycloak\backroom-realm.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The upstream hashes of our login theme's copied templates, checked against the container's Keycloak. -->
+  <ItemGroup>
+    <None Include="..\..\src\Aspire\Backroom.AppHost\keycloak-themes\backroom\login\upstream-templates.sha256" Link="keycloak\theme\upstream-templates.sha256" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

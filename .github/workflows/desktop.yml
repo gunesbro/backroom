@@ -1,0 +1,163 @@
+name: Desktop packages
+
+# Manually triggered: desktop packages are only needed for device tests and releases.
+# Windows minutes count double and macOS minutes ten times against the free quota,
+# so only the requested platforms get a runner and macOS is off by default.
+on:
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: Build the Windows installers (MSI and NSIS)
+        type: boolean
+        default: true
+      linux:
+        description: Build the Linux packages (deb, rpm, AppImage)
+        type: boolean
+        default: true
+      macos:
+        description: Build the macOS DMG (unsigned; uses 10x minutes)
+        type: boolean
+        default: false
+      spikes:
+        description: Include developer-only spike screens (Phase 0 Tauri spike)
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        env:
+          WINDOWS: ${{ inputs.windows }}
+          LINUX: ${{ inputs.linux }}
+          MACOS: ${{ inputs.macos }}
+        run: |
+          bundle=frontend/apps/desktop/src-tauri/target/release/bundle
+          entries=()
+          if [ "$WINDOWS" = "true" ]; then
+            entries+=("{\"name\":\"windows\",\"os\":\"windows-2025\",\"bundles\":\"$bundle/msi/*.msi\n$bundle/nsis/*.exe\"}")
+          fi
+          if [ "$LINUX" = "true" ]; then
+            # Built on 24.04, the packages run on Ubuntu 24.04 and newer (glibc is forward compatible).
+            entries+=("{\"name\":\"linux\",\"os\":\"ubuntu-24.04\",\"bundles\":\"$bundle/deb/*.deb\n$bundle/rpm/*.rpm\n$bundle/appimage/*.AppImage\"}")
+          fi
+          if [ "$MACOS" = "true" ]; then
+            entries+=("{\"name\":\"macos\",\"os\":\"macos-15\",\"bundles\":\"$bundle/dmg/*.dmg\"}")
+          fi
+          if [ ${#entries[@]} -eq 0 ]; then
+            echo "::error::Select at least one platform."
+            exit 1
+          fi
+          json=$(IFS=,; echo "{\"include\":[${entries[*]}]}")
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: ${{ matrix.name }}
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Linux build dependencies
+        if: ${{ matrix.name == 'linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        working-directory: frontend
+        shell: bash
+        run: npm install --global "$(node -p "require('./package.json').packageManager")"
+
+      # The exact toolchain comes from src-tauri/rust-toolchain.toml.
+      - name: Rust toolchain
+        working-directory: frontend/apps/desktop/src-tauri
+        shell: bash
+        run: |
+          rustup toolchain install
+          rustc --version
+
+      # Only main saves the cache; runs from other branches only restore it.
+      - name: Restore Rust build
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Only downloaded sources are cached; release packages are always built from a clean target/.
+          # Archives (checksum-verified by Cargo on use) and git databases; not extracted sources.
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ matrix.name }}-${{ hashFiles('frontend/apps/desktop/src-tauri/Cargo.lock') }}
+
+      - name: Install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust format and lint
+        working-directory: frontend/apps/desktop/src-tauri
+        shell: bash
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+
+      # Builds the web app (beforeBuildCommand) and bundles it into the Tauri app. Unsigned.
+      # With spikes enabled, the web build includes the spike screens and the Rust `spike` feature
+      # grants media permissions for the app's own origin (src-tauri/src/lib.rs).
+      - name: Build packages
+        working-directory: frontend
+        shell: bash
+        env:
+          VITE_ENABLE_SPIKES: ${{ inputs.spikes }}
+          SPIKES: ${{ inputs.spikes }}
+          # Release builds must name the sign-in issuer (src-tauri/build.rs). CI packages are unsigned test
+          # builds and never sign in anywhere real; a real release sets its own realm.
+          BACKROOM_AUTH_ISSUER: https://id.example.test/realms/backroom
+        run: |
+          if [ "$SPIKES" = "true" ]; then
+            pnpm --filter @backroom/desktop tauri build --features spike --config src-tauri/tauri.spike.conf.json -- --locked
+          else
+            pnpm --filter @backroom/desktop tauri build -- --locked
+          fi
+
+      - name: Upload packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backroom-desktop-${{ matrix.name }}${{ inputs.spikes && '-spikes' || '' }}
+          path: ${{ matrix.bundles }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Save Rust build
+        if: ${{ github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ steps.cache.outputs.cache-primary-key }}

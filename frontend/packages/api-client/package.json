@@ -1,0 +1,16 @@
+{
+  "name": "@backroom/api-client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "TypeScript client generated from the cell OpenAPI document.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

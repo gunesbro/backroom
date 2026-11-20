@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Giriş durumları</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2f4bb8;font-weight:600;text-decoration:none}a:hover{color:#1f3a99;text-decoration:underline}
+.pg{--pn:#fff;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--bg:#f6f7f9;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;align-items:center;justify-content:center;gap:28px;font-size:14px;padding:24px;box-sizing:border-box}
+.col{display:flex;flex-direction:column;gap:10px}
+.st{font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase;font-weight:600}
+.c{width:360px;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--acc)}
+.c h2{margin:0;font-size:22px}
+p{margin:0;line-height:1.5}
+.mut{color:var(--mut)}
+.ctr{text-align:center}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font-weight:600;font-size:13px}
+.f input{height:40px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;font:inherit;color:var(--ink);box-sizing:border-box;width:100%}
+.f input.bad{border-color:#c92a2a;box-shadow:0 0 0 3px #fde2e2}
+.err{padding:10px 12px;border-radius:8px;background:#fdecec;color:#9b1c1c;font-size:13px;line-height:1.45}
+.note{font-size:12px;color:var(--mut);line-height:1.5;padding:10px;border-radius:8px;background:var(--bg)}
+.go{height:44px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600}
+.sec{height:44px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink);font-weight:600}
+.ic{width:44px;height:44px;border-radius:12px;background:var(--accs);color:var(--accd);display:flex;align-items:center;justify-content:center}
+.ic.warn{background:#fff1e0;color:#a84300}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col"><span class="st">1 · Hatalı giriş</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<h2>Giriş yap</h2>
+<div class="err" role="alert">E-posta ya da şifre hatalı. Tekrar dene ya da şifreni sıfırla.</div>
+<div class="f"><label for="ae">E-posta</label><input id="ae" type="email" value="ali.kaya@acme.com"></div>
+<div class="f"><label for="ap">Şifre</label><input id="ap" class="bad" type="password" value="yanlissifre" aria-invalid="true"></div>
+<button class="go">Giriş yap</button>
+<a href="#" class="ctr">Şifremi unuttum</a>
+</div></div>
+<div class="col"><span class="st">2 · Çok fazla hatalı deneme</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<span class="ic warn"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></span>
+<h2>Girişe kısa bir ara verdik</h2>
+<p class="mut">Bu hesapta çok fazla hatalı deneme oldu. Güvenliğin için girişi bir süreliğine durdurduk.</p>
+<div class="note">Biraz sonra tekrar dene. Şifreni hatırlamıyorsan sıfırlama bağlantısı isteyebilirsin.</div>
+<button class="go">Şifremi sıfırla</button>
+<button class="sec">Giriş ekranına dön</button>
+</div></div>
+<div class="col"><span class="st">3 · Oturum başka cihazdan kapatıldı</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"></path><path d="M10 17l-5-5 5-5"></path><path d="M5 12h11"></path></svg></span>
+<h2>Oturumun kapatıldı</h2>
+<p class="mut">Bu cihazdaki oturumun başka bir cihazdan kapatıldı. Devam etmek için yeniden giriş yap.</p>
+<div class="note">Bunu sen yapmadıysan giriş yaptıktan sonra şifreni değiştir ve Hesap ayarları › Cihazlar ve oturumlar bölümüne bak.</div>
+<button class="go">Yeniden giriş yap</button>
+</div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

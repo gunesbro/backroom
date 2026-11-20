@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the macOS bundle by Tauri. macOS refuses camera and microphone access without these. -->
+<plist version="1.0">
+  <dict>
+    <key>NSCameraUsageDescription</key>
+    <string>The camera is used when you turn on video in a meeting.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>The microphone is used when you speak in a meeting.</string>
+  </dict>
+</plist>

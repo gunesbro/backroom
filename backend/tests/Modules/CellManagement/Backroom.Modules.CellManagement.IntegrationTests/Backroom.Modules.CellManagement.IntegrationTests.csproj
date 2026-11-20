@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Cell registration end to end: control plane, cell connector, real Keycloak and PostgreSQL (Docker). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\CellManagement\Backroom.Modules.CellManagement.Infrastructure\Backroom.Modules.CellManagement.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\CellManagement\Backroom.Modules.CellManagement.Presentation\Backroom.Modules.CellManagement.Presentation.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\ControlPlaneConnector\Backroom.Modules.ControlPlaneConnector.Infrastructure\Backroom.Modules.ControlPlaneConnector.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Organization\Backroom.Modules.Organization.Infrastructure\Backroom.Modules.Organization.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Permissions\Backroom.Modules.Permissions.Infrastructure\Backroom.Modules.Permissions.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Backroom.Testing\Backroom.Testing.csproj" />
+  </ItemGroup>
+
+  <!-- The development realm, imported into a Keycloak container. -->
+  <ItemGroup>
+    <None Include="..\..\..\..\src\Aspire\Backroom.AppHost\keycloak-dev\backroom-realm.json" Link="keycloak\backroom-realm.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

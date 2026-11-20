@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>İlk organizasyon</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2f4bb8;font-weight:600;text-decoration:none}a:hover{color:#1f3a99;text-decoration:underline}
+.pg{--pn:#fff;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--bg:#f6f7f9;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;box-sizing:border-box}
+.hd{display:flex;align-items:center;justify-content:space-between;padding:16px 24px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--acc);flex:none}
+.me{display:flex;align-items:center;gap:10px;font-size:13px}
+.av{width:30px;height:30px;border-radius:50%;background:#c5d0fa;color:#1f2430;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.mid{flex:1;display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 24px 24px}
+.mid h1{margin:0;font-size:26px}
+p{margin:0;line-height:1.5}
+.mut{color:var(--mut)}
+.ctr{text-align:center}
+.wrap{width:864px;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:20px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;margin:0}
+.card h2{margin:0;font-size:17px}
+.inv{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--ln);border-radius:10px;line-height:1.35}
+.inv small{display:block;color:var(--mut);font-size:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label,.reg legend{font-weight:600;font-size:13px}
+.f input{height:40px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;font:inherit;color:var(--ink);box-sizing:border-box;width:100%}
+.reg{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.reg legend{padding:0;margin-bottom:6px}
+.opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px;line-height:1.3}
+.opt small{display:block;color:var(--mut);font-size:12px}
+.opt.on{border-color:var(--acc);background:var(--accs)}
+.info{font-size:13px;line-height:1.5;padding:10px 12px;border-radius:8px;background:var(--accs);color:#1f2a5c}
+.go{height:44px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600}
+.go.sm{height:36px;padding:0 16px;margin-left:auto}
+.sec{height:44px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink);font-weight:600}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<header class="hd"><span class="brand"><span class="logo"></span>[Ürün adı]</span><span class="me"><span class="av">AK</span>Ali Kaya<a href="#">Çıkış yap</a></span></header>
+<main class="mid">
+<h1>Hoş geldin, Ali</h1>
+<p class="mut ctr">Organizasyonlara yalnızca davetle katılınır. Bir davetin varsa ona katıl ya da kendi organizasyonunu kur.</p>
+<div class="wrap">
+<section class="card" aria-label="Bekleyen davetler">
+<h2>Bekleyen davetler</h2>
+<div class="inv"><span class="logo"></span><span><b>Acme</b><small>Ayşe Demir davet etti · Üye</small></span><button class="go sm">Katıl</button></div>
+</section>
+<div class="grid">
+<form class="card" aria-label="Organizasyon kur">
+<h2>Organizasyon kur</h2>
+<div class="f"><label for="on">Organizasyon adı</label><input id="on" value="Atlas Yazılım"></div>
+<fieldset class="reg"><legend>Veri bölgesi</legend>
+<label class="opt on"><input type="radio" name="rg" checked><span><b>Avrupa</b><small>Varsayılan bölge</small></span></label>
+<label class="opt"><input type="radio" name="rg"><span><b>Türkiye</b><small>İşletme ve Kurumsal planda</small></span></label>
+</fieldset>
+<div class="info">Yeni organizasyon 14 gün İşletme özellikleriyle başlar. Mesajlar, dosyalar ve toplantılar seçtiğin bölgede saklanır.</div>
+<button type="submit" class="go">Organizasyonu kur</button>
+</form>
+<form class="card" aria-label="Davet bağlantısıyla katıl">
+<h2>Davet bağlantın mı var?</h2>
+<p class="mut">Davet e-postasındaki bağlantıyı aç ya da buraya yapıştır.</p>
+<div class="f"><label for="il">Davet bağlantısı</label><input id="il" placeholder="https://…/davet/…"></div>
+<button type="submit" class="sec">Katıl</button>
+</form>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

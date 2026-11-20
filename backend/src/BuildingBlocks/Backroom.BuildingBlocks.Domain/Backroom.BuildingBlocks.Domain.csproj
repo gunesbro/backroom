@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Shared domain primitives. Depends on nothing else in the solution. -->
+
+</Project>

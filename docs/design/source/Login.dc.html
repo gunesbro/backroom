@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Giriş</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2f4bb8;font-weight:600;text-decoration:none}a:hover{color:#1f3a99;text-decoration:underline}
+.pg{--pn:#fff;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--bg:#f6f7f9;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;box-sizing:border-box}
+.hd{display:flex;align-items:center;justify-content:space-between;padding:16px 24px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--acc)}
+.lang{height:32px;padding:0 8px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:13px;color:var(--ink)}
+.mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.c{width:400px;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:28px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;margin:0}
+.c h1{margin:0;font-size:24px}
+p{margin:0;line-height:1.5}
+.mut{color:var(--mut)}
+.ctr{text-align:center}
+.or{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mut)}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--ln)}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font-weight:600;font-size:13px}
+.lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
+.f input{height:40px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;font:inherit;color:var(--ink);box-sizing:border-box;width:100%}
+.pw{position:relative;display:block}
+.pw input{padding-right:76px}
+.pw button{position:absolute;right:6px;top:6px;height:28px;padding:0 10px;border:0;border-radius:6px;background:var(--bg);font:inherit;font-size:12px;color:var(--ink)}
+.ts{display:flex;align-items:center;gap:10px;height:52px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;background:#fafbfc;font-size:13px}
+.ts small{margin-left:auto;font-size:11px;color:var(--mut)}
+.go{height:44px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600}
+.sec{height:44px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink);font-weight:600}
+.ft{display:flex;gap:20px;justify-content:center;padding:18px;font-size:12px}
+.ft a{font-weight:400;color:var(--mut)}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<header class="hd"><span class="brand"><span class="logo"></span>[Ürün adı]</span><select class="lang" aria-label="Dil"><option>Türkçe</option><option>English</option></select></header>
+<main class="mid">
+<form class="c" aria-label="Giriş">
+<h1>Giriş yap</h1>
+<p class="mut">Tek hesapla bütün organizasyonlarına girersin.</p>
+<button type="button" class="sec">Google ile devam et</button>
+<div class="or">ya da e-postayla</div>
+<div class="f"><label for="le">E-posta</label><input id="le" type="email" value="ali.kaya@acme.com"></div>
+<div class="f"><span class="lbl"><label for="lp">Şifre</label><a href="#">Şifremi unuttum</a></span><span class="pw"><input id="lp" type="password" value="gizlisifre12"><button type="button" aria-label="Şifreyi göster">Göster</button></span></div>
+<div class="ts" role="group" aria-label="İnsan doğrulaması"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#2f9e44"></circle><path d="M6 10.5l2.5 2.5L14 7.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Doğrulandı</span><small>Cloudflare Turnstile</small></div>
+<button type="submit" class="go">Giriş yap</button>
+<p class="mut ctr">Hesabın yok mu? <a href="#">Hesap oluştur</a></p>
+</form>
+<p class="mut ctr" style="font-size: 12px">Organizasyonlara yalnızca davetle katılınır.</p>
+</main>
+<footer class="ft"><a href="#">Gizlilik politikası</a><a href="#">Kullanım koşulları</a><a href="#">Masaüstü uygulamasını indir</a></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

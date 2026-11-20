@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Pencereler</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.pg{--pn:#fff;--bg:#f6f7f9;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#5b6170;min-height:760px;display:flex;align-items:flex-start;justify-content:center;gap:24px;padding:40px 24px;box-sizing:border-box;flex-wrap:wrap;font-size:14px}
+.dlg{width:420px;background:var(--pn);border-radius:16px;box-shadow:0 24px 60px rgba(10,12,18,.35);display:flex;flex-direction:column;overflow:hidden}
+.dh{display:flex;align-items:center;gap:10px;padding:18px 20px 6px}
+.dh h2{margin:0;font-size:18px}
+.x{margin-left:auto;width:32px;height:32px;border:0;border-radius:8px;background:none;color:var(--mut);font:inherit;font-size:18px}
+.db{padding:6px 20px 16px;display:flex;flex-direction:column;gap:12px}
+.mut{color:var(--mut)}
+.f{display:flex;flex-direction:column;gap:5px}
+.f label,.f .lb{font-weight:600;font-size:13px}
+.f input{height:40px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;font:inherit;font-size:14px;color:var(--ink)}
+.pre{display:flex;align-items:center;border:1px solid var(--acc);border-radius:8px;box-shadow:0 0 0 3px var(--accs)}
+.pre span{padding:0 4px 0 12px;color:var(--mut);font-weight:600}
+.pre input{border:0;box-shadow:none;flex:1;padding-left:2px;outline:none}
+.opt{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;align-items:flex-start}
+.opt.on{border-color:var(--acc);background:#f5f7ff}
+.opt input{margin-top:3px}
+.opt small{display:block;color:var(--mut);font-size:12px;margin-top:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:40px;padding:6px 8px;border:1px solid var(--ln);border-radius:8px;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 4px 0 2px;border-radius:13px;background:var(--sd);font-size:12px}
+.chip .av{width:22px;height:22px;border-radius:50%;background:#c5d0fa;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.chip .av.c2{background:#ffd8a8}
+.chip button{width:18px;height:18px;border:0;border-radius:50%;background:none;color:var(--mut);padding:0;font-size:13px}
+.chips .ph{color:var(--mut);font-size:13px}
+.note{padding:10px 12px;border-radius:10px;background:#eef2ff;color:#1f2a5c;font-size:12px;line-height:1.5}
+.warn{padding:10px 12px;border-radius:10px;background:#fff1e0;color:#6b2f00;font-size:12px;line-height:1.5}
+.df{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--ln);background:var(--bg)}
+.btn{height:38px;padding:0 16px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:14px;color:var(--ink)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.btn.dng{background:#b02525;border-color:#b02525;color:#fff;font-weight:600}
+.tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--ln)}
+.tab{height:38px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:none;font:inherit;color:var(--mut)}
+.tab.on{border-bottom-color:var(--acc);color:var(--accd);font-weight:600}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sel{height:40px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;display:flex;align-items:center;justify-content:space-between;font-size:14px}
+.lnk{display:flex;gap:8px}
+.lnk input{flex:1;background:var(--bg);color:var(--mut)}
+.al{display:flex;flex-direction:column;gap:6px}
+.al .r{display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 10px;border:1px solid var(--ln);border-radius:8px}
+.al .r span{flex:1}
+.al .r button{height:26px;padding:0 8px;border:1px solid #e3a3a3;border-radius:6px;background:var(--pn);color:#b02525;font:inherit;font-size:12px}
+.who{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--ln);border-radius:10px}
+.who .av{width:40px;height:40px;border-radius:50%;background:#b2f2bb;display:flex;align-items:center;justify-content:center;font-weight:700}
+ul{margin:0;padding-left:18px;line-height:1.6;font-size:13px}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+
+<div class="dlg" role="dialog" aria-label="Kanal oluştur">
+<div class="dh"><h2>Kanal oluştur</h2><button class="x" aria-label="Kapat">×</button></div>
+<div class="db">
+<div class="f"><label for="cn">Kanal adı</label><div class="pre"><span>#</span><input id="cn" value="tasarim-ekibi"></div></div>
+<div class="f"><label for="cd">Açıklama <span class="mut" style="font-weight: 400">(isteğe bağlı)</span></label><input id="cd" value="Ürün tasarımı tartışmaları"></div>
+<div class="f"><span class="lb">Görünürlük</span>
+<label class="opt"><input type="radio" name="vis"><span><b>Açık</b><small>Organizasyondaki herkes görür, arar ve katılabilir.</small></span></label>
+<label class="opt on"><input type="radio" name="vis" checked><span><b>Özel</b><small>Yalnızca eklenen kişiler görür. Üyeler kişi ekleyebilir; çıkarma, ad değiştirme ve arşivleme kanal sahibinde (sen).</small></span></label>
+</div>
+<div class="f"><span class="lb">Kişi ekle</span><div class="chips"><span class="chip"><span class="av">VY</span>Veli Yılmaz<button aria-label="Kaldır">×</button></span><span class="chip"><span class="av c2">AD</span>Ayşe Demir<button aria-label="Kaldır">×</button></span><span class="ph">Ad veya e-posta yaz…</span></div></div>
+<div class="note">Özel kanalın adını ve içeriğini üye olmayan kimse, yöneticiler dahil, göremez.</div>
+</div>
+<div class="df"><button class="btn">İptal</button><button class="btn pri">Oluştur</button></div>
+</div>
+
+<div class="dlg" role="dialog" aria-label="Acme'ye davet et">
+<div class="dh"><h2>Acme'ye davet et</h2><button class="x" aria-label="Kapat">×</button></div>
+<div class="tabs"><button class="tab on">E-posta ile</button><button class="tab">Davet bağlantısı</button></div>
+<div class="db" style="padding-top: 14px">
+<div class="f"><span class="lb">E-posta adresleri</span><div class="chips"><span class="chip" style="padding-left: 10px">deniz@acme.com<button aria-label="Kaldır">×</button></span><span class="chip" style="padding-left: 10px">emre@acme.com<button aria-label="Kaldır">×</button></span><span class="ph">E-posta ekle…</span></div><span class="mut" style="font-size: 12px">Her davet tek kullanımlık ve yalnızca bu e-postayla açılan hesapta geçerli.</span></div>
+<div class="row2"><div class="f"><span class="lb">Rol</span><span class="sel">Üye <span class="mut">▾</span></span></div><div class="f"><span class="lb">Geçerlilik</span><span class="sel">7 gün <span class="mut">▾</span></span></div></div>
+<div class="f" style="margin-top: 4px"><span class="lb">Davet bağlantısı oluştur</span>
+<div class="row2"><span class="sel">7 gün geçerli <span class="mut">▾</span></span><span class="sel">En fazla 25 kişi <span class="mut">▾</span></span></div>
+<div class="lnk"><input value="https://app.ornek.com/j/Ka7Qp2" readonly aria-label="Davet bağlantısı"><button class="btn">Kopyala</button></div></div>
+<div class="al"><span class="lb" style="font-weight: 600; font-size: 13px">Aktif bağlantılar</span>
+<div class="r"><span>…/j/Ka7Qp2 · 3/25 kullanıldı · 6 gün kaldı</span><button>İptal et</button></div>
+<div class="r"><span>…/j/Lm9Xc4 · 11/50 kullanıldı · yarın bitiyor</span><button>İptal et</button></div>
+</div>
+</div>
+<div class="df"><button class="btn">İptal</button><button class="btn pri">Davetleri gönder</button></div>
+</div>
+
+<div class="dlg" role="dialog" aria-label="Üyeyi deaktif et">
+<div class="dh"><h2>Üyeyi deaktif et</h2><button class="x" aria-label="Kapat">×</button></div>
+<div class="db">
+<div class="who"><span class="av">MŞ</span><div><b>Mert Şahin</b><br><span class="mut" style="font-size: 13px">mert.sahin@acme.com · Üye · Kat 3</span></div></div>
+<span>Deaktif edilen üye:</span>
+<ul>
+<li>Acme'ye erişemez, açık oturumları hemen kapanır</li>
+<li>Davet bağlantısı veya e-posta davetiyle tekrar katılamaz</li>
+<li>Mesajları adıyla kalır, "deaktif" etiketiyle gösterilir</li>
+<li>Kişisel odası boşaltılır, koltuğu atanmamış olur</li>
+</ul>
+<div class="warn">Bu işlem denetim kaydına yazılır. Üye, bir yönetici tarafından istendiği zaman yeniden aktif edilebilir.</div>
+<label class="chk"><input type="checkbox"> Mert Şahin'e e-postayla bildir</label>
+</div>
+<div class="df"><button class="btn">Vazgeç</button><button class="btn dng">Deaktif et</button></div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

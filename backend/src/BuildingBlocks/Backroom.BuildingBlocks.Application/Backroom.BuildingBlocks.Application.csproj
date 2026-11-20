@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Shared application abstractions (commands, queries, validation, error model). -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Backroom.BuildingBlocks.Domain\Backroom.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Contracts\Backroom.ControlPlane.Contracts\Backroom.ControlPlane.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

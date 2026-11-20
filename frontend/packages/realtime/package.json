@@ -1,0 +1,16 @@
+{
+  "name": "@backroom/realtime",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Multi-cell SignalR client (MessagePack).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

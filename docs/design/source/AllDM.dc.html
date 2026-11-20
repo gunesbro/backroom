@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Tüm DM'ler ve bölüm seçenekleri</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;position:relative;overflow:hidden}
+.top{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--pn);border-bottom:1px solid var(--ln)}
+.org{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-weight:700;color:var(--ink)}
+.logo{width:22px;height:22px;border-radius:6px;background:var(--acc)}
+.search{flex:1;max-width:460px;margin:0 auto;padding:8px 12px;border:1px solid var(--ln);border-radius:8px;color:var(--mut);background:var(--bg)}
+.ib{height:36px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink)}
+.sm{height:28px;padding:0 8px;font-size:12px}
+.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.body{flex:1;display:flex;min-height:0}
+.side{width:248px;flex:none;background:var(--sd);border-right:1px solid var(--ln);display:flex;flex-direction:column;gap:2px;padding:10px;box-sizing:border-box;position:relative}
+.side h4{margin:12px 8px 4px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.it{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px}
+.it.on{background:var(--accs);font-weight:600}
+.badge{margin-left:auto;font-size:11px;padding:1px 7px;border-radius:10px;background:var(--acc);color:#fff}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#2f9e44;flex:none}
+.dot.aw{background:#e8890c}.dot.dnd{background:#c92a2a}
+.av{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#c5d0fa;color:#1f2430;font-size:11px;font-weight:700;flex:none;overflow:hidden}
+.av.c2{background:#ffd8a8}.av.c3{background:#b2f2bb}.av.c4{background:#e5dbff}.av.c5{background:#ffc9c9}
+.av.pic{background:#5c6b8a}.av.pic svg{width:72%;height:72%;fill:none;stroke:#e9ecf2;stroke-width:1.8}
+.me{margin-top:auto;display:flex;align-items:center;gap:8px;padding:8px;background:var(--pn);border:1px solid var(--ln);border-radius:10px}
+.me .who{flex:1;font-size:12px;line-height:1.4}
+.mut{color:var(--mut)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--pn)}
+.hd{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--ln)}
+.msgs{flex:1;overflow:hidden;padding:12px 20px;display:flex;flex-direction:column;gap:14px}
+.day{align-self:center;font-size:12px;color:var(--mut);padding:2px 10px;border:1px solid var(--ln);border-radius:10px}
+.m{display:flex;gap:10px}
+.m .av{width:36px;height:36px;border-radius:8px;font-size:13px}
+.chip{background:var(--accs);color:var(--accd);border-radius:4px;padding:0 4px;font-weight:600}
+.rx{display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap}
+.pill{height:26px;padding:0 10px;border:1px solid var(--ln);border-radius:13px;background:var(--bg);font:inherit;font-size:12px;color:var(--ink)}
+.lnk{border:0;background:none;color:var(--accd);font:inherit;font-size:13px;font-weight:600;padding:0 4px}
+.file{display:flex;align-items:center;gap:10px;margin-top:6px;padding:8px;border:1px solid var(--ln);border-radius:8px;max-width:340px}
+.fi{width:36px;height:36px;border-radius:6px;background:var(--accs);color:var(--accd);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.comp{margin:0 20px 16px;border:1px solid var(--ln);border-radius:10px}
+.m{position:relative}
+.m.hov{background:#f5f7fb;border-radius:8px;padding:6px;margin:-6px}
+.hbar{position:absolute;top:-14px;right:8px;display:flex;gap:2px;padding:3px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 4px 12px rgba(20,24,33,.1)}
+.hbar button{width:30px;height:28px;border:0;border-radius:6px;background:none;color:var(--mut);display:flex;align-items:center;justify-content:center;padding:0;position:relative}
+.hbar button.on{background:var(--accs);color:var(--accd)}
+.hbar .ico{width:16px;height:16px}
+.hbar .tt{position:absolute;bottom:34px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#1f2430;color:#fff;font-size:11px;font-weight:600;padding:3px 7px;border-radius:5px}
+.quote{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:12px;color:var(--mut);max-width:520px}
+.quote .ln{width:22px;height:10px;border-left:2px solid #b6bdc9;border-top:2px solid #b6bdc9;border-top-left-radius:6px;margin-top:8px;flex:none}
+.quote .qa{width:16px;height:16px;border-radius:50%;background:#5c6b8a;flex:none}
+.quote b{color:var(--ink);font-weight:600}
+.quote span.q{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rbar{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 12px;background:var(--bg);border-bottom:1px solid var(--ln);border-radius:10px 10px 0 0;font-size:12px;color:var(--mut)}
+.rbar b{color:var(--ink)}
+.rbar .q{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rbar button{width:24px;height:24px;border:0;border-radius:6px;background:none;color:var(--mut);font:inherit;font-size:16px;padding:0}
+
+.tb{display:flex;gap:2px;padding:6px;border-bottom:1px solid var(--ln);align-items:center}
+.tb button{min-width:30px;height:30px;border:0;border-radius:6px;background:none;font:inherit;font-size:13px;color:var(--ink)}
+.sep{width:1px;height:18px;background:var(--ln);margin:0 4px}
+.in{padding:12px;color:var(--mut);min-height:40px}
+.cf{display:flex;justify-content:space-between;align-items:center;padding:0 8px 8px 12px;font-size:12px}
+.org{width:224px;height:40px;padding:0 8px 0 6px;gap:10px;border:0;border-radius:10px;background:transparent;text-align:left}
+.ologo{width:30px;height:30px;border-radius:8px;background:#1f2a5c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+.oname{flex:1;min-width:0;line-height:1.2}
+.oname b{display:block;font-size:14px}
+.oname small{display:block;font-size:11px;font-weight:400;color:var(--mut)}
+.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.bell{position:relative;width:40px;height:40px;border:1px solid var(--ln);border-radius:10px;background:var(--pn);color:var(--ink);display:flex;align-items:center;justify-content:center}
+.bell .cnt{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#c92a2a;color:#fff;font-size:11px;font-weight:700;line-height:16px;text-align:center;border:2px solid var(--pn)}
+.me{padding:6px;gap:4px;border-radius:12px}
+.mebtn{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px;border:0;border-radius:8px;background:none;font:inherit;color:var(--ink);text-align:left}
+.avw{position:relative;flex:none;display:flex}
+.avw .av{width:34px;height:34px;font-size:12px}
+.sdot{position:absolute;right:-2px;bottom:-2px;width:13px;height:13px;border-radius:50%;background:#2f9e44;border:2.5px solid var(--pn);box-sizing:border-box}
+.sdot.dnd{background:#c92a2a}.sdot.aw{background:#e8890c}
+.me .who{flex:1;line-height:1.3;min-width:0}
+.me .who b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.me .who small{display:block;font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mi2{width:30px;height:30px;border:0;border-radius:8px;background:none;color:var(--mut);display:flex;align-items:center;justify-content:center;flex:none;padding:0}
+.mi2.off{color:#c92a2a;background:#fdecec}
+.comp{position:relative;border-radius:12px;background:var(--pn);transition:none}
+.comp.foc{border-color:#8fa2e8;box-shadow:0 0 0 3px var(--accs)}
+.ctb{display:flex;align-items:center;gap:1px;padding:5px 6px;border-bottom:1px solid var(--ln);background:var(--bg);border-radius:12px 12px 0 0}
+.ctb button,.cbot button{width:30px;height:30px;border:0;border-radius:6px;background:none;color:var(--mut);display:flex;align-items:center;justify-content:center;padding:0;font:inherit;font-size:14px}
+.ctb b,.ctb i,.ctb s{color:var(--mut)}
+.cico{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.csep{width:1px;height:18px;background:var(--ln);margin:0 4px}
+.cin{padding:10px 12px 4px;min-height:24px;color:var(--mut);font-size:14px;line-height:1.5}
+.cin .caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px;margin-left:1px}
+.cbot{display:flex;align-items:center;gap:2px;padding:4px 6px 6px}
+.cbot .plus{width:28px;height:28px;border-radius:50%;background:var(--sd);color:var(--ink);margin-right:4px}
+.cbot .plus.on{background:var(--accs);color:var(--accd)}
+.cbot .aa{font-weight:700;font-size:13px;color:var(--mut);width:32px}
+.cbot .aa.on{background:var(--accs);color:var(--accd)}
+.chint{margin-left:auto;margin-right:8px;font-size:11px;color:var(--mut)}
+.csend{display:flex;align-items:center;border-radius:8px;background:var(--acc);color:#fff;overflow:hidden}
+.csend button{color:#fff;width:34px;height:30px;border-radius:0}
+.csend.off{background:var(--sd)}
+.csend.off button{color:var(--mut)}
+.pmenu{position:absolute;left:6px;bottom:46px;z-index:5;width:220px;background:var(--pn);border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 36px rgba(20,24,33,.2);padding:6px;display:flex;flex-direction:column;gap:1px;font-size:13px}
+.pmenu button{display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 10px;border:0;border-radius:6px;background:none;font:inherit;color:var(--ink);text-align:left}
+.pmenu button.on{background:var(--accs);color:var(--accd)}
+.pmenu .cico{color:var(--mut)}
+.side{gap:0;padding:8px 8px 10px}
+.sb-q{display:flex;flex-direction:column;gap:1px;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--ln)}
+.sb-i{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;font-size:14px;color:var(--ink);white-space:nowrap;min-width:0;position:relative}
+.sb-i > .tx{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sb-i.on{background:var(--acc);color:#fff;font-weight:600}
+.sb-i.on .sb-ic,.sb-i.on .sb-meta{color:#fff}
+.sb-i.un{font-weight:700}
+.sb-i.mu{color:var(--mut);opacity:.8}
+.sb-ic{width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:15px;font-weight:400}
+.sb-ic svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.sb-meta{margin-left:auto;font-size:11px;color:var(--mut);font-weight:400;flex:none}
+.sb-b{margin-left:auto;min-width:18px;height:18px;padding:0 6px;box-sizing:border-box;border-radius:9px;background:#e03131;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;flex:none}
+.sb-mute{margin-left:auto;width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.sb-h{display:flex;align-items:center;gap:4px;height:28px;padding:0 4px 0 2px;margin-top:6px;border-radius:6px;font-size:13px;font-weight:600;color:var(--mut)}
+.sb-h .car{width:18px;height:18px;display:flex;align-items:center;justify-content:center}
+.sb-h .car svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.sb-h .tx{flex:1}
+.sb-h .ha{display:none;width:22px;height:22px;border:0;border-radius:5px;background:none;color:var(--mut);padding:0;align-items:center;justify-content:center}
+.sb-h .ha svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.sb-h.hov{background:rgba(127,135,150,.12)}
+.sb-h.hov .ha,.sb-h:hover .ha{display:flex}
+.sb-h .ha.on{display:flex;background:rgba(127,135,150,.22);color:var(--ink)}
+.sb-dav{position:relative;width:22px;height:22px;flex:none}
+.sb-dav .sb-a{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:9px;letter-spacing:-.02em;line-height:1;font-weight:700;color:#1f2430}
+.sb-dav .p{position:absolute;right:-3px;bottom:-3px;width:7px;height:7px;border-radius:50%;background:#2f9e44;border:2px solid var(--sd)}
+.sb-dav .p.aw{background:transparent;box-shadow:inset 0 0 0 1.6px #8d95a3}
+.sb-dav .p.dnd{background:#e03131}
+.sb-i.on .sb-dav .p{border-color:var(--acc)}
+.sb-grp{width:22px;height:22px;flex:none;border-radius:5px;background:var(--ln);color:var(--ink);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.sb-more{color:var(--mut);font-size:13px}
+.sb-more .sb-ic{font-size:16px}
+.sb-add{color:var(--mut)}
+.sb-live{margin-left:auto;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;background:#d3f9d8;color:#1e6b34;flex:none}
+.sb-scroll{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1px}
+.me{margin-top:8px}
+.sm2{position:absolute;left:226px;top:380px;width:270px;background:var(--pn);border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 36px rgba(15,18,24,.22);padding:6px;z-index:20;display:flex;flex-direction:column;font-size:13px}
+.sm2 .t{font-weight:700;padding:8px 10px 4px}
+.sm2 .g{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);padding:8px 10px 2px}
+.sm2 .r{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border:0;border-radius:7px;background:none;font:inherit;color:var(--ink);text-align:left}
+.sm2 .r kbd{margin-left:auto;font-family:inherit;font-size:11px;color:var(--mut)}
+.sm2 .r:hover{background:var(--accs)}
+.sm2 .rd{width:14px;height:14px;border-radius:50%;border:1.8px solid #8d95a3;box-sizing:border-box;position:relative;flex:none}
+.sm2 .r.on .rd{border-color:var(--acc)}
+.sm2 .r.on .rd::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--acc)}
+.sm2 .ch{display:flex;gap:4px;padding:4px 10px}
+.sm2 .ch span{flex:1;text-align:center;height:28px;line-height:28px;border:1px solid var(--ln);border-radius:7px;font-size:12px}
+.sm2 .ch span.on{background:var(--accs);border-color:var(--acc);color:var(--accd);font-weight:700}
+.sm2 .nt{font-size:11.5px;color:var(--mut);padding:4px 10px 6px;line-height:1.4}
+.sm2 .hr{height:1px;background:var(--ln);margin:4px 0}
+.dl{flex:1;display:flex;flex-direction:column;gap:12px;padding:16px 24px;min-height:0}
+.dsrch{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;color:var(--mut);background:var(--bg)}
+.dsrch svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips span{height:28px;line-height:28px;padding:0 12px;border:1px solid var(--ln);border-radius:14px;font-size:12px;color:var(--ink)}
+.chips span.on{background:var(--ink);border-color:var(--ink);color:var(--pn);font-weight:600}
+.dlist{display:flex;flex-direction:column;border:1px solid var(--ln);border-radius:10px;overflow:hidden}
+.dr{position:relative;display:flex;align-items:center;gap:12px;padding:8px 12px;border-top:1px solid var(--ln)}
+.dr:first-child{border-top:0}
+.dr.hov{background:var(--bg)}
+.dr.un .n{font-weight:700}
+.dr.un .pv{color:var(--ink)}
+.dr.mu{opacity:.7}
+.dav{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#1f2430;flex:none}
+.gav{position:relative;width:36px;height:36px;flex:none}
+.gav span{position:absolute;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#1f2430;border:2px solid var(--pn)}
+.gav span:first-child{left:-2px;top:-2px}
+.gav span:nth-child(2){right:-4px;bottom:-4px}
+.gav i{position:absolute;left:-4px;bottom:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--ink);color:var(--pn);font-style:normal;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--pn)}
+.dr .txt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+.dr .n{display:flex;align-items:center;gap:6px;font-size:14px}
+.dr .pv{font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dr .rt{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:12px;color:var(--mut);flex:none}
+.dr .b{min-width:18px;height:18px;padding:0 6px;box-sizing:border-box;border-radius:9px;background:#e03131;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.dr .mt,.dr .st{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dr .st{fill:#f59f00;stroke:#f59f00}
+.dr .acts{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;gap:2px;padding:3px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);box-shadow:0 4px 12px rgba(15,18,24,.12)}
+.dr .acts button{width:30px;height:30px;border:0;border-radius:6px;background:none;color:var(--mut);display:flex;align-items:center;justify-content:center;padding:0}
+.dr .acts button:first-child{background:var(--accs);color:var(--accd)}
+.dr .acts svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.dnote{font-size:12px;color:var(--mut)}
+</style>
+</helmet>
+<div class="app" style="width: 100%">
+<div class="top"><button class="org" aria-label="Organizasyon değiştir"><span class="ologo">AC</span><span class="oname"><b>Acme</b><small>128 üye</small></span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"></path></svg></button><div class="search">Ara: mesaj, dosya, kişi, oda</div><button class="bell" aria-label="Bildirimler, 2 okunmamış"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span class="cnt">2</span></button></div>
+<div class="body">
+<div class="side">
+<div class="sb-q">
+<div class="sb-i "><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 7h2M13 7h2M9 11h2M13 11h2M10 21v-4h4v4"></path></svg></span><span class="tx">Odalar</span><span class="sb-meta">Kat 2 · 6 kişi</span></div>
+<div class="sb-i "><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg></span><span class="tx">Takvim</span><span class="sb-meta">14:00 Sprint</span></div>
+<div class="sb-i un "><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path><path d="M8 10h8M8 14h5"></path></svg></span><span class="tx">Thread'ler</span></div>
+<div class="sb-i "><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg></span><span class="tx">Kaydedilenler</span></div>
+</div>
+<div class="sb-scroll">
+<div class="sb-h"><span class="car"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span><span class="tx">Kanallar</span><button class="ha" aria-label="Kanallar seçenekleri" title="Bölüm seçenekleri"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"></circle><circle cx="12" cy="12" r="1.3" fill="currentColor"></circle><circle cx="19" cy="12" r="1.3" fill="currentColor"></circle></svg></button><button class="ha" aria-label="Kanallar bölümüne ekle" title="Ekle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></div>
+<div class="sb-i "><span class="sb-ic">#</span><span class="tx">genel</span></div>
+<div class="sb-i un"><span class="sb-ic">#</span><span class="tx">duyurular</span><span class="sb-b">3</span></div>
+<div class="sb-i " aria-label="Özel kanal: tasarım"><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></span><span class="tx">tasarım</span></div>
+<div class="sb-i mu"><span class="sb-ic">#</span><span class="tx">rastgele</span><svg class="sb-mute" viewBox="0 0 24 24" aria-label="Sessize alındı" role="img"><path d="M13.7 21a2 2 0 0 1-3.4 0M18.6 13A17 17 0 0 1 18 8M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.3-5M2 2l20 20"></path></svg></div>
+<div class="sb-i sb-add"><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></span><span class="tx">Kanal ekle</span></div>
+<div class="sb-h"><span class="car"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span><span class="tx">Proje Atlas</span><button class="ha" aria-label="Proje Atlas seçenekleri" title="Bölüm seçenekleri"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"></circle><circle cx="12" cy="12" r="1.3" fill="currentColor"></circle><circle cx="19" cy="12" r="1.3" fill="currentColor"></circle></svg></button><button class="ha" aria-label="Proje Atlas bölümüne ekle" title="Ekle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></div>
+<div class="sb-i un"><span class="sb-ic">#</span><span class="tx">atlas-backend</span><span class="sb-b">1</span></div>
+<div class="sb-h"><span class="car"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span><span class="tx">Doğrudan mesajlar</span><button class="ha" aria-label="Doğrudan mesajlar seçenekleri" title="Bölüm seçenekleri"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"></circle><circle cx="12" cy="12" r="1.3" fill="currentColor"></circle><circle cx="19" cy="12" r="1.3" fill="currentColor"></circle></svg></button><button class="ha" aria-label="Doğrudan mesajlar bölümüne ekle" title="Ekle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></div>
+<div class="sb-i "><span class="sb-dav"><span class="sb-a" style="background:#c5d0fa">VY</span><span class="p "></span></span><span class="tx">Veli Yılmaz</span></div>
+<div class="sb-i un"><span class="sb-dav"><span class="sb-a" style="background:#e5dbff">ZA</span><span class="p "></span></span><span class="tx">Zeynep Arslan</span><span class="sb-b">1</span></div>
+<div class="sb-i mu" aria-label="Grup mesajı, 3 kişi: Ayşe, Veli, Mert"><span class="sb-grp" aria-hidden="true">3</span><span class="tx">Ayşe, Veli, Mert</span><svg class="sb-mute" viewBox="0 0 24 24" aria-label="Sessize alındı" role="img"><path d="M13.7 21a2 2 0 0 1-3.4 0M18.6 13A17 17 0 0 1 18 8M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.3-5M2 2l20 20"></path></svg></div>
+<div class="sb-i un" aria-label="Grup mesajı, 6 kişi"><span class="sb-grp" aria-hidden="true">6</span><span class="tx">Ayşe, Can, Elif, Mert +2</span></div>
+<div class="sb-i "><span class="sb-dav"><span class="sb-a" style="background:#b2f2bb">MŞ</span><span class="p aw"></span></span><span class="tx">Mert Şahin</span></div>
+<div class="sb-i sb-more on"><span class="sb-ic" style="font-size:16px">⋯</span><span class="tx">Tüm DM'ler</span><span class="sb-meta">+14</span></div>
+</div>
+<div class="me"><button class="mebtn" aria-label="Durum ve profil menüsü"><span class="avw"><span class="av">AK</span><span class="sdot"></span></span><span class="who"><b>Ali Kaya</b><small>Çevrimiçi · Odamda</small></span></button><button class="mi2" aria-label="Mikrofon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><path d="M12 18v4"></path></svg></button><button class="mi2" aria-label="Ses çıkışı"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"></path><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg></button><button class="mi2" aria-label="Ayarlar"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button></div>
+</div>
+<div class="main">
+<div class="hd"><b>Doğrudan mesajlar</b><span class="mut">19 konuşma</span><button class="ib sm pri" style="margin-left: auto">Yeni mesaj</button></div>
+<div class="dl">
+<div class="dsrch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>Kişi, grup ya da mesaj ara</div>
+<div class="chips"><span class="on">Tümü 19</span><span>Okunmamış 2</span><span>Gruplar 9</span><span>Kişiler 10</span><span>Yıldızlı 1</span><span>Sessizde 3</span></div>
+<div class="dlist">
+<div class="dr un"><span class="gav"><span style="background:#ffd8a8">AY</span><span style="background:#ffc9c9">CÖ</span><i>6</i></span><span class="txt"><span class="n">Ayşe, Can, Elif, Mert +2</span><span class="pv">Elif: Yarınki demo için slaytları güncelledim</span></span><span class="rt"><span class="tm">11:52</span><span class="b">4</span></span></div>
+<div class="dr un"><span class="dav" style="background:#e5dbff">ZA</span><span class="txt"><span class="n">Zeynep Arslan</span><span class="pv">Akşam kod incelemesine bakabilir misin?</span></span><span class="rt"><span class="tm">11:40</span><span class="b">1</span></span></div>
+<div class="dr hov"><span class="dav" style="background:#c5d0fa">VY</span><span class="txt"><span class="n">Veli Yılmaz<svg class="st" viewBox="0 0 24 24" aria-label="Yıldızlı" role="img"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"></path></svg></span><span class="pv">Sen: Tamam, toplantı biter bitmez gönderiyorum.</span></span><span class="rt"><span class="tm">10:42</span></span><span class="acts"><button title="Yıldızla · kenar çubuğunda hep görünsün" aria-label="Yıldızla"><svg viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"></path></svg></button><button title="Okundu say" aria-label="Okundu say"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"></path></svg></button><button title="Sessize al" aria-label="Sessize al"><svg viewBox="0 0 24 24"><path d="M13.7 21a2 2 0 0 1-3.4 0M18.6 13A17 17 0 0 1 18 8M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.3-5M2 2l20 20"></path></svg></button><button title="Kenar çubuğundan gizle" aria-label="Kenar çubuğundan gizle"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span></div>
+<div class="dr mu"><span class="gav"><span style="background:#ffd8a8">AY</span><span style="background:#c5d0fa">VY</span><i>3</i></span><span class="txt"><span class="n">Ayşe, Veli, Mert</span><span class="pv">Mert: Öğle yemeği 12:30 mu?</span></span><span class="rt"><span class="tm">10:05</span><svg class="mt" viewBox="0 0 24 24" aria-label="Sessize alındı" role="img"><path d="M13.7 21a2 2 0 0 1-3.4 0M18.6 13A17 17 0 0 1 18 8M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.3-5M2 2l20 20"></path></svg></span></div>
+<div class="dr "><span class="dav" style="background:#b2f2bb">MŞ</span><span class="txt"><span class="n">Mert Şahin</span><span class="pv">Toplantı notlarını paylaştım</span></span><span class="rt"><span class="tm">Dün</span></span></div>
+<div class="dr "><span class="gav"><span style="background:#b2f2bb">DK</span><span style="background:#ffd8a8">EY</span><i>4</i></span><span class="txt"><span class="n">Deniz, Elif, Burak, Sena</span><span class="pv">Sena: Sprint retro 15:00'te</span></span><span class="rt"><span class="tm">Dün</span></span></div>
+<div class="dr "><span class="gav"><span style="background:#ffc9c9">CÖ</span><span style="background:#e5dbff">ZA</span><i>5</i></span><span class="txt"><span class="n">Can, Zeynep, Ayşe, Burak, Sena</span><span class="pv">Can: Basın bülteni onaylandı 🎉</span></span><span class="rt"><span class="tm">Çar</span></span></div>
+<div class="dr "><span class="dav" style="background:#b2f2bb">DK</span><span class="txt"><span class="n">Deniz Kara</span><span class="pv">Sen: Teşekkürler!</span></span><span class="rt"><span class="tm">Sal</span></span></div>
+<div class="dr "><span class="gav"><span style="background:#ffd8a8">EY</span><span style="background:#e5dbff">BT</span><i>3</i></span><span class="txt"><span class="n">Elif, Burak, Ali</span><span class="pv">Burak: Bağlantıyı buraya bırakıyorum</span></span><span class="rt"><span class="tm">12 Eki</span></span></div>
+</div>
+<div class="dnote">Kenar çubuğunda en son 5 konuşma görünür, gerisi burada durur. Bir konuşmayı yıldızlarsan ya da kendi bölümüne sürüklersen hep görünür kalır. Grup DM'lerin adı yoktur, en fazla 9 kişidir; ad ya da daha fazla kişi gerekirse özel kanala dönüştürülür.</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+name: Desktop check
+
+# The Rust shell on the platforms whose code differs. Packages are built by the manually triggered
+# "Desktop packages" workflow; this one keeps pull requests from merging code that does not compile.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/apps/desktop/**"
+      - ".github/workflows/desktop-check.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: desktop-check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: frontend/apps/desktop/src-tauri
+    shell: bash
+
+env:
+  # Incremental data only makes the cached build larger; every run here starts from the saved one.
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # Pull requests run every workflow so the gate job below always reports; this job decides whether the
+  # heavy jobs have anything to check (same files as the push path filter). Pushes and manual runs check everything.
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Pull requests are checked out as a merge commit: its first parent is the base branch. Any error means relevant.
+          files=$(git diff --no-renames --name-only HEAD^1 HEAD) || { echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          if grep -qE '^(frontend/apps/desktop/|\.github/workflows/desktop-check\.yml$)' <<<"$files"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  rust:
+    name: rust-${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            os: windows-2025
+          - name: linux
+            os: ubuntu-24.04
+    needs: changes
+    if: ${{ needs.changes.outputs.relevant == 'true' }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Linux build dependencies
+        if: ${{ matrix.name == 'linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+
+      # The exact toolchain comes from src-tauri/rust-toolchain.toml.
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install
+          rustc --version
+
+      # Only main saves the cache: a saved build is over 500 MB per platform, and each pull request saving its own
+      # would push out the repository's other caches. Pull requests read main's.
+      - name: Restore Rust build
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Archives (checksum-verified by Cargo on use), git databases and this job's debug build.
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            frontend/apps/desktop/src-tauri/target
+          key: desktop-check-${{ matrix.name }}-${{ hashFiles('frontend/apps/desktop/src-tauri/Cargo.lock', 'frontend/apps/desktop/src-tauri/rust-toolchain.toml') }}
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Save Rust build
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            frontend/apps/desktop/src-tauri/target
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+  # The only check the branch ruleset requires for this workflow. Skipped jobs pass; failed or cancelled ones fail.
+  desktop-required:
+    needs: [changes, rust]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions: {}
+    timeout-minutes: 2
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Needed job results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac

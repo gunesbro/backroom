@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Backroom.Testing\Backroom.Testing.csproj" />
+  </ItemGroup>
+
+  <!-- Read as text by KeycloakVersionTests: the AppHost's Keycloak tag and our login theme with its upstream hashes.
+       A template deleted from the theme stays in bin until it is cleaned; CI builds from a clean checkout. -->
+  <ItemGroup>
+    <None Include="..\..\src\Aspire\Backroom.AppHost\DevelopmentServices.cs" Link="apphost\DevelopmentServices.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Aspire\Backroom.AppHost\keycloak-themes\backroom\login\*.ftl;..\..\src\Aspire\Backroom.AppHost\keycloak-themes\backroom\login\upstream-templates.sha256" LinkBase="keycloak\theme" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Exact versions keep installs reproducible; upgrades are deliberate PRs.
+saveExact: true
+
+# Supply-chain protection (pnpm 10.16+):
+# wait 7 days before installing a newly published version, refuse transitive dependencies from
+# git or tarball URLs, and refuse updates that weaken a package's publishing trust.
+minimumReleaseAge: 10080
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+# Exact versions published before their maintainers adopted trusted publishing; reviewed, not taken over.
+trustPolicyExclude:
+  - semver@6.3.1

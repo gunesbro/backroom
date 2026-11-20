@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Hesap oluştur</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2f4bb8;font-weight:600;text-decoration:none}a:hover{color:#1f3a99;text-decoration:underline}
+.pg{--pn:#fff;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--bg:#f6f7f9;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;align-items:center;justify-content:center;gap:28px;font-size:14px;padding:24px;box-sizing:border-box}
+.col{display:flex;flex-direction:column;gap:10px}
+.st{font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase;font-weight:600}
+.c{width:360px;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;margin:0}
+.c.tall{gap:10px;padding:22px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--acc)}
+.c h2{margin:0;font-size:22px}
+p{margin:0;line-height:1.5}
+.mut{color:var(--mut)}
+.ctr{text-align:center}
+.or{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mut)}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--ln)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f label{font-weight:600;font-size:13px}
+.f input{height:40px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;font:inherit;color:var(--ink);box-sizing:border-box;width:100%}
+.f small{font-size:12px}
+.meter{display:flex;gap:4px;margin-top:4px}
+.meter span{flex:1;height:4px;border-radius:2px;background:var(--ln)}
+.meter span.on{background:#2f9e44}
+.cb{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45}
+.cb input{margin:2px 0 0;width:16px;height:16px;flex:none}
+.ts{display:flex;align-items:center;gap:10px;height:48px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;background:#fafbfc;font-size:13px}
+.ts small{margin-left:auto;font-size:11px;color:var(--mut)}
+.note{font-size:12px;color:var(--mut);line-height:1.5;padding:10px;border-radius:8px;background:var(--bg)}
+.go{height:44px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600}
+.sec{height:44px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink);font-weight:600}
+.sec:disabled{color:var(--mut);background:var(--bg)}
+.ic{width:44px;height:44px;border-radius:12px;background:var(--accs);color:var(--accd);display:flex;align-items:center;justify-content:center}
+.ic.ok{background:#e6f4ea;color:#1e6b34}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col"><span class="st">1 · Kayıt</span>
+<form class="c tall" aria-label="Hesap oluştur">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<h2>Hesap oluştur</h2>
+<button type="button" class="sec">Google ile devam et</button>
+<div class="or">ya da e-postayla</div>
+<div class="two"><div class="f"><label for="sn">Ad</label><input id="sn" value="Ali"></div><div class="f"><label for="ss">Soyad</label><input id="ss" value="Kaya"></div></div>
+<div class="f"><label for="se">E-posta</label><input id="se" type="email" value="ali.kaya@acme.com"></div>
+<div class="cb"><input type="checkbox" id="sa" checked><label for="sa">16 yaşından büyüğüm, <a href="#">Kullanım koşullarını</a> kabul ediyorum ve <a href="#">Gizlilik politikasını</a> okudum.</label></div>
+<div class="ts" role="group" aria-label="İnsan doğrulaması"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#2f9e44"></circle><path d="M6 10.5l2.5 2.5L14 7.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Doğrulandı</span><small>Cloudflare Turnstile</small></div>
+<button type="submit" class="go">Hesap oluştur</button>
+<p class="mut ctr">Zaten hesabın var mı? <a href="#">Giriş yap</a></p>
+</form></div>
+<div class="col"><span class="st">2 · E-posta doğrulaması bekleniyor</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path></svg></span>
+<h2>E-postanı doğrula</h2>
+<p class="mut"><b>ali.kaya@acme.com</b> adresine bir doğrulama bağlantısı gönderdik. Bağlantıyı açınca şifreni belirler ve hesabını etkinleştirirsin.</p>
+<div class="note">E-posta birkaç dakika içinde gelmezse istenmeyen e-posta klasörüne bak.</div>
+<button class="sec" disabled>Tekrar gönder · 0:42</button>
+<a href="#" class="ctr">E-posta adresini değiştir</a>
+</div></div>
+<div class="col"><span class="st">3 · E-posta doğrulandı, şifre belirleme</span>
+<form class="c" aria-label="Şifreni belirle">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<span class="ic ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+<h2>Şifreni belirle</h2>
+<p class="mut">E-postan doğrulandı. Hesabını kullanmaya başlamak için bir şifre belirle.</p>
+<div class="f"><label for="np">Şifre</label><input id="np" type="password" value="gizlisifre12" aria-describedby="nph"><span class="meter" aria-hidden="true"><span class="on"></span><span class="on"></span><span class="on"></span><span></span></span><small id="nph" class="mut">Şifre gücü: iyi</small></div>
+<div class="f"><label for="np2">Şifre (tekrar)</label><input id="np2" type="password" value="gizlisifre12"></div>
+<button type="submit" class="go">Şifreyi kaydet ve devam et</button>
+</form></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

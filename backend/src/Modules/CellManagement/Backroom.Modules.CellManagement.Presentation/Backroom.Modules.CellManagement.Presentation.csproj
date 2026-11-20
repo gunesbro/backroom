@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Grpc.AspNetCore.Server" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
+    <ProjectReference Include="..\..\..\Contracts\Backroom.ControlPlane.Contracts\Backroom.ControlPlane.Contracts.csproj" />
+    <ProjectReference Include="..\Backroom.Modules.CellManagement.Application\Backroom.Modules.CellManagement.Application.csproj" />
+  </ItemGroup>
+
+</Project>

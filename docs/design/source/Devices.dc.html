@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Hesap ayarları · Cihazlar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;overflow:hidden}
+.top{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--pn);border-bottom:1px solid var(--ln)}
+.ib{height:36px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink)}
+.sm{height:30px;padding:0 10px;font-size:13px}
+.danger{color:#b02525;border-color:#e3a3a3}
+.body{flex:1;display:flex;min-height:0}
+.nav{width:248px;flex:none;background:var(--sd);border-right:1px solid var(--ln);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px}
+.nav h4{margin:10px 8px 4px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.nv{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:6px;background:none;font:inherit;color:var(--ink)}
+.nv.on{background:var(--accs);color:var(--accd);font-weight:600}
+.main{flex:1;padding:24px 32px;overflow:hidden;display:flex;flex-direction:column;gap:16px;max-width:860px}
+.main h1{margin:0;font-size:22px}
+.mut{color:var(--mut)}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:12px}
+.row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-top:1px solid var(--ln)}
+.row:first-child{border-top:0}
+.ic{width:40px;height:40px;border-radius:10px;background:var(--sd);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--mut);flex:none}
+.inf{flex:1;line-height:1.4}
+.inf small{display:block;color:var(--mut);font-size:12px}
+.tag{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;background:#e6f4ea;color:#1e6b34;margin-left:6px}
+.tag.new{background:#fff1e0;color:#a84300}
+.bar{display:flex;align-items:center;gap:12px}
+.sec{display:flex;align-items:center;gap:14px;padding:14px 16px}
+</style>
+</helmet>
+<div class="app" style="width: 100%">
+<div class="top"><button class="ib sm">← Uygulamaya dön</button><b>Hesap ayarları</b><span class="mut">Ali Kaya · tüm organizasyonlar için geçerli</span></div>
+<div class="body">
+<div class="nav">
+<h4>Hesap</h4>
+<button class="nv">Profil</button>
+<button class="nv">Durum ve varlık</button>
+<button class="nv">Bildirimler</button>
+<button class="nv">Ses ve görüntü</button>
+<button class="nv">Görünüm (açık / koyu)</button>
+<button class="nv">Dil</button>
+<h4>Güvenlik</h4>
+<button class="nv">Şifre ve giriş yöntemleri</button>
+<button class="nv">İki adımlı doğrulama</button>
+<button class="nv on">Cihazlar ve oturumlar</button>
+<h4>Gizlilik</h4>
+<button class="nv">Verilerimi indir</button>
+<button class="nv">Hesabı sil</button>
+</div>
+<div class="main">
+<div class="bar"><h1>Cihazlar ve oturumlar</h1><button class="ib sm danger" style="margin-left: auto">Diğer tüm oturumlardan çık</button></div>
+<span class="mut">Bir oturumu kapatınca o cihazın bağlantısı anında kesilir ve yeniden giriş gerekir. Yeni bir cihazdan giriş yapıldığında e-postana bildirim gelir.</span>
+<div class="card">
+<div class="row"><span class="ic">WEB</span><span class="inf"><b>Chrome · Windows</b><span class="tag">Bu cihaz</span><small>İstanbul, Türkiye (yaklaşık) · şu an aktif</small></span></div>
+<div class="row"><span class="ic">MAC</span><span class="inf"><b>Masaüstü uygulaması · macOS</b><small>İstanbul, Türkiye (yaklaşık) · 2 saat önce</small></span><button class="ib sm">Çıkış yap</button></div>
+<div class="row"><span class="ic">WEB</span><span class="inf"><b>Safari · macOS</b><span class="tag new">Yeni</span><small>Ankara, Türkiye (yaklaşık) · dün 22:14 · e-posta bildirimi gönderildi</small></span><button class="ib sm">Çıkış yap</button></div>
+<div class="row"><span class="ic">WEB</span><span class="inf"><b>Firefox · Linux</b><small>Berlin, Almanya (yaklaşık) · 12 gün önce</small></span><button class="ib sm">Çıkış yap</button></div>
+</div>
+<div class="card"><div class="sec"><span class="inf"><b>İki adımlı doğrulama</b><small>Açık · Doğrulayıcı uygulama · 8 yedek kod kaldı</small></span><button class="ib sm">Yönet</button></div></div>
+<div class="card"><div class="sec"><span class="inf"><b>Bağlı giriş yöntemleri</b><small>E-posta ve şifre · Google · Apple</small></span><button class="ib sm">Düzenle</button></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

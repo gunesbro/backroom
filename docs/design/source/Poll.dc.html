@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Anket</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.pg{--pn:#fff;--bg:#f6f7f9;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#5b6170;height:760px;display:flex;align-items:center;justify-content:center;gap:28px;padding:24px;box-sizing:border-box;font-size:14px}
+.ico{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.col{display:flex;flex-direction:column;gap:10px}
+.st{font-size:11px;letter-spacing:.05em;color:#e9ecf2;text-transform:uppercase;font-weight:600}
+.dlg{width:440px;background:var(--pn);border-radius:16px;box-shadow:0 24px 60px rgba(10,12,18,.35);display:flex;flex-direction:column;overflow:hidden}
+.dh{display:flex;align-items:center;gap:10px;padding:16px 20px 6px}
+.dh h2{margin:0;font-size:18px}
+.x{margin-left:auto;width:32px;height:32px;border:0;border-radius:8px;background:none;color:var(--mut);font:inherit;font-size:18px}
+.db{padding:6px 20px 14px;display:flex;flex-direction:column;gap:10px}
+.lb{font-weight:600;font-size:13px}
+.mut{color:var(--mut)}
+.f{display:flex;flex-direction:column;gap:5px}
+.f input{height:38px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;font:inherit;font-size:14px;color:var(--ink)}
+.f input.on{border-color:var(--acc);box-shadow:0 0 0 3px var(--accs)}
+.opt{display:flex;align-items:center;gap:8px}
+.opt .h{width:14px;color:#9aa3b2;font-size:14px;text-align:center}
+.opt input{flex:1}
+.opt button{width:28px;height:28px;border:0;border-radius:6px;background:none;color:var(--mut);font:inherit;font-size:16px;padding:0}
+.add{align-self:flex-start;border:0;background:none;font:inherit;font-size:13px;color:var(--accd);font-weight:600;padding:0}
+.sw{display:flex;align-items:center;gap:10px;font-size:13px;padding:6px 0;border-top:1px solid #edf0f3}
+.sw > span:first-child{flex:1}
+.sw small{display:block;color:var(--mut);font-size:12px}
+.tg{width:36px;height:20px;border-radius:10px;background:#c9ced6;position:relative;flex:none}
+.tg::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.tg.on{background:var(--acc)}
+.tg.on::after{left:18px}
+.sel{height:30px;padding:0 10px;border:1px solid var(--ln);border-radius:8px;display:flex;align-items:center;gap:6px;font-size:13px}
+.df{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--ln);background:var(--bg)}
+.btn{height:36px;padding:0 14px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:14px;color:var(--ink)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.chat{width:560px;background:var(--pn);border-radius:16px;box-shadow:0 24px 60px rgba(10,12,18,.35);overflow:hidden}
+.chd{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--ln)}
+.msgs{padding:16px;display:flex;flex-direction:column;gap:16px}
+.m{display:flex;gap:10px}
+.mav{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none}
+.fm{font-size:12px;color:var(--mut)}
+.poll{margin-top:6px;border:1px solid var(--ln);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.ph{display:flex;align-items:center;gap:8px}
+.ph b{font-size:15px}
+.tag{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;background:var(--sd);color:var(--mut)}
+.tag.cl{background:#e6f4ea;color:#1e6b34}
+.po{box-sizing:border-box;position:relative;display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--ln);border-radius:8px;overflow:hidden;font-size:13px;background:var(--pn);text-align:left;font-family:inherit;color:var(--ink);width:100%}
+.po .fill{position:absolute;left:0;top:0;bottom:0;background:#eef2ff;z-index:0}
+.po.me{border-color:var(--acc)}
+.po.me .fill{background:#dbe4ff}
+.po.win .fill{background:#d3f9d8}
+.po > *:not(.fill){position:relative;z-index:1}
+.ck{width:16px;height:16px;border-radius:4px;border:1.5px solid #8d95a3;flex:none;display:flex;align-items:center;justify-content:center;background:var(--pn)}
+.ck.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.po .t{flex:1}
+.avs{display:flex}
+.avs i{width:20px;height:20px;border-radius:50%;border:2px solid var(--pn);margin-left:-6px;font-style:normal;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.pct{font-weight:700;min-width:36px;text-align:right}
+.pf{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mut)}
+.pf button{margin-left:auto;border:0;background:none;font:inherit;font-size:12px;color:var(--accd);font-weight:600;padding:0}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col">
+<span class="st">1 · Anket oluştur</span>
+<div class="dlg" role="dialog" aria-label="Anket oluştur">
+<div class="dh"><h2>Anket oluştur</h2><span class="mut" style="font-size: 13px"># genel</span><button class="x" aria-label="Kapat">×</button></div>
+<div class="db">
+<div class="f"><label class="lb" for="pq">Soru</label><input id="pq" class="on" value="Ekip yemeği hangi gün olsun?"></div>
+<div class="f"><span class="lb">Seçenekler</span>
+<div class="opt"><span class="h" aria-hidden="true">⋮⋮</span><input value="Çarşamba" aria-label="Seçenek 1"><button aria-label="Seçeneği kaldır">×</button></div>
+<div class="opt"><span class="h" aria-hidden="true">⋮⋮</span><input value="Perşembe" aria-label="Seçenek 2"><button aria-label="Seçeneği kaldır">×</button></div>
+<div class="opt"><span class="h" aria-hidden="true">⋮⋮</span><input value="Cuma" aria-label="Seçenek 3"><button aria-label="Seçeneği kaldır">×</button></div>
+<button class="add">+ Seçenek ekle (en fazla 10)</button>
+</div>
+<div class="sw"><span>Birden fazla seçim<small>Kişi birden çok seçeneği işaretleyebilir</small></span><span class="tg on" role="switch" aria-checked="true" aria-label="Birden fazla seçim"></span></div>
+<div class="sw"><span>Anonim oylama<small>Kimin neye oy verdiği kimseye, sana da gösterilmez</small></span><span class="tg" role="switch" aria-checked="false" aria-label="Anonim oylama"></span></div>
+<div class="sw"><span>Sonuçlar<small>Oy vermeden önce sonuçlar görünsün mü?</small></span><span class="sel">Oy verince görünsün ▾</span></div>
+<div class="sw"><span>Bitiş</span><span class="sel">Yarın 17:00 ▾</span></div>
+</div>
+<div class="df"><button class="btn">Vazgeç</button><button class="btn pri">Gönder</button></div>
+</div>
+</div>
+<div class="col">
+<span class="st">2 · # genel'de görünümü</span>
+<div class="chat">
+<div class="chd"><b># genel</b><span class="fm">128 üye</span></div>
+<div class="msgs">
+<div class="m"><span class="mav" style="background: #e5dbff">ZA</span><div style="flex: 1; min-width: 0"><div><b>Zeynep Arslan</b> <span class="fm">11:05</span></div>
+<div class="poll" role="group" aria-label="Anket: Ekip yemeği hangi gün olsun?">
+<div class="ph"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px; color: #2f4bb8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg><b>Ekip yemeği hangi gün olsun?</b><span class="tag" style="margin-left: auto">Birden fazla seçim</span></div>
+<button class="po me"><span class="fill" style="width: 58%"></span><span class="ck on"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px; fill: none; stroke: #fff; stroke-width: 3"><path d="M5 12l5 5 9-10"></path></svg></span><span class="t">Çarşamba</span><span class="avs"><i style="background: #c5d0fa">AK</i><i style="background: #b2f2bb">MŞ</i><i style="background: #ffd8a8">AD</i></span><span class="pct">58%</span></button>
+<button class="po"><span class="fill" style="width: 25%"></span><span class="ck"></span><span class="t">Perşembe</span><span class="avs"><i style="background: #e5dbff">ZA</i></span><span class="pct">25%</span></button>
+<button class="po me"><span class="fill" style="width: 17%"></span><span class="ck on"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px; fill: none; stroke: #fff; stroke-width: 3"><path d="M5 12l5 5 9-10"></path></svg></span><span class="t">Cuma</span><span class="avs"><i style="background: #c5d0fa">AK</i></span><span class="pct">17%</span></button>
+<div class="pf"><span>12 kişi oy verdi · Yarın 17:00'de kapanır</span><button>Oyumu değiştir</button></div>
+</div></div></div>
+<div class="m"><span class="mav" style="background: #c5d0fa">AK</span><div style="flex: 1; min-width: 0"><div><b>Ali Kaya</b> <span class="fm">Dün 15:40</span></div>
+<div class="poll" role="group" aria-label="Anket: Sprint retro formatı">
+<div class="ph"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px; color: #1e6b34"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg><b>Sprint retro hangi formatta olsun?</b><span class="tag cl" style="margin-left: auto">Sonuçlandı</span><span class="tag">Anonim</span></div>
+<div class="po win"><span class="fill" style="width: 64%"></span><span class="t"><b>Başla / Dur / Devam et</b></span><span class="pct">64%</span></div>
+<div class="po"><span class="fill" style="width: 36%"></span><span class="t">Sevdiklerim / Öğrendiklerim / Eksikler</span><span class="pct">36%</span></div>
+<div class="pf"><span>14 oy · Dün 17:00'de kapandı</span></div>
+</div></div></div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

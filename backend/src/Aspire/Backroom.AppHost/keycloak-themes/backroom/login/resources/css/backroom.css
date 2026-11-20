@@ -1,0 +1,535 @@
+/*
+ * Sign-in pages in the product's design: the tokens of @backroom/ui (frontend/packages/ui/src/styles.css)
+ * applied over keycloak.v2 (PatternFly 5). Keep the two in step until the theme is built from the same source.
+ */
+
+/* IBM Plex Sans, served from this theme so no font request leaves for a third party (OFL-1.1, see fonts/). */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(../fonts/ibm-plex-sans-latin-400-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(../fonts/ibm-plex-sans-latin-ext-400-normal.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(../fonts/ibm-plex-sans-latin-600-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(../fonts/ibm-plex-sans-latin-ext-600-normal.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(../fonts/ibm-plex-sans-latin-700-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(../fonts/ibm-plex-sans-latin-ext-700-normal.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  --ph-page: #f6f7f9;
+  --ph-panel: #fff;
+  --ph-subtle: #f6f7f9;
+  --ph-line: #d5dae1;
+  --ph-ink: #1f2430;
+  --ph-muted: #555d6b;
+  --ph-accent: #3b5bdb;
+  --ph-accent-soft: #e3e9ff;
+  --ph-accent-strong: #2f4bb8;
+  /* Filled controls; white text on it is at least 4.5:1 (WCAG AA) in both themes. */
+  --ph-accent-fill: #3b5bdb;
+  /* Link text; at least 4.5:1 on the panel in both themes. */
+  --ph-link: #2f4bb8;
+  --ph-danger: #b02525;
+  --ph-danger-soft: #fdecec;
+  --ph-ok-soft: #e6f4ea;
+  --ph-on-ok-soft: #1e6b34;
+  --ph-on-danger-soft: #9b1c1c;
+  --ph-font: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+/* keycloak.v2 sets this class when the system prefers a dark scheme. */
+.pf-v5-theme-dark {
+  --ph-page: #12151a;
+  --ph-panel: #1c2028;
+  --ph-subtle: #12151a;
+  --ph-line: #2c323d;
+  --ph-ink: #e6e9ef;
+  --ph-muted: #a3abb9;
+  --ph-accent: #5c7cfa;
+  --ph-accent-soft: #262f4d;
+  --ph-accent-strong: #aebfff;
+  --ph-link: #6b8afb;
+  --ph-danger: #ff8a8a;
+  --ph-danger-soft: #3b1c1f;
+  --ph-ok-soft: #1c3324;
+  --ph-on-ok-soft: #8fd6a3;
+  --ph-on-danger-soft: #ffb3b3;
+}
+
+/* PatternFly's own tokens, so every component on every page follows. */
+:root,
+.pf-v5-theme-dark {
+  --pf-v5-global--FontFamily--text: var(--ph-font);
+  --pf-v5-global--FontFamily--heading: var(--ph-font);
+  --pf-v5-global--FontFamily--sans-serif: var(--ph-font);
+  --pf-v5-global--FontSize--md: 14px;
+  --pf-v5-global--FontSize--sm: 13px;
+  --pf-v5-global--Color--100: var(--ph-ink);
+  --pf-v5-global--Color--200: var(--ph-muted);
+  --pf-v5-global--BackgroundColor--100: var(--ph-panel);
+  --pf-v5-global--BorderColor--100: var(--ph-line);
+  /* Also the text of secondary buttons, so it must be readable on the panel: the link color. */
+  --pf-v5-global--primary-color--100: var(--ph-link);
+  --pf-v5-global--primary-color--200: var(--ph-accent-strong);
+  --pf-v5-global--link--Color: var(--ph-link);
+  --pf-v5-global--link--Color--hover: var(--ph-accent-strong);
+  --pf-v5-global--danger-color--100: var(--ph-danger);
+  --pf-v5-global--BorderRadius--sm: 8px;
+  --pf-v5-c-button--BorderRadius: 8px;
+}
+
+.login-pf body {
+  margin: 0;
+  background: var(--ph-page);
+  color: var(--ph-ink);
+  font-family: var(--ph-font);
+  font-size: 14px;
+}
+
+/* The page of docs/design Login: a top bar (product, language), the card in the middle, notes and links below. */
+.login-pf body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ph-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+}
+
+/* keycloak.v2 styles the product name as a large white uppercase title; ours is the app's brand. */
+#kc-header-wrapper.ph-brand {
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 24px;
+  white-space: nowrap;
+  text-align: start;
+  color: var(--ph-ink) !important;
+}
+
+.ph-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ph-ink);
+}
+
+.ph-brand::before {
+  content: '';
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--ph-accent);
+  flex: none;
+}
+
+.ph-lang {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--ph-line);
+  border-radius: 8px;
+  background: var(--ph-panel);
+  color: var(--ph-ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.pf-v5-c-login {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  background: none;
+}
+
+.pf-v5-c-login__container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(400px, 100%);
+  padding: 0;
+}
+
+.pf-v5-c-login__main {
+  width: 100%;
+  margin: 0;
+  background: var(--ph-panel);
+  border: 1px solid var(--ph-line);
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+div.pf-v5-c-login__main-header,
+div.pf-v5-c-login__main-header:has(.pf-v5-c-login__main-header-utilities) {
+  display: block;
+  padding: 28px 28px 0;
+  border-top: 0;
+}
+
+.pf-v5-c-title.pf-m-3xl {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.pf-v5-c-login__main-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 28px 28px;
+}
+
+.ph-lead {
+  margin: 0;
+  color: var(--ph-muted);
+  line-height: 1.5;
+}
+
+.ph-external {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* "or with email" between the external sign-in and the form. */
+.ph-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ph-muted);
+}
+
+.ph-or::before,
+.ph-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ph-line);
+}
+
+.ph-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ph-danger-soft);
+  color: var(--ph-on-danger-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* The password label with "forgot password" across from it; the link comes after the field in the DOM. */
+.ph-password-group {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'label forgot'
+    'input input';
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.ph-password-label {
+  grid-area: label;
+}
+
+.ph-password-input {
+  grid-area: input;
+}
+
+.ph-password-forgot {
+  grid-area: forgot;
+  font-size: 13px;
+}
+
+.ph-below-card {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ph-muted);
+  text-align: center;
+}
+
+.ph-page-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+  padding: 18px;
+  font-size: 12px;
+}
+
+.ph-page-footer a {
+  color: var(--ph-muted);
+  font-weight: 400;
+}
+
+/* The footer sits inside the body; no rule above it, links bold and centered like the app's. */
+.pf-v5-c-login__main-footer {
+  padding: 0;
+}
+
+.pf-v5-c-login__main-footer-band,
+.pf-v5-c-login__main-footer-band:first-child {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: center;
+}
+
+.pf-v5-c-login__main a {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Fields 12 px apart, as in the app's forms. */
+.pf-v5-c-form {
+  gap: 12px;
+}
+
+.pf-v5-c-form__label-text {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pf-v5-c-helper-text__item-text {
+  font-size: 12px;
+}
+
+/* Fields: a full 1 px border and 8 px corners; focus shows on the box, not twice on the box and the input. */
+.pf-v5-c-form-control {
+  min-height: 40px;
+  border: 1px solid var(--ph-line);
+  border-radius: 8px;
+  background: var(--ph-panel);
+}
+
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after {
+  border: 0;
+}
+
+.pf-v5-c-form-control > :is(input, select, textarea):focus,
+.pf-v5-c-form-control > :is(input, select, textarea):focus-visible {
+  outline: none;
+}
+
+.pf-v5-c-form-control.pf-m-error {
+  border-color: var(--ph-danger);
+}
+
+/* Focus wins over the error border, and the 1 px accent ring keeps it visible on its own (the soft ring is not). */
+.pf-v5-c-form-control:focus-within,
+.pf-v5-c-form-control.pf-m-error:focus-within {
+  border-color: var(--ph-accent);
+  box-shadow:
+    0 0 0 1px var(--ph-accent),
+    0 0 0 4px var(--ph-accent-soft);
+}
+
+/* A field with a button (show password) reads as one box. */
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:last-child) .pf-v5-c-form-control {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:last-child .pf-v5-c-button.pf-m-control {
+  border: 1px solid var(--ph-line);
+  border-inline-start: 0;
+  border-start-end-radius: 8px;
+  border-end-end-radius: 8px;
+}
+
+.pf-v5-c-button.pf-m-control {
+  --pf-v5-c-button--m-control--BackgroundColor: var(--ph-panel);
+  --pf-v5-c-button--m-control--Color: var(--ph-muted);
+}
+
+.pf-v5-c-button.pf-m-control::after {
+  border: 0;
+}
+
+.pf-v5-c-button.pf-m-primary {
+  min-height: 44px;
+  border-radius: 8px;
+  background: var(--ph-accent-fill);
+  color: #fff;
+  font-weight: 600;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+.pf-v5-c-button.pf-m-primary:focus {
+  /* The same darker blue in both themes; white text stays readable. */
+  background: #2f4bb8;
+}
+
+/* A link styled as a button ("Back to login") centers its text like a real button does. */
+a.pf-v5-c-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+a.pf-v5-c-button.pf-m-block {
+  display: flex;
+}
+
+.pf-v5-c-button.pf-m-secondary {
+  min-height: 44px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.pf-v5-c-alert {
+  border-radius: 8px;
+}
+
+a:focus-visible,
+button:focus-visible,
+.ph-lang:focus-visible {
+  outline: 2px solid var(--ph-accent);
+  outline-offset: 2px;
+}
+
+/* The control inside a field must not paint over the field's rounded border. */
+.pf-v5-c-form-control > :is(input, select, textarea) {
+  background: transparent;
+  border-radius: 8px;
+}
+
+/* A field with a button shows focus around both, as one box. */
+.pf-v5-c-input-group {
+  border-radius: 8px;
+}
+
+.pf-v5-c-input-group:has(.pf-v5-c-form-control:focus-within) {
+  box-shadow:
+    0 0 0 1px var(--ph-accent),
+    0 0 0 4px var(--ph-accent-soft);
+}
+
+.pf-v5-c-input-group .pf-v5-c-form-control:focus-within {
+  box-shadow: none;
+}
+
+.pf-v5-c-input-group:has(.pf-v5-c-form-control:focus-within) .pf-v5-c-button.pf-m-control {
+  border-color: var(--ph-accent);
+}
+
+/* Status pages (docs/design Signup, ResetPassword): a 44 px icon tile above the title. */
+.ph-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--ph-accent-soft);
+  color: var(--ph-accent-strong);
+}
+
+.ph-status-icon--ok {
+  background: var(--ph-ok-soft);
+  color: var(--ph-on-ok-soft);
+}
+
+.ph-note {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--ph-page);
+  color: var(--ph-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ph-center {
+  margin: 0;
+  text-align: center;
+}
+
+/* Sign-up: first and last name side by side (docs/design Signup), under the email because Keycloak's user profile puts
+   the email first and visual order must follow the tab order; no required-field marks. */
+#kc-register-form {
+  grid-template-columns: 1fr 1fr;
+}
+
+#kc-register-form > * {
+  grid-column: 1 / -1;
+}
+
+#kc-register-form > .pf-v5-c-form__group:has(#firstName),
+#kc-register-form > .pf-v5-c-form__group:has(#lastName) {
+  grid-column: auto;
+  min-width: 0;
+}
+
+#kc-register-form .pf-v5-c-form__label-required {
+  display: none;
+}
+
+/* Checkboxes ("Remember me", "Sign out other devices"): the size of the field labels, the box in the accent colour. */
+.pf-v5-c-check__label {
+  font-size: 13px;
+  color: var(--ph-ink);
+}
+
+.pf-v5-c-check__input {
+  accent-color: var(--ph-accent);
+}

@@ -1,0 +1,167 @@
+name: Backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "global.json"
+      - ".editorconfig"
+      - ".github/workflows/backend.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: backend-${{ github.ref }}
+  # Superseded PR runs are cancelled; runs on main always finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  # Pull requests run every workflow so the gate job below always reports; this job decides whether the
+  # heavy jobs have anything to check (same files as the push path filter). Pushes and manual runs check everything.
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Pull requests are checked out as a merge commit: its first parent is the base branch. Any error means relevant.
+          files=$(git diff --no-renames --name-only HEAD^1 HEAD) || { echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          if grep -qE '^(backend/|global\.json$|\.editorconfig$|\.github/workflows/backend\.yml$)' <<<"$files"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Cell ↔ control plane contract (docs/adr/0003): lint, and no breaking changes against main.
+  proto:
+    needs: changes
+    if: ${{ needs.changes.outputs.relevant == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: buf lint
+        run: docker run --rm -v "$PWD/backend/proto:/workspace:ro" -w /workspace bufbuild/buf:1.75.0@sha256:adf82c7170be6629ec81dc907921ac1699407cd11c4f7fd7521b13c74152f849 lint
+
+      - name: buf breaking
+        run: |
+          if ! git cat-file -e origin/main:backend/proto/buf.yaml 2>/dev/null; then
+            echo "No contract on main yet; nothing to compare."
+            exit 0
+          fi
+          docker run --rm -v "$PWD:/repo:ro" -w /repo bufbuild/buf:1.75.0@sha256:adf82c7170be6629ec81dc907921ac1699407cd11c4f7fd7521b13c74152f849 \
+            breaking backend/proto --against '.git#ref=origin/main,subdir=backend/proto'
+
+  build-and-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.relevant == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      # Only main saves caches; pull requests (including forks) only restore, so a pull request cannot poison them.
+      - name: Restore NuGet packages
+        id: nuget-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'backend/Directory.Packages.props', 'backend/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # Building the AppHost downloads the Aspire CLI bundle (DCP and dashboard) into ~/.aspire.
+      - name: Restore Aspire bundle
+        id: aspire-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.aspire
+          key: aspire-${{ runner.os }}-${{ hashFiles('backend/src/Aspire/Backroom.AppHost/Backroom.AppHost.csproj') }}
+
+      - name: Restore
+        run: dotnet restore backend/Backroom.slnx
+
+      - name: Build
+        run: dotnet build backend/Backroom.slnx --no-restore --configuration Release
+
+      # Architecture tests are part of the solution's test run.
+      - name: Test (default culture)
+        run: dotnet test --solution backend/Backroom.slnx --no-build --configuration Release
+
+      # Turkish İ/ı casing bugs only show up under tr-TR. BACKROOM_EXPECTED_CULTURE makes a guard test
+      # fail if the runner does not actually apply the culture.
+      - name: Test (tr-TR)
+        env:
+          LANG: tr_TR.UTF-8
+          LC_ALL: tr_TR.UTF-8
+          BACKROOM_EXPECTED_CULTURE: tr-TR
+        run: dotnet test --solution backend/Backroom.slnx --no-build --configuration Release
+
+      - name: Save NuGet packages
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.nuget-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
+
+      - name: Save Aspire bundle
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.aspire-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.aspire
+          key: ${{ steps.aspire-cache.outputs.cache-primary-key }}
+
+  # The only check the branch ruleset requires for this workflow. Skipped jobs pass; failed or cancelled ones fail.
+  backend-required:
+    needs: [changes, proto, build-and-test]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions: {}
+    timeout-minutes: 2
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Needed job results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Ayrı pencere</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.w{width:560px;height:420px;display:flex;flex-direction:column;background:#161a22;color:#e9ecf2;font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:13px;box-sizing:border-box;border:1px solid #3a4152;border-radius:10px;overflow:hidden}
+.tb{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0f1218}
+.tb b{font-size:13px}
+.rec{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border-radius:10px;background:#47201f;color:#ffc9c9;font-size:11px;font-weight:600}
+.rec span{width:7px;height:7px;border-radius:50%;background:#ff6b6b}
+.pin{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#cfd5e1}
+.st{flex:1;display:flex;flex-direction:column;gap:8px;padding:8px;min-height:0}
+.sh{flex:1;border-radius:8px;background:#2b3140;padding:8px;display:flex;align-items:flex-end;color:#cfd5e1}
+.sp{display:flex;gap:6px;height:72px;flex:none}
+.t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:8px;background:#323a4b;padding:6px;font-size:11px;display:flex;align-items:flex-end}
+.t.spk{box-shadow:inset 0 0 0 2px #74c0fc}
+.b{display:flex;justify-content:center;gap:6px;padding:8px;background:#0f1218;flex-wrap:wrap}
+.cb{height:34px;padding:0 12px;border:1px solid #3a4152;border-radius:17px;background:#262c38;color:#e9ecf2;font:inherit;font-size:12px}
+.cb.off{background:#3d2a2a;border-color:#6b3d3d}
+.cb.end{background:#c92a2a;border-color:#c92a2a;color:#fff;font-weight:600}
+.ico{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.cb{width:40px;height:40px;padding:0;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative}
+.cb.off{background:#c92a2a;color:#fff}
+.cb.end{width:56px;border-radius:20px}
+.cb .ico{width:20px;height:20px}
+.cb .n{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:#5c7cfa;color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center}
+.cb .n.nw{background:#f59f00;color:#1f2430}
+.tt{position:absolute;bottom:48px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#e9ecf2;color:#1f2430;font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px;z-index:5}
+</style>
+</helmet>
+<div class="w">
+<div class="tb"><b>Toplantı 1 · Acme</b><span>00:26:44</span><span class="rec"><span></span>Kayıt</span><label class="pin"><input type="checkbox" checked> Her zaman üstte</label></div>
+<div class="st">
+<div class="sh">Veli Yılmaz ekranını paylaşıyor</div>
+<div class="sp"><div class="t spk">Veli Yılmaz</div><div class="t">Zeynep Arslan</div><div class="t">Can Öztürk (misafir)</div><div class="t">Sen</div></div>
+</div>
+<div class="b"><button class="cb off" aria-label="Mikrofonu aç" title="Mikrofonu aç"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><path d="M12 18v4"></path><path d="M3 3l18 18"></path></svg></button><button class="cb off" aria-label="Kamerayı aç" title="Kamerayı aç"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2"></rect><path d="M2 2l20 20"></path></svg></button><button class="cb" aria-label="Ekranı paylaş" title="Ekranı paylaş"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4M12 13V7M9 10l3-3 3 3"></path></svg></button><button class="cb" aria-label="Sohbet, 2 okunmamış" title="Sohbet"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span class="n">2</span></button><button class="cb" aria-label="Bekleyenler, 1" title="Bekleyenler"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="4"></circle><path d="M2 21v-2a4 4 0 0 1 4-4h5"></path><circle cx="18" cy="17" r="4"></circle><path d="M18 15v2l1.5 1"></path></svg><span class="n nw">1</span></button><button class="cb" aria-label="Ana pencereye al" title="Ana pencereye al"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"></path></svg></button><button class="cb end" aria-label="Toplantıdan ayrıl" title="Toplantıdan ayrıl"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><path d="M23 1L1 23"></path></svg></button></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":560,"height":420}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "@backroom/local-store",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Local cache and sync: SQLite on desktop, IndexedDB on the web.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

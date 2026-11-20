@@ -1,0 +1,32 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Pinned so a newer SDK patch cannot add analyzer errors to unchanged code. -->
+    <AnalysisLevel>10.0</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Every security rule (SQL injection, weak crypto, insecure deserialization, ...) is an error. -->
+    <AnalysisModeSecurity>All</AnalysisModeSecurity>
+    <!-- Every performance rule (logging, allocations, collections, async, strings, ...) is an error. -->
+    <AnalysisModePerformance>All</AnalysisModePerformance>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Low and moderate vulnerability advisories warn; high and critical ones (NU1903, NU1904) fail the build. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902</WarningsNotAsErrors>
+    <!-- Audit transitive packages too. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <!-- Reproducible restores: packages.lock.json per project; CI restores with locked mode. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <!-- Reproducible builds: normalized paths in CI (GitHub Actions sets CI=true). -->
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <RestoreLockedMode>true</RestoreLockedMode>
+  </PropertyGroup>
+
+</Project>

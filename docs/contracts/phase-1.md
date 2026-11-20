@@ -1,0 +1,307 @@
+# Phase 1 contracts: vertical slice
+
+- Status: Proposed (needs the owner's approval before implementation)
+- Date: 2026-10-25
+- Requirements: "Yol haritası" (Faz 1), "Mimari", "Kimlik", "Kontrol düzlemi ile hücreler arası iletişim", "Modül planı", "Organizasyonlar, üyelik ve davetler", "Gizlilik ve güvenlik kuralları"
+
+## Goal and gate
+
+Keycloak login → organization → channel → message, and the message appears on a second client immediately. Two cells, the cell–control-plane gRPC link, a basic operations panel, permissions, the event layer, email with Mailpit.
+
+**Gate:** an end-to-end test (control plane and two cells started with Aspire) and a first k6 load test pass.
+
+**Not in Phase 1:** private channels, DMs, threads, reactions, files, search, presence, notifications, rich text editor (messages are plain text), SSO (only a small Keycloak spike), Keycloakify login theme, organization rename, organization switcher unread counts, operations panel beyond the cell list, gRPC-Web fallback (added later without breaking the contract).
+
+## Identity and tokens
+
+- Keycloak realm `backroom`. Public clients `web`, `desktop` and `ops` (authorization code with PKCE). Access tokens live 5 minutes; refresh tokens refresh them and are single-use (rotated on every refresh).
+- **One refresh at a time.** Every token request with a refresh token (renewal and each per-cell token) uses it up, so a client runs them one after another through a single queue, never in parallel. On the web each tab has its own tokens; when a tab's refresh token is rejected (`invalid_grant`) while the Keycloak session lives, the tab gets new tokens through that session, as on reload, instead of signing out. The desktop app allows one running instance, so two processes never rotate the same stored token. An integration test against the pinned Keycloak covers two tabs and several cells.
+- **No offline tokens.** No client requests or can obtain `offline_access`: the scope is removed from the clients' optional scopes and the realm's default roles, so every token ends with its Keycloak session. `KeycloakRealmTests` checks this.
+- **Sessions.** The sign-in page offers "Remember me". Checked: the Keycloak session stays alive while used, at most 30 days idle and 90 days in total. Unchecked: the browser drops Keycloak's session cookie when it closes, and the session itself ends after 30 minutes idle or 10 hours in total, so desktop users without "Remember me" sign in again within 10 hours. Signing out, changing the password or an administrator ending a session ends it everywhere (flow 5).
+- **Where tokens live.** The web app keeps tokens in memory only and, on reload, gets new ones through Keycloak's session (a quick redirect). The desktop app keeps its refresh token in the operating system's secure store (Windows Credential Manager, macOS Keychain, Secret Service) and access tokens in memory; nothing goes to files or web storage. Where no secure store is available, the app keeps nothing and asks for sign-in on every start; it never falls back to a file. The refresh token's size is measured against the store's limit (Windows: 2,560 bytes per credential).
+- **Recent sign-in for sensitive actions.** Changing the password or email, deleting an organization and transferring ownership need a sign-in within the last 10 minutes: the client asks Keycloak again with `max_age=600` (on desktop through the browser, as in flow 1); the server checks `auth_time` and otherwise answers 401 with `error="insufficient_user_authentication"` and `max_age=600` (RFC 9470). Password, email, two-step verification and account deletion run on Keycloak's pages through application-initiated actions (`kc_action`, ADR 0009); the realm's re-authentication age for these actions is also 10 minutes.
+- **Audience per target.** The control plane accepts only tokens with audience `control-plane`. Each cell accepts only tokens with audience `cell-{cellId}`. Every service rejects a token with more than one audience. Each cell has the scope `cell:{cellId}` (a Keycloak client scope with an audience mapper, created when the cell registers). Keycloak grants on refresh only the scopes granted at sign-in, so:
+  - **Sign-in scopes.** Sign-in requests `openid`, `control-plane`, the scopes of the shared cells (`GET /api/v1/cells/shared`) and the scopes of customer-run cells this device has needed before.
+  - **One audience per token.** The access token from the code exchange carries every granted audience, so the client discards it unused and refreshes at once with `scope=control-plane`. Every later token request names one target (`scope=control-plane` or `scope=cell:{cellId}`), and the client checks the `scope` of the answer: Keycloak silently leaves out a scope it cannot grant.
+  - **A cell whose scope was not granted** (a customer-run cell, or a cell registered after sign-in) is authorized once more with its scope added. On the web this is a top-level redirect through the Keycloak session (`prompt=none`, no password; the page returns to where it was and gets new tokens). On desktop it goes through the browser as in flow 1. `login_required` or `interaction_required` falls back to the normal sign-in. `invalid_scope` (a remembered cell that no longer exists) retries once without the remembered cells and forgets them. If the scope is still missing, the client shows that the organization's server is unavailable and does not try again until the next sign-in, so it never loops.
+  - **Remembered cells.** The client remembers customer-run cell ids it needed (web: `localStorage`; desktop: the app's settings). They are hints that grant nothing, at most 10, each forgotten after 90 days unused, and cleared when the person signs out.
+  - **Limits.** At most 20 shared cells, each with an id of at most 16 characters, and at most 10 remembered cells keep the authorization URL under 3 KB and the refresh token within the desktop secure store (stored in several entries where one is too small). Growing past this needs pushed authorization requests (RFC 9126); that change comes before the 21st shared cell.
+  - A token for one cell, including a customer-run hybrid cell, cannot be replayed against another cell or the control plane. `KeycloakRealmTests` checks that a refresh narrows to one granted scope, can switch between granted scopes, and cannot add a scope that was not granted, even next to granted ones.
+- Every service validates tokens locally against Keycloak's JWKS: issuer, audience, expiry. No per-request call to Keycloak.
+- **Revoked sessions.** Each cell keeps revoked session ids (`sid`) and accounts in Valkey until `keep_until` (token lifetime after revocation), fed by `SessionRevoked` and `FullSync`. The authentication middleware rejects such tokens on HTTP and on SignalR connect. SignalR closes connections when their token expires (`CloseOnAuthenticationExpiration`); the client reconnects with a fresh token.
+- **Operations panel:** separate client `ops`, realm role `ops`, and the token must show two-factor authentication (`amr` contains `otp`). Every ops call is audit-logged.
+
+## Flows
+
+### 1. Sign in
+
+The web app reads `GET /api/v1/cells/shared`, signs in with Keycloak requesting the scopes described in "Audience per target", gets a control-plane token, reads `GET /api/v1/me/organizations`, then gets a cell-scoped token for each organization's cell (asking once more for any cell whose scope was not granted).
+
+**Desktop app** (OAuth for native apps, RFC 8252; docs/design DesktopLogin):
+
+1. The app starts a one-time listener bound to `127.0.0.1` only, on a port the operating system picks (port 0), and opens the authorization URL (PKCE `S256`, `state`, the sign-in scopes of "Audience per target") in the system browser. The sign-in page is never shown inside the app. The client's only redirect URI is exactly `http://127.0.0.1/callback` (no wildcard, no `localhost`); Keycloak accepts any port on the loopback address (RFC 8252 §7.3).
+2. Nothing opens on its own: without a session (at start, after signing out) the app shows a sign-in screen, and the browser opens only when the person presses "Sign in with your browser". The app then shows "Sign in in your browser", with "Open the browser again", "Copy the sign-in link" and "Cancel" (back to the sign-in screen). The first two reuse the same authorization URL; a new attempt gets a new `state` and PKCE verifier. The listener closes after 10 minutes and the screen offers to start again.
+3. Keycloak redirects to the listener. A request with another path or a wrong `state` gets 400 and the listener keeps waiting. An `error` response (for example `access_denied`) ends the attempt. With the expected `state` and `iss` (RFC 9207), the app exchanges the code with the PKCE verifier, stores the refresh token in the secure store, answers with the "Sign-in complete" page (`Cache-Control: no-store`, no external resources; an error page if the exchange fails) and closes the listener. The app does not take the focus from the browser: the page tells the person to go back to it.
+4. The "Sign-in complete" page asks the browser once to open the app through its URL scheme, and keeps an "Open the app" button for a browser that does not ask or a person who said no; the choice is the person's. The scheme only starts the app or brings it forward: the handler ignores every parameter, and no code or token travels through it. Installers register the scheme, an AppImage registers itself at start, and a development build does so only on request (README).
+5. On start the app draws the last conversation from the local cache and refreshes from the stored token alongside, never blocking the first screen; when the token is missing or rejected, it starts again at step 1. Signing out calls Keycloak's logout endpoint with the refresh token (which ends the session everywhere, flow 5), deletes the stored token and clears the local cache; the cache is cleared at once; if the call fails (offline), the token stays in the secure store only as "sign-out pending", unusable for anything but the logout call, which is retried on the next start or when back online before the token is deleted. A revoked session clears them too.
+
+### 2. Create an organization
+
+1. Client → control plane `POST /api/v1/organizations { name, region }`.
+2. Directory picks a healthy cell for the region (shared, registered, with a link heartbeat in the last 2 minutes; the one holding the fewest organizations); if none is available it answers `409 directory.no_cell_available`. The name is NFC-normalized and trimmed: 1 to 100 user-perceived characters (at most 400 code points, at most 10 in one character), at least one visible character, without control, line or paragraph separator, private-use or unassigned characters, and without format characters other than ZWNJ/ZWJ (so no bidi controls) (`400 directory.organization_invalid`); the owner's display name follows the same rules (else the email is used) and the locale must be a BCP 47 tag; an account creates at most 5 organizations in 24 hours (`429 directory.organization_limit` with `Retry-After`; a concurrent creation by the same account gets `429 directory.organization_creation_busy`) and needs a verified email (`403 directory.email_not_verified`). The owner's name, email and locale come from the token (locale `en-US` if the token has none). It stores the organization (`provisioning`) and the owner membership (`pending`), and enqueues `OrganizationProvisioned` for the cell in the same transaction.
+3. The cell's connector receives it; Organization creates the organization and the owner member, and calls Permissions to create the system roles and assign Owner, **in the same database transaction** as the inbox row. Only after commit does the cell acknowledge. Handling is idempotent by organization id.
+4. On `Ack` Directory sets the organization `active` and the owner membership `active`. On a non-retryable `Nack` it sets `failed` with the code. If the cell is unreachable the message waits; after 2 minutes the operations panel raises an alert and the client shows "still being created". A message the cell never accepts expires after its last attempt (about 3.5 hours of retries while connected, contract "Delivery") and the organization fails with `delivery_expired`.
+5. The client polls `GET /api/v1/organizations/{id}` (or waits on its own pending list) until `active` or `failed`.
+
+The control plane is the source of the organization → cell mapping; the cell owns all organization data.
+
+### 3. Invite a second person
+
+1. **Create.** Inviter → cell `POST /api/v1/orgs/{orgId}/invitations { email, role? }`. Rules:
+   - permission `members.invite-by-email`;
+   - `email` must be exactly one address: no CR/LF, commas or display names, at most 254 characters; IDN domains converted to punycode; then normalized (trim, Unicode NFC, `ToLowerInvariant`, no provider-specific rewriting);
+   - `role` only with `members.choose-role-on-invite`; never Owner; the invited role's permissions must be a subset of the inviter's (Phase 1 roles: Admin or Member); default Member;
+   - reject if the email belongs to an active member (`organization.already_member`) or a deactivated member (`organization.member_deactivated`, who cannot return by invitation);
+   - a new invitation to an email with a pending invitation revokes the old one, if the caller may revoke it (its inviter, or `members.manage-invitations`); otherwise `409 organization.invitation_pending`;
+   - attempts, refused ones included, are limited to 100 per account and organization per day (`429 organization.invitation_rate_limited`), so refusals cannot be used to find out, address by address, who is a member;
+   - limits (anti-spam), counting new invitations and resends alike: 50 sends per sender and 200 per organization per day, at most 3 invitations per recipient address per day in the organization (resends included; counted per organization, because a cell-wide count would need a read across organizations and would tell one organization that another invited the same address), at most 500 pending invitations per organization (`429 organization.invitation_rate_limited`).
+2. **Register.** Organization stores the invitation (`pending`, single use, bound to the email, expires after 7 days) with a random salt and the current key version, and publishes `organization.invitation-created.v1` (no code). ControlPlaneConnector sends `InvitationRegistered { invitation_id, code_hash, email, role, expires_at }` upstream.
+3. **Send.** Only after the control plane acknowledges `InvitationRegistered` does the connector call `IInvitationRegistration.MarkRegisteredAsync` (Organization.Contracts), which publishes `organization.invitation-ready.v1`. Email consumes that, gets the link from `IInvitationLinks.GetLinkAsync(invitationId, codeVersion)` (null unless that version is current and registered and the invitation pending and unexpired; then nothing is sent) and sends the invitation in English (decided 2026-11-15: the cell must not learn whether the invited address has an account, so not even that account's language is used). So a link never arrives before the control plane can resolve it. At most one email is sent per invitation and `code_version`: the inbox skips a redelivered event, and the delivery log records the invitation id and code version, so a lost inbox row after a send does not send again; a delivery whose outcome is unknown (`pending`) is never resent, and only a send that failed because the server was unavailable is retried through the event's retries.
+4. **Resolve.** The invitee opens the link and signs in or registers (see "Transport" for how the code survives the login redirect). Client → control plane `POST /api/v1/invitations/resolve { code }` → `{ organizationName, expiresAt, matchesAccount }` (`matchesAccount` tells the UI the user is signed in with a different email, without revealing the invited address; the inviter is not shown, decided 2026-11-15, so the control plane never holds the inviter's name). Resolving never changes state; malformed, unknown, revoked, used, failed, expired and `accepting` codes answer `404 directory.invitation_invalid` (an accepting account follows `GET /api/v1/invitations/acceptance` instead), and the answer is not cached (`Cache-Control: no-store`). Over the failed-attempt limit a network's attempts still run and only its failures are refused (`429`), so people behind the same NAT are not locked out.
+5. **Accept.** The user presses "Join" (accepting is never automatic on page load). Client → control plane `POST /api/v1/invitations/accept { code }`. Directory, in one transaction, moves the invitation `pending` → `accepting` with a conditional update after checking the code hash, status, expiry, and that the account's email is verified (`email_verified = true`) and equals the invited email. It records `accepted_at` and the account, gives the account a `pending` membership unless it has a pending or active one (never downgraded), and enqueues `InvitationAccepted` to the organization's cell (from Directory's organization → cell mapping). A repeated accept by the same account while `accepting` or `used` answers `202` with the current status. Every other code that cannot be accepted (also one being accepted or used by another account) answers the same `404 directory.invitation_invalid` as resolve; only for a usable code an unverified email answers `403 directory.email_not_verified` and another address `403 directory.invitation_email_mismatch`, and neither changes the invitation.
+6. **Join.** The cell, in one transaction:
+   - the invitation is still `pending` (conditional update on `accepted_at IS NULL AND revoked_at IS NULL`);
+   - `InvitationAccepted.accepted_at <= expires_at + 60 s` (the control plane's clock is authoritative; the cell does not reject because delivery was late);
+   - `normalize(InvitationAccepted.email)` equals the stored invited email (defence in depth);
+   - the inviter (`created_by`) is still an active member who holds `members.invite-by-email` and may still grant the invited role;
+   - the person is not a deactivated member;
+   - then it adds the member and assigns the role through `IPermissionsProvisioning`, and acknowledges. If the account is already an active member it marks the invitation `accepted` and acknowledges without other changes (checked after the state, expiry and email, before the inviter, whose rights do not matter when nothing is granted). An invitation or organization the cell does not know yet gets a retryable `Nack` `organization.invitation_not_found`, never an `Ack`. Otherwise it answers a non-retryable `Nack` with the reason: `organization.invitation_not_pending`, `organization.invitation_expired`, `organization.invitation_email_mismatch`, `organization.inviter_not_authorized` or `organization.member_deactivated`.
+7. **Outcome.** On `Ack` Directory marks the invitation `used` and the membership active; the organization appears in `GET /api/v1/me/organizations`. On `Nack` (or `delivery_expired`) the invitation becomes `failed` with the code, and a membership an acceptance made pending is removed again unless another acceptance of the same account and organization is still `accepting` (an `Ack` makes the membership active even if it was removed meanwhile). Only the cell the organization maps to settles it. The client polls `GET /api/v1/invitations/acceptance` (latest acceptance of the signed-in account: `accepting`, `used` or `failed { code }`; not counted by the attempt limits, because it takes no code). An acceptance left `accepting` for more than 2 minutes appears in the operations panel.
+8. **Manage.**
+   - List: `GET /api/v1/orgs/{orgId}/invitations` returns pending invitations (no codes): all of them with `members.manage-invitations`, otherwise the caller's own.
+   - Revoke: `DELETE /api/v1/orgs/{orgId}/invitations/{invitationId}` by the inviter or with `members.manage-invitations` (`204`); `409 organization.invitation_not_pending` once accepted, revoked or marked expired (a pending invitation past `expires_at` can still be revoked until the expiry job marks it); to anyone else `404 organization.invitation_not_found`, as for an unknown id. Publishes `organization.invitation-revoked.v1`; upstream `InvitationRevoked`.
+   - Resend: `POST .../invitations/{invitationId}/resend` by the inviter (who must still hold `members.invite-by-email`) or with `members.manage-invitations`, only while pending (`409 organization.invitation_not_pending`) and not past its expiry (`409 organization.invitation_expired`); the resender must be able to grant the invited role, and the inviter must still be an active member who could send it (otherwise `409 organization.inviter_not_authorized`, because acceptance would refuse it, step 6); the same `404` as revoke for anyone else; counted by the daily limits and the attempt limit. It answers `200` with the invitation and generates a new salt under the current key version and increments `code_version`, so the old link stops working; the original expiry stays. The new hash goes upstream as `InvitationRegistered` with the new `code_version`, and the email is sent only after the control plane acknowledged that version, as in step 3.
+   - When a member is removed, deactivated or loses `members.invite-by-email` or a role they invited with, their pending invitations are revoked in the same transaction.
+   - A scheduled job marks expired invitations `expired`: the control plane at `expires_at`; the cell only 24 hours after `expires_at`, so an acceptance the control plane recorded in time but delivered late (link down) still succeeds. The cell's acceptance check uses `InvitationAccepted.accepted_at`, never the delivery time.
+
+**States.** Control plane: `pending` → `accepting` → `used` | `failed`; `pending` → `revoked` | `expired`. `used`, `failed`, `revoked` and `expired` are terminal. An `InvitationRevoked` that arrives while `accepting` is recorded in `revoke_requested_at` but does not override the cell's later `Ack` or `Nack`, because the cell is the source of truth for membership. `InvitationRegistered` is applied as an upsert only while the row is `pending` and only for a newer `code_version`; it changes `code_hash` and never `status`. An `InvitationRevoked` for an unknown invitation leaves a tombstone so a late `InvitationRegistered` cannot recreate it. Both messages are refused for good (non-retryable `Nack`) if malformed (`directory.invitation_message_invalid`: ids, a code hash that is not 64 lower-case hex characters, an email that is not one address, a role other than `admin` or `member`, a code version of 0, an expiry more than 7 days and 1 hour ahead or more than 30 days past), if the invitation id belongs to another organization (`directory.invitation_not_in_organization`), or if another invitation has the code hash (`directory.invitation_code_conflict`). Cell: `pending` → `accepted` | `revoked` | `expired`.
+
+#### Invitation security
+
+- **Code.** `code = base64url(HMAC-SHA256(key[v], invitation_id ‖ salt))`: 256 bits, unforgeable without the key; `salt` is 128 random bits per invitation (new on every resend) and `v` the key version stored with it. The plain code is never stored, logged or put in an event; the cell and the control plane store only `SHA-256(code)` (a plain hash is enough because the code has full entropy). Trade-off: a database leak alone or a key leak alone reveals nothing, but both together reveal pending codes, whereas a random token stored only as a hash would not. The derivation is chosen because it lets Email build the link after the control plane has registered the hash, without storing the plain code anywhere.
+- **Keys.** Invitation keys live in the cell's secret store (a KMS in production; user secrets in development), never in the database or its backups. New codes, including resends, always use the current key version. A version stops issuing on rotation and is deleted 7 days later (the maximum invitation lifetime). Deleting a key does not by itself invalidate codes, because codes are checked against stored hashes. On suspected compromise the cell therefore revokes every pending invitation created with that version (`InvitationRevoked` upstream), re-issues each with a new salt under the current key (new `code_version`, new email), and then deletes the compromised version.
+- **Transport.** The link is `https://<web app>/invite#<code>`; the fragment is never sent to servers, proxies or logs. The invite page reads it and removes it from the address bar (`history.replaceState`) before the router, monitoring or any session recording starts. Across the sign-in redirect the code is kept in `localStorage` under one key as `{ code, expiresAt }` (30 minutes from storing; never in the OIDC `state`, a query string or `sessionStorage`), so a verification or set-password email link that finishes sign-in in another tab still finds it. It is removed after a successful accept, when the invitation resolves as invalid, when it is read after `expiresAt` (treated as absent), and on sign-out (except the invite page's "use another account" and "Sign out and sign in with the right account", which keep it for the next sign-in); opening a newer link overwrites it; a malformed stored value, or one whose expiry lies more than 30 minutes ahead, is deleted and treated as absent; a tab settling its own invitation removes the stored code only if it is still that code. Accepted risk: on a shared computer a code left behind can be read from `localStorage`, and the next person who signs in within 30 minutes sees the mismatch screen with the inviting organization's name; they cannot accept, because acceptance is bound to the invited verified email. The 30 minutes count from capture and are not renewed: if verification takes longer, the person opens the email link again. An expired or malformed stored code is also swept once at app start, and a malformed `/invite#...` fragment in any tab never stores a value and leaves a stored code alone. Once sign-in completes in any tab with an unexpired code, the app opens the invite page. The page sets `Referrer-Policy: no-referrer`. The code is sent only in POST bodies; request body capture is disabled for `resolve` and `accept`. Link scanners and mail prefetchers cannot consume an invitation: no GET changes state and they are not signed in.
+- **Binding.** Only `email_verified = true` counts. "Trust email" is enabled only for vetted identity providers (Google). Rule for Phase 5: an organization's own SSO provider may assert verified email only for domains that organization has verified, so it can never accept invitations sent to other domains.
+- **Oracles.** Revoked, used, expired and unknown codes answer `directory.invitation_invalid` with the same status and body. `directory.invitation_email_mismatch` is shown only to someone holding a valid code and never reveals the invited address.
+- **Brute force.** `resolve` and `accept` accept bearer tokens only (no cookies, so CSRF does not apply) and are rate limited: 10 attempts per account per minute and 1000 per IP per hour, and failed attempts additionally 100 per IP per hour; repeated failures are security log events. With 256-bit codes guessing is infeasible; the limits stop abuse and noise.
+- **Spam and phishing.** Creation limits per inviter, organization and recipient (step 1), stricter for new Free organizations later. Organization creation is limited per account (5 per day). Email sender name and subject come from fixed templates (`"<organization> on Backroom"`, CR/LF stripped, names length-limited and HTML-encoded, never turned into links). The only link is the invitation link to our own web origin, and the email says what to do if the invitation was unexpected.
+- **Audit.** Created, resent, revoked, expired, accepted and failed acceptance are security log events with ids only in Phase 1 and audit log entries once the audit module exists (Phase 2). The inviter is notified of acceptance once notifications exist (Phase 2). Admins see invitation delivery status (from the email delivery log) in Phase 2.
+- **Privacy and retention.** The control plane stores the invited email only as an HMAC with its own key over the invitation id and the normalized email, so the same person gives a different value in every invitation (pseudonymized personal data, listed in the processing records). For expired, revoked and failed invitations the cell's email and the control plane's `email_hmac` are deleted after 30 days; the control plane also deletes the `email_hmac` of used invitations 30 days after use. Revocation tombstones are kept until a late `InvitationRegistered` would be refused anyway: 30 days (the oldest expiry a registration may carry) plus 7 days and 1 hour (the longest lifetime) after the revocation. When an account is anonymized, the cell's `accepted_by` and the control plane's `accepting_account_id` are cleared. Outbound link message payloads are deleted once acknowledged or rejected (`InvitationAccepted` carries a name and an email).
+
+
+### 4. Create a channel and send a message
+
+1. Member → cell `POST /api/v1/orgs/{orgId}/channels { name }` (permission `channels.create-public`).
+2. Member → cell `POST /api/v1/orgs/{orgId}/channels/{channelId}/messages { clientMessageId, text }`. The server escapes the text, derives the stored blocks (a single paragraph in Phase 1) and never trusts client-supplied blocks.
+3. Messaging stores the message and the outbox row for `messaging.message-posted.v1` in one transaction.
+4. After commit, the live event goes to Valkey; the realtime gateway pushes `MessagePosted` to connections subscribed to that channel, on any app node.
+5. The second client renders it (target: p95 under 300 ms in the same region). Live events can be lost during a reconnect, so after reconnecting the client fetches `GET .../messages?after={lastSeenId}`.
+
+### 5. Sign out
+
+1. Keycloak back-channel logout → control plane (logout token verified).
+2. Identity stores the revocation and enqueues `SessionRevoked` to every cell where the account has a membership.
+3. Each cell adds the session to its revoked set and closes that session's SignalR connections on all nodes. Requests with the old token are rejected until it expires.
+
+## Modules
+
+Each module folder has a CLAUDE.md with responsibility, tables, events and dependencies. Schema names are the module names in snake_case.
+
+| Module | Runs in | Schema | Phase 1 scope |
+| --- | --- | --- | --- |
+| [Identity](../../backend/src/Modules/Identity/CLAUDE.md) | Control plane | `identity` | Token settings, back-channel logout, session revocation fan-out |
+| [Directory](../../backend/src/Modules/Directory/CLAUDE.md) | Control plane | `directory` | Organizations and cell mapping, memberships view, invitation resolution and acceptance |
+| [CellManagement](../../backend/src/Modules/CellManagement/CLAUDE.md) | Control plane | `cell_management` | Cell registry and registration, gRPC link service, per-cell outbound queue, cell list for ops |
+| [ControlPlaneConnector](../../backend/src/Modules/ControlPlaneConnector/CLAUDE.md) | Cell (worker) | `control_plane_connector` | Outbound stream, inbox, upstream outbox, heartbeat, full sync, membership digest |
+| [Organization](../../backend/src/Modules/Organization/CLAUDE.md) | Cell | `organization` | Organizations, members, invitations |
+| [Permissions](../../backend/src/Modules/Permissions/CLAUDE.md) | Cell | `permissions` | System roles, role assignments, permission check |
+| [Messaging](../../backend/src/Modules/Messaging/CLAUDE.md) | Cell | `messaging` | Public channels, plain-text messages |
+| [Realtime](../../backend/src/Modules/Realtime/CLAUDE.md) | Cell (app) | – (Valkey) | SignalR hub, per-channel groups, revoked sessions |
+| [Email](../../backend/src/Modules/Email/CLAUDE.md) | Cell (worker) | `email` | Email sender, Mailpit guard, invitation template, delivery log |
+
+The module plan says the control plane connector keeps no persistent data; it needs an inbox and an upstream outbox for the delivery guarantee, so it owns a small schema (decision 7 below).
+
+## Cross-cutting rules (building blocks)
+
+- **Identifiers:** UUIDv7, generated by the application.
+- **Units of work:** every request and every message handler runs in one database transaction.
+- **Organization context:** derived from the authenticated account plus the route's `orgId` and accepted only after the membership check; background handlers take it from the message's `org_id`. It is set transaction-locally (`set_config('app.org_id', ..., true)`) when the unit of work begins (safe with pooled connections). RLS policy on every organization table, forced and for all commands: `org_id = NULLIF(current_setting('app.org_id', true), '')::uuid` (see ADR 0005 for why `NULLIF` is required). The application role does not bypass RLS; migrations run with a separate role.
+- **RLS exemptions:** the outbox relay and inbox writers (they handle many organizations) use a dedicated role limited to outbox/inbox tables; the control plane's tables are cross-organization by nature and are not RLS-scoped.
+- **Errors:** RFC 9457 problem details (`application/problem+json`). Every error response, including 404, 405 and unhandled exceptions, carries a stable `code` (domain codes such as `messaging.channel_not_found`; `http.*` codes for framework responses; `server.unexpected` for 5xx) and a `traceId`. Clients translate the code; `detail` is never shown for 5xx and never contains exception text. 429 responses carry `Retry-After` in seconds. A 401 comes only from authentication middleware.
+- **Events:** integration events go through the outbox to RabbitMQ (exchange `{module}.events`); consumers are idempotent by `event_id`. Live events go to Valkey after commit, never through RabbitMQ.
+- **Time:** `TimeProvider` only.
+- **Logging:** no message text, email addresses, names or invitation codes; account and organization ids only. The `access_token` query parameter is redacted from request logs and traces.
+- **CORS:** the control plane and each cell allow only the configured web origins (hybrid cells have their own settings). APIs accept bearer tokens only, never cookies, so CSRF does not apply.
+- **Email normalization:** one rule everywhere (`EmailAddress` in BuildingBlocks.Domain): exactly one address with an ASCII local part, trim, Unicode NFC, `ToLowerInvariant` (never culture-sensitive, because of Turkish İ/ı), and the domain converted to punycode (IDNA 2008 as ICU implements it). The cell normalizes invited addresses with it, and the control plane both the invited address and the accepting account's verified email, so the two compare equal.
+
+## Integration events (RabbitMQ, inside a cell)
+
+| Event | Publisher | Consumers | Payload |
+| --- | --- | --- | --- |
+| `organization.member-added.v1` | Organization | ControlPlaneConnector | `org_id, account_id, role, version` |
+| `organization.member-removed.v1` | Organization | ControlPlaneConnector, Realtime | `org_id, account_id, version` |
+| `organization.invitation-created.v1` | Organization | ControlPlaneConnector | `org_id, invitation_id, code_version, email, role, expires_at` (no code or hash; the connector reads the hash of that version through `IInvitationLinks.GetCodeHashAsync`); published again on resend with the new `code_version` |
+| `organization.invitation-ready.v1` | Organization | Email | `org_id, invitation_id, code_version, locale` (after the control plane acknowledged that `code_version`, once per version; `locale` is always `en-US`, because the cell must not learn whether the address has an account; Email skips it if a newer version exists) |
+| `organization.invitation-revoked.v1` | Organization | ControlPlaneConnector | `org_id, invitation_id` |
+| `messaging.message-posted.v1` | Messaging | – (search, notifications later) | `org_id, channel_id, message_id, author_account_id, created_at` (no text) |
+
+Every event carries `event_id` (UUIDv7), `occurred_at`, `org_id` and the trace context. Roles are assigned synchronously through `IPermissionsProvisioning`, not through events, so a member never exists without a role.
+
+## Live events (Valkey → SignalR)
+
+Groups are per conversation, so content only reaches people who may see it when private channels and DMs arrive: `cell:{cellId}:org:{orgId}:channel:{channelId}`, plus `cell:{cellId}:org:{orgId}` for organization-level events without content. Payloads are MessagePack.
+
+| Server → client | Group | Payload |
+| --- | --- | --- |
+| `MessagePosted` | channel | `orgId, channelId, message { id, clientMessageId, authorAccountId, text, createdAt }` |
+| `ChannelCreated` | organization | `orgId, channel { id, name, createdAt }` |
+| `SessionRevoked` | connection | `reason` (sent before the server closes the connection) |
+
+| Client → server (hub methods) | Check |
+| --- | --- |
+| `SubscribeOrganization(orgId)` / `UnsubscribeOrganization(orgId)` | active member |
+| `SubscribeChannel(orgId, channelId)` / `UnsubscribeChannel(orgId, channelId)` | may read the channel (Phase 1: active member, public channel) |
+
+On `member-removed`, Realtime removes the account's connections from that organization's groups. Hub path `/hubs/realtime`; the token comes from the `access_token` query parameter (WebSocket) or the `Authorization` header.
+
+## HTTP APIs
+
+JSON, `/api/v1`, bearer token, problem details on errors. OpenAPI documents are generated from code and snapshot-tested with Verify; the web client is generated from them.
+
+### Control plane (audience `control-plane`)
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /api/v1/me/organizations` | `{ organizations: [{ id, name, cellId, cellUrl }] }`: the caller's active organizations, oldest first, at most 500 (counted before leaving out any whose cell is not registered, which is logged) |
+| `POST /api/v1/organizations` | `{ name, region }` → `202 { id, status, cellId, cellUrl }` with `Location`; `400 directory.organization_invalid`; `403 directory.email_not_verified`; `400 directory.email_invalid` (longer than 254 characters); `409 directory.no_cell_available`; `429 directory.organization_limit` or `directory.organization_creation_busy` with `Retry-After`. Behind the feature flag `Features:OrganizationCreation` (on in development) |
+| `GET /api/v1/organizations/{id}` | `{ id, status, code }`: `provisioning`, `active` or `failed` with `code` (pending or active member, or the creator while `provisioning` or `failed`; anyone else gets `404 directory.organization_not_found`, as for an unknown id) |
+| `POST /api/v1/invitations/resolve` | `{ code }` → `{ organizationName, expiresAt, matchesAccount }`; `404 directory.invitation_invalid`; `429 directory.invitation_rate_limited` with `Retry-After`; no state change; behind `Features:Invitations` |
+| `POST /api/v1/invitations/accept` | `{ code }` → `202 { organizationId, status }` (`accepting`, or `used` on a repeat) with `Location: /api/v1/invitations/acceptance`; idempotent for the same account; `404 directory.invitation_invalid`; `403 directory.email_not_verified` or `directory.invitation_email_mismatch`; `429 directory.invitation_rate_limited` with `Retry-After`; behind `Features:Invitations` |
+| `GET /api/v1/invitations/acceptance` | The signed-in account's latest acceptance `{ organizationId, status, code }`: `accepting`, `used` or `failed` with `code`; `404 directory.invitation_acceptance_not_found` if none; `Cache-Control: no-store`; not rate limited by the invitation attempt limits; behind `Features:Invitations` |
+| `GET /api/v1/cells/shared` | **Anonymous**: `{ cells: [{ id }] }`, the registered shared cells (never customer-run or dedicated ones), at most 20; shared cell ids are at most 16 characters and never name a customer; `Cache-Control: public, max-age=300`; rate limited per IP. The client builds its sign-in scopes from it |
+| `POST /internal/keycloak/backchannel-logout` | Keycloak back-channel logout |
+| `GET /api/v1/ops/cells` | Ops only (role `ops`, 2FA): cells with type, region, version, link status, last heartbeat, organization count, pending and rejected messages |
+| `POST /api/v1/ops/cells` | Ops only: `{ id, name, type, region, publicUrl }` → `201 { id, registrationKey, expiresAt }`; the key is shown once |
+| `POST /api/v1/cells/register` | **Anonymous; a one-time registration key is required**: `{ registrationKey, publicKey (JWK, EC P-256, public part only), version }` → `{ cellId, clientId, issuer }`; rate limited per IP; every attempt is a security log event |
+
+### Cell (audience `cell-{cellId}`)
+
+Every route under `/api/v1/orgs/{orgId}` runs the membership check first, in the unit of work and inside that organization, with the account taken from the token. An unknown organization, one the account never belonged to, and a removed or deactivated membership all answer the same `404 organization.not_found`, so the answer does not reveal whether an organization exists.
+
+| Method and path | Permission |
+| --- | --- |
+| `GET /api/v1/orgs/{orgId}` | member; `{ id, name }` |
+| `GET /api/v1/orgs/{orgId}/members?after={accountId}&limit={n}` | member; `{ members: [{ accountId, displayName, email }], next }`: active members ordered by account id, `limit` 1 to 100 (default 50; another number gets `400 organization.page_invalid`, a value that is not a number or an `after` that is not an id gets `400 http.bad_request`, and only after the membership check, so a non-member still gets the 404), `next` is the `after` of the following page or `null`. Returns display names only: `email` is `null` except on the caller's own entry, and other people's emails are not even read from the database |
+| `POST /api/v1/orgs/{orgId}/invitations` | `members.invite-by-email` (+ `members.choose-role-on-invite` for `role`); rate limited |
+| `GET /api/v1/orgs/{orgId}/invitations` | all pending with `members.manage-invitations`; otherwise own, with `members.invite-by-email` |
+| `DELETE /api/v1/orgs/{orgId}/invitations/{invitationId}` | the inviter, or `members.manage-invitations`; `409` once accepted |
+| `POST /api/v1/orgs/{orgId}/invitations/{invitationId}/resend` | the inviter (still holding `members.invite-by-email`), or `members.manage-invitations`; pending only; rate limited |
+| `GET /api/v1/orgs/{orgId}/channels` | member |
+| `POST /api/v1/orgs/{orgId}/channels` | `channels.create-public` |
+| `GET /api/v1/orgs/{orgId}/channels/{channelId}/messages?before={id}&after={id}&limit={n}` | member |
+| `POST /api/v1/orgs/{orgId}/channels/{channelId}/messages` | member |
+
+## Cell ↔ control plane link
+
+Defined in [`cell_link.proto`](../../backend/proto/backroom/controlplane/v1/cell_link.proto); `buf lint` and `buf breaking` (against `main`; against the last two release tags once releases exist) run in CI.
+
+- **Stream and identity.** One bidirectional stream per cell (`CellLinkService.Connect`), opened by the cell. The cell id comes from the bearer token (`azp = cell-{id}`); a mismatching `Hello.cell_id` is rejected. The control plane closes the stream when the token expires, and the cell reconnects with a fresh token before that. The first message must be `Hello` within 10 seconds. A new stream for the same cell supersedes the old one (the old one ends with `Aborted`; the stream ending at token expiry ends with `Unauthenticated`); in the cell, a PostgreSQL advisory lock ensures only one worker holds the stream.
+- **Delivery.** Durable messages carry a `message_id` (UUIDv7). The receiver commits its handling and the inbox row in one transaction, then answers `Ack` or `Nack` for that id. The sender resends every unacknowledged message after reconnect, in sequence order; receivers drop duplicates by `message_id`. A retryable `Nack` is retried with backoff; a non-retryable `Nack` parks the message as `rejected` (shown in the operations panel) and does not block the rest. The sequence number is for diagnostics and resend order only: messages are sent in sequence order, but one waiting for a retry can be overtaken by later ones, so a receiver answers a message whose prerequisite it has not seen yet (for example an invitation for an organization it does not know) with a retryable `Nack`. A sent message waits 30 seconds for its answer before it is sent again; after 50 attempts it is rejected with `delivery_expired`. Control messages (`Hello`, `Welcome`, `Heartbeat`, `Ack`, `Nack`) are neither persisted nor acknowledged.
+- **Downstream (control plane → cell):** `OrganizationProvisioned`, `SessionRevoked`, `InvitationAccepted`, `MembershipSnapshotRequested`.
+- **Upstream (cell → control plane):** `Heartbeat` (every 30 s), `MembershipChanged`, `OrganizationUpdated` (defined now, used when renaming arrives), `InvitationRegistered` (upsert by `invitation_id`, newer `code_version` only, while pending), `InvitationRevoked`, `MembershipDigest`, `MembershipSnapshot`.
+- **Scope of upstream messages.** Every upstream message that names an organization is accepted only if Directory maps that organization to the authenticated cell; otherwise it is rejected with a non-retryable `Nack` `directory.organization_not_in_cell` and logged as a security event. Fields such as `cell_id` in control-plane tables come from the authenticated stream, never from payloads. Downstream messages are routed by Directory's organization → cell mapping.
+- **Ordering.** `MembershipChanged` and `OrganizationUpdated` carry a per-entity `version`; the control plane applies only newer versions, so reordering by retries is harmless.
+- **Drift repair.** Every 15 minutes the cell calls `FullSync` (organizations assigned to it, and revoked sessions of accounts that are members in it) and sends a `MembershipDigest` (member count and hash per organization; at most 10,000 organizations per message, more are sent in several messages). On a digest mismatch the control plane sends `MembershipSnapshotRequested` and replaces its view with the `MembershipSnapshot`. `FullSync` never deletes data in a cell; an organization the cell has but the control plane does not assign raises an operations alert.
+- **Versions.** A receiver answers an unknown payload type with a non-retryable `Nack` `unsupported_type`; the control plane sends only types supported by the cell's `Hello.version`.
+- **Cell authentication.** At registration the cell generates an EC P-256 key pair; the public key is registered as Keycloak client `cell-{cellId}` (signed-JWT client authentication) together with the client scope `cell:{cellId}`. The cell gets its token with `client_credentials` and a client assertion signed by its private key. Registration uses a one-time registration key from the operations panel (the AppHost in development).
+- **Cell registration** (approved by the owner on 2026-10-26):
+  1. Ops creates the cell record (`pending`) and gets a registration key: 256 random bits, valid 24 hours, single use, stored only as SHA-256. In development the control plane creates the key for each configured development cell from a value the AppHost generates; outside Development that path is refused.
+  2. On its first start the cell's worker generates an EC P-256 key pair and stores the private key in its key file before calling the control plane, so a retry uses the same key. The private key never leaves the cell. Production: a file mounted from the deployment's secret store. Development: a file in the user profile (`%APPDATA%\Backroom\cells\{cellId}\`), outside the repository and readable only by the user.
+  3. The cell calls `POST /api/v1/cells/register`. In one transaction the control plane claims the key for that public key (its SHA-256 JWK thumbprint); a key already claimed for a different public key is rejected, so a racing second registration cannot replace the first one's key. Outside any transaction it then creates or updates, idempotently, in Keycloak: the confidential client `cell-{cellId}` (signed-JWT client authentication with that public key, ES256; only the client-credentials grant; no redirect URIs; its tokens carry the audience `control-plane`), the client scope `cell:{cellId}` with the audience `cell-{cellId}`, and that scope as an optional scope of `web` and `desktop`. Finally it marks the key used and the cell `registered`. Unknown, expired, used and differently claimed keys all get the same error `cell_management.registration_key_invalid`.
+  4. The control plane manages Keycloak with its own confidential client `control-plane-admin` (client credentials only), whose service account holds only `realm-management/manage-clients`. Its secret comes from the secret store (development: an AppHost parameter). `manage-clients` also covers every other client and client scope of the realm, so until then the secret is as sensitive as an operations credential. Before production (a release blocker) this is narrowed with Keycloak's fine-grained admin permissions to `cell-*` clients, `cell:*` client scopes and the optional scopes of `web` and `desktop`.
+  5. Later: key rotation (a new public key replaces the old one in the client) and re-registration with a new registration key.
+- **Liveness.** HTTP/2 PING every 20 s; reconnect with exponential backoff and jitter (1 s to 60 s).
+- **Content.** No organization content crosses the link; the protocol has no message type for it. Personal data on the link is limited to what the control plane holds anyway (account id, name, email of members and invitees).
+
+## Data (Phase 1 tables)
+
+Columns are indicative; migrations are reviewed in each module's PR.
+
+Control plane:
+
+- `directory.organizations (id, name, region, cell_id, status, failure_code, created_by, created_at)`
+- `directory.memberships (org_id, account_id, status, version, updated_at)`
+- `directory.invitations (invitation_id, org_id, cell_id, code_hash, email_hmac, role, expires_at, status pending|accepting|used|failed|revoked|expired, code_version, accepting_account_id, accepted_at, failure_code, revoke_requested_at, used_at)`; revoked unknown ids are kept as tombstones for 37 days and 1 hour (see "Privacy and retention")
+- `cell_management.cells (id, name, type, region, public_url, status, version, last_heartbeat_at, created_at)`
+- `cell_management.registration_keys (key_hash, cell_id, expires_at, claimed_key_thumbprint, claimed_at, used_at)`
+- `cell_management.outbound_messages (message_id, cell_id, sequence, type, payload, trace_parent, trace_state, created_at, acked_at, rejected_code, rejected_at, attempts, next_attempt_at, leased_until, leased_by, cell_answer)`; payload at most 64 KB, deleted when settled
+- `cell_management.inbound_messages (cell_id, message_id, type, received_at)` (de-duplication per cell)
+- `identity.revoked_sessions (session_id, account_id, revoked_at, keep_until)`
+
+Cell:
+
+- `control_plane_connector.link_inbox (message_id, type, received_at)`, `control_plane_connector.outbox (message_id, sequence, type, payload, trace_parent, trace_state, created_at, acked_at, rejected_code, rejected_at, attempts, next_attempt_at)` (not organization-scoped: a digest spans organizations; payloads deleted when settled); `control_plane_connector.inbox`, the standard integration event inbox (organization-scoped, RLS)
+- `organization.organizations (id, name, owner_account_id, version, created_at)`
+- `organization.members (org_id, account_id, display_name, email, locale, status, version, joined_at)`
+- `organization.invitations (id, org_id, email, role, salt, key_version, code_version, code_hash, status, created_by, created_at, expires_at, registered_at, accepted_at, accepted_by, revoked_at, revoked_by)`, `organization.invitation_resends (id, org_id, invitation_id, resent_by, resent_at)` (for the limits; only the resender's account id; deleted 30 days after the resend)
+- `permissions.roles (id, org_id, key, is_system)`, `permissions.role_permissions (role_id, permission)`, `permissions.member_roles (org_id, account_id, role_id)`
+- `messaging.channels (id, org_id, name, created_by, created_at, archived_at)`
+- `messaging.messages (id, org_id, channel_id, author_account_id, client_message_id, text, blocks, created_at, edited_at, deleted_at)`, unique `(channel_id, author_account_id, client_message_id)`
+- `email.deliveries (id, org_id, template, template_version, recipient_hash, provider_message_id, status, created_at, updated_at, reference_id, reference_version)`, no content (the reference is the ids the delivery is for, such as an invitation and its code version; at most one pending or sent delivery per template and reference), 90-day retention
+- `{schema}.outbox` for each publishing module, `{schema}.inbox` for each consuming module
+
+Keys: the versioned cell invitation keys (HMAC) and the cell's private key live in the cell's secret store (development: user secrets); the control plane's email HMAC key in its secret store.
+
+## Development topology
+
+- AppHost runs the control plane, Keycloak (realm import: clients `web`, `ops`, test users `alice@example.test`, `bob@example.test`, SMTP pointing at Mailpit as required by ADR 0008 item 7) and two cells (`cell-a`, `cell-b`), each in `app` and `worker` roles. The AppHost registers both cells on first run.
+- The two cells share one PostgreSQL server, Valkey and RabbitMQ in development, separated by database (`cell_a`, `cell_b`), key prefix and virtual host. In production each cell has its own instances.
+
+## Permissions used in Phase 1
+
+| Permission key | Owner | Admin | Member |
+| --- | --- | --- | --- |
+| `channels.create-public` | ✅ | ✅ | ✅ |
+| `members.invite-by-email` | ✅ | ✅ | ✅ |
+| `members.choose-role-on-invite` | ✅ | ✅ | – |
+| `members.manage-invitations` | ✅ | ✅ | – |
+
+Owner has every permission and cannot be edited, including permissions added later. The full list arrives with the role screens in Phase 5.
+
+A member without the permission an endpoint requires gets `403 permissions.forbidden`; anyone who is not a member gets the membership check's 404 first, so a 403 is never shown to outsiders. A role change takes effect on the next request. A member may grant a role only if it is not Owner and all its permissions are ones the member has.
+
+## Decisions in this contract that go beyond the requirements
+
+1. New link message types: `OrganizationProvisioned` and `MembershipSnapshotRequested` downstream; `InvitationRegistered`, `InvitationRevoked`, `MembershipDigest` and `MembershipSnapshot` upstream. The requirements list examples, not a closed set.
+2. Organization creation starts at the control plane (it owns the organization → cell mapping) and completes through the link's delivery guarantee.
+3. Invitations are created in the cell and accepted at the control plane, which then sends `InvitationAccepted` (the requirements' "davet kabulü" message).
+4. The cell authenticates with a client assertion signed by its private key (`private_key_jwt`), which implements "the cell signs a request with its private key to obtain a short-lived credential".
+5. Access tokens are audience-restricted per cell and for the control plane.
+6. Invitation codes are derived (HMAC of the invitation id and a per-invitation salt, with versioned keys) and never stored, logged or sent in events; only hashes are stored. The invitation email is sent only after the control plane has registered the hash. Revoke, list and resend (with a new code) are part of Phase 1, and an inviter's pending invitations are revoked when they lose the right to invite. A new permission `members.manage-invitations` (Owner, Admin) covers listing, revoking and resending other people's invitations.
+7. The control plane connector owns a small schema (inbox, outbox, state), unlike the module plan's "no persistent data", because the delivery guarantee needs it.
+8. In development, cells share server instances, separated by database, key prefix and virtual host.
+9. Phase 1 messages are plain text; the rich text editor decision (TipTap or Lexical) stays open for Phase 2.
+10. Session lifetimes (30 days idle, 90 days total with "Remember me") and the desktop sign-in through the system browser with a loopback redirect and the OS secure store; the requirements set the start-time budget but not these.
+11. Sign-in requests the scopes of all shared cells, and of customer-run cells the device has used, because Keycloak cannot add a scope on refresh; each token request narrows to one audience. The alternatives were a control-plane token broker (token exchange; the control plane would sit in the path of every cell token) and requesting only the user's own cells (a second browser round trip on every first sign-in).
+
+## Order of implementation (one or more PRs each)
+
+1. Building blocks: UUIDv7, units of work, organization context and RLS, problem details, outbox and RabbitMQ layer, Testcontainers base. Architecture test: only Email uses SMTP.
+2. Keycloak realm, audiences and token validation in both hosts. *(human review)*
+3. Control plane Directory and CellManagement with the link service, and `GET /api/v1/cells/shared`; cell ControlPlaneConnector; `.proto` compiled; cell registration. *(human review for cell authentication)*
+4. Organization and Permissions with invitations. *(human review)*
+5. Email module with the Mailpit guard and invitation template. *(human review)*
+6. Messaging and Realtime, including revoked sessions.
+7. Web: sign-in, organizations, channels, messages, live updates, reconnect catch-up; i18n TR/EN; generated API client. Ops: cell list.
+8. Two cells in the AppHost, end-to-end test, first k6 load test.
+9. Keycloak spike: re-authenticate with an organization's SSO when entering it.

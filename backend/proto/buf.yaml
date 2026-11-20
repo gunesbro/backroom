@@ -1,0 +1,11 @@
+# Protobuf contracts between cells and the control plane (docs/adr/0003).
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+breaking:
+  # Wire and source compatibility: hybrid cells may run up to two major versions behind.
+  use:
+    - FILE

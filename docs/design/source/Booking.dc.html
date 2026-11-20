@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Oda rezervasyonu</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.pg{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--ok:#2f9e44;--oks:#e6f4ea;--okd:#1e6b34;--bad:#c92a2a;--bads:#fff0f0;--warn:#fff8e6;--warnd:#5a3d00;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#5b6170;height:760px;display:flex;align-items:flex-start;justify-content:center;gap:24px;padding:28px 24px;box-sizing:border-box;font-size:14px;position:relative;overflow:hidden}
+.col{display:flex;flex-direction:column;gap:10px;position:relative}
+.st{font-size:11px;letter-spacing:.05em;color:#e9ecf2;text-transform:uppercase;font-weight:600}
+.card{background:var(--pn);border-radius:14px;box-shadow:0 18px 48px rgba(10,12,18,.28);display:flex;flex-direction:column;overflow:hidden;position:relative}
+.ch{display:flex;align-items:center;gap:10px;padding:14px 18px 8px}
+.ch h2{margin:0;font-size:17px}
+.cb{padding:6px 18px 14px;display:flex;flex-direction:column;gap:10px}
+.cf{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--ln);background:var(--bg)}
+.x{margin-left:auto;width:30px;height:30px;border:0;border-radius:8px;background:none;color:var(--mut);font:inherit;font-size:18px}
+.mut{color:var(--mut)}
+.sm{font-size:12px}
+.lb{font-size:12px;font-weight:600;color:var(--mut)}
+.f{display:flex;flex-direction:column;gap:4px}
+.inp{height:36px;padding:0 10px;border:1px solid var(--ln);border-radius:8px;display:flex;align-items:center;gap:6px;font-size:14px;background:var(--pn)}
+.inp.on{border-color:var(--acc);box-shadow:0 0 0 3px var(--accs)}
+.row{display:flex;gap:8px;align-items:center}
+.row > .f{flex:1}
+.btn{height:34px;padding:0 14px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:13px;color:var(--ink);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.ico{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#1f2430;flex:none;background:#c5d0fa}
+.avs{display:flex}.avs .av{margin-left:-6px;border:2px solid var(--pn)}.avs .av:first-child{margin-left:0}
+.tag{font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;background:var(--sd);color:var(--mut);white-space:nowrap}
+.tag.ok{background:var(--oks);color:var(--okd)}.tag.bad{background:var(--bads);color:var(--bad)}.tag.acc{background:var(--accs);color:var(--accd)}.tag.warn{background:#fff3bf;color:var(--warnd)}
+.tg{width:34px;height:20px;border-radius:10px;background:#c9ced6;position:relative;flex:none}
+.tg::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.tg.on{background:var(--acc)}.tg.on::after{left:16px}
+.menu{background:var(--pn);border:1px solid var(--ln);border-radius:12px;box-shadow:0 14px 36px rgba(15,18,24,.22);padding:6px;display:flex;flex-direction:column;font-size:13px;z-index:10}
+.menu .g{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);padding:8px 10px 4px}
+.menu .mi{display:flex;align-items:center;gap:10px;min-height:32px;padding:4px 10px;border-radius:7px}
+.menu .mi.on{background:var(--accs)}
+.menu .mi small{display:block;font-size:11.5px;color:var(--mut)}
+.menu .mi .r{margin-left:auto;font-size:12px;color:var(--mut);white-space:nowrap}
+.menu .hr{height:1px;background:var(--ln);margin:4px 0}
+.comp{border:1px solid var(--ln);border-radius:10px;background:var(--pn);display:flex;flex-direction:column}
+.comp .tx{padding:12px;font-size:14px;min-height:22px}
+.comp .bt{display:flex;align-items:center;gap:8px;padding:6px 8px;color:var(--mut);font-size:12px}
+.sendg{margin-left:auto;display:flex;border-radius:8px;overflow:hidden}
+.sendg span{height:30px;display:flex;align-items:center;justify-content:center;background:var(--acc);color:#fff}
+.sendg span:first-child{width:34px}.sendg span:last-child{width:24px;border-left:1px solid rgba(255,255,255,.35)}
+.sendg span.op{background:var(--accd)}
+.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px;margin-left:1px}
+.ment{color:var(--accd);background:var(--accs);border-radius:4px;padding:0 3px;font-weight:600}
+.note{font-size:12px;color:#e9ecf2;line-height:1.45}
+.dlg{width:450px}
+.tzr{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin-top:-2px;font-size:12px}
+.tzs{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border-radius:6px;background:var(--sd);color:var(--ink);white-space:nowrap}
+.tzp{color:var(--mut)}
+.pg{gap:18px}
+.rm{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--ln);border-radius:10px}
+.rm.on{border-color:var(--acc);background:#f5f7ff;box-shadow:0 0 0 2px var(--accs)}
+.rm.bad{background:#fffafa}
+.rm .t{flex:1;line-height:1.35}
+.rm .t small{display:block;font-size:12px;color:var(--mut)}
+.rd{width:16px;height:16px;border-radius:50%;border:1.8px solid #8d95a3;box-sizing:border-box;position:relative;flex:none}
+.on .rd{border-color:var(--acc)}.on .rd::after{content:"";position:absolute;inset:2.5px;border-radius:50%;background:var(--acc)}
+.bad .rd{border-color:#d0d4db;background:var(--sd)}
+.warnl{font-size:12px;color:var(--bad);display:flex;gap:6px;align-items:center}
+.floor{width:340px;padding:14px;gap:10px}
+.floor h3{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}
+.rc{border:1px solid var(--ln);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.rc .hd{display:flex;align-items:center;gap:8px;font-weight:600}
+.rc .hd .tag{margin-left:auto}
+.resv{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--accs);color:var(--accd);font-size:12px;font-weight:600}
+.resv.soon{background:#fff3bf;color:var(--warnd)}
+.dk{width:350px;background:#161a22;border-radius:14px;padding:14px;color:#e9ecf2;display:flex;flex-direction:column;gap:10px;box-shadow:0 18px 48px rgba(10,12,18,.35)}
+.dk .bar{display:flex;align-items:center;gap:8px;font-size:13px}
+.dk .tiles{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dk .tiles span{height:62px;border-radius:8px;background:#323a4b;display:flex;align-items:flex-end;padding:6px;font-size:11px}
+.tst{background:#fff;color:var(--ink);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.tst .row .btn{flex:none}
+
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col"><span class="st">1 · Toplantı planla ve oda seç</span>
+<div class="card dlg" role="dialog" aria-label="Toplantı planla">
+<div class="ch"><h2>Toplantı planla</h2><button class="x" aria-label="Kapat">×</button></div>
+<div class="cb">
+<div class="f"><span class="lb">Başlık</span><div class="inp">Sprint planlama</div></div>
+<div class="row"><div class="f"><span class="lb">Tarih</span><div class="inp"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>Cum 30 Eki</div></div><div class="f"><span class="lb">Saat</span><div class="inp">14:00 – 15:00</div></div><div class="f"><span class="lb">Tekrar</span><div class="inp"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><path d="M17 2l4 4-4 4"></path><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"></path><path d="M21 13v1a4 4 0 0 1-4 4H3"></path></svg>Her hafta ▾</div></div></div>
+<div class="tzr"><span class="tzs"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path></svg><b>İstanbul (UTC+03:00)</b><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:13px;height:13px"><path d="M6 9l6 6 6-6"></path></svg></span><span class="tzp">Davetlilerin saati: Veli 13:00 Berlin · Selin 07:00 New York <span class="tag warn">mesai dışı</span></span></div>
+<div class="f"><span class="lb">Davetliler</span><div class="inp"><span class="avs"><span class="av">AK</span><span class="av" style="background:#e5dbff">ZA</span><span class="av" style="background:#b2f2bb">MŞ</span><span class="av" style="background:#ffd8a8">AD</span></span><span class="mut sm">+2 · 6 davetli</span><span class="tag ok" style="margin-left:auto">5 kişi uygun</span></div></div>
+<div class="f"><span class="lb">Oda</span><div class="rm bad"><span class="rd"></span><span class="t"><b>Toplantı 1</b><small>Kat 2 · 12 kişilik</small><div class="warnl"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:13px;height:13px"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Tasarım incelemesi 13:30–14:30 ile çakışıyor</div></span><span class="tag bad">Dolu</span></div><div class="rm on"><span class="rd"></span><span class="t"><b>Toplantı 2</b><small>Kat 2 · 8 kişilik · davetlilerin katında</small></span><span class="tag ok">Uygun</span></div><div class="rm "><span class="rd"></span><span class="t"><b>Toplantı 3</b><small>Kat 3 · 20 kişilik · davetliler toplantı süresince girebilir</small></span><span class="tag ok">Uygun</span></div><div class="rm "><span class="rd"></span><span class="t"><b>Geçici oda</b><small>Haritada listelenmez, toplantı bitince silinir</small></span><span class="tag">Her zaman</span></div></div>
+<span class="mut sm">Kişisel odalar rezerve edilemez.</span>
+</div>
+<div class="cf"><span class="row sm" style="margin-right:auto;gap:10px"><span class="tg" role="switch" aria-checked="false" aria-label="Özel toplantı"></span><span style="line-height:1.35"><b>Özel toplantı</b><br><span class="mut">Haritada "Rezerve", yöneticiye "Meşgul"</span></span></span><button class="btn">Vazgeç</button><button class="btn pri">Planla</button></div>
+</div></div>
+<div class="col"><span class="st">2 · Ofis haritasında rezervasyon</span>
+<div class="card floor">
+<h3><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px"><path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M10 21v-4h4v4"></path></svg>Kat 2 · Tasarım<span class="mut sm" style="font-weight:400;margin-left:auto">Toplantı odaları</span></h3>
+<div class="rc"><div class="hd">Toplantı 1<span class="tag ok">3 kişi içeride</span></div><span class="avs"><span class="av" style="background:#c5d0fa">VY</span><span class="av" style="background:#e5dbff">ZA</span><span class="av" style="background:#ffc9c9">CÖ</span></span>
+<div class="resv soon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>14:00'te rezerve · Müşteri demo · 5 dk kaldı</div></div>
+<div class="rc"><div class="hd">Toplantı 2<span class="tag">Boş</span></div><div class="resv"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>Cum 14:00 · Sprint planlama (her hafta)</div><span class="mut sm">Rezervasyondan önce serbestçe kullanılabilir</span></div>
+<div class="rc"><div class="hd">Toplantı 3<span class="tag">Boş</span></div><span class="mut sm">Bugün rezervasyon yok</span></div>
+</div></div>
+<div class="col"><span class="st">3 · Rezervasyona 5 dakika kala</span>
+<div class="dk"><div class="bar"><b>Toplantı 1</b><span style="color:#aab2c0">13:55 · Tasarım incelemesi</span></div>
+<div class="tiles"><span>Veli Yılmaz</span><span>Zeynep Arslan</span><span>Can Öztürk</span><span>Sen</span></div>
+<div class="tst"><b>Bu oda 14:00'te rezerve</b><span class="mut">Müşteri demo · Mert Şahin. İsterseniz toplantınızı boş bir odaya taşıyın, herkes birlikte geçer.</span><div class="row"><button class="btn pri s">Toplantı 3'e taşı</button><button class="btn s">Geçici oda aç</button><button class="btn s">Tamam</button></div></div>
+</div>
+<span class="st" style="margin-top:8px">Rezervasyon sahibine</span>
+<div class="card" style="width:350px"><div class="tst"><b>Toplantı 1 hâlâ dolu</b><span class="mut">İçeride 3 kişi var. Müşteri demosunu başka odada başlatabilirsin; davetlilere yeni oda bildirilir.</span><div class="row"><button class="btn pri s">Toplantı 2'ye taşı</button><button class="btn s">Geçici oda</button><button class="btn s">Bekle</button></div></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

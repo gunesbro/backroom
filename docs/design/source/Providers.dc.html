@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Altyapı ve plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;overflow:hidden}
+.top{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--pn);border-bottom:1px solid var(--ln)}
+.logo{width:22px;height:22px;border-radius:6px;background:var(--acc)}
+.ib{height:36px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink)}
+.sm{height:30px;padding:0 10px;font-size:13px}
+.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.body{flex:1;display:flex;min-height:0}
+.nav{width:248px;flex:none;background:var(--sd);border-right:1px solid var(--ln);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px}
+.nav h4{margin:10px 8px 4px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.nv{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:6px;background:none;font:inherit;color:var(--ink)}
+.nv.on{background:var(--accs);color:var(--accd);font-weight:600}
+.mut{color:var(--mut)}
+.main{flex:1;padding:18px 28px;display:grid;grid-template-columns:1fr 320px;gap:20px;overflow:hidden;min-width:0}
+.colm{display:flex;flex-direction:column;gap:10px;min-width:0}
+h1{margin:0;font-size:20px}
+.lock{padding:10px 12px;border-radius:10px;background:#fff1e0;color:#6b2f00;font-size:13px;line-height:1.45}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.ch{display:flex;align-items:center;gap:8px}
+.ch b{font-size:14px}
+.ch small{display:block;font-size:12px;color:var(--mut);font-weight:400}
+.st{margin-left:auto;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:#e6f4ea;color:#1e6b34;white-space:nowrap}
+.st.sys{background:var(--sd);color:var(--mut)}
+.opts{display:flex;gap:8px}
+.opt{flex:1;display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--ln);border-radius:8px;font-size:13px}
+.opt.on{border-color:var(--acc);background:var(--accs);font-weight:600}
+.fs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.f{display:flex;flex-direction:column;gap:3px;font-size:12px}
+.f label{font-weight:600}
+.f input{height:32px;padding:0 10px;border:1px solid var(--ln);border-radius:7px;font:inherit;font-size:13px;background:var(--bg)}
+.acts{display:flex;gap:8px;align-items:center}
+.ok{font-size:12px;color:#1e6b34}
+.rowc{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--pn);border:1px solid var(--ln);border-radius:12px}
+.rowc .tx{flex:1;line-height:1.35}
+.rowc small{display:block;font-size:12px;color:var(--mut)}
+.plan h2{margin:0;font-size:18px}
+.m{display:flex;flex-direction:column;gap:5px;font-size:13px}
+.m .l{display:flex;justify-content:space-between}
+.tr{height:8px;border-radius:4px;background:var(--sd);overflow:hidden}
+.fl{height:100%;border-radius:4px;background:var(--acc)}
+.fl.hi{background:#c25e00}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-top:1px solid #edf0f3}
+</style>
+</helmet>
+<div class="app" style="width: 100%">
+<div class="top"><button class="ib sm">← Uygulamaya dön</button><span class="logo"></span><b>Acme · Organizasyon ayarları</b></div>
+<div class="body">
+<div class="nav">
+<h4>Organizasyon</h4>
+<button class="nv">Genel</button>
+<button class="nv">Üyeler</button>
+<button class="nv">Roller ve izinler</button>
+<button class="nv">Katlar ve odalar</button>
+<button class="nv">Davetler ve katılım</button>
+<button class="nv">Misafirler</button>
+<button class="nv">Kimlik ve giriş (SSO)</button>
+<h4>Yönetim</h4>
+<button class="nv">Moderasyon</button>
+<button class="nv">Denetim kaydı</button>
+<button class="nv on">Altyapı ve veri</button>
+<button class="nv">Plan ve kota</button>
+</div>
+<div class="main">
+<div class="colm">
+<h1>Altyapı ve veri</h1>
+<div class="lock">Kendi servislerinizi ve anahtarınızı bağlamak ve hibrit kurulum <b>Kurumsal</b> plandadır.</div>
+<div class="card">
+<div class="ch"><span><b>Kurulum modeli</b><small>Organizasyon verisinin nerede durduğu</small></span><span class="st">Hibrit</span></div>
+<div class="opts"><label class="opt"><input type="radio" name="dp"> Bulut (bizde)</label><label class="opt on"><input type="radio" name="dp" checked> Hibrit: veri kendi sunucunuzda</label></div>
+<div class="fs"><div class="f"><label for="du">Veri sunucusu adresi</label><input id="du" value="https://collab.acme.com"></div><div class="f"><label for="dv">Sürüm</label><input id="dv" value="2.4.1 · desteklenen"></div></div>
+<div class="acts"><button class="ib sm">Bağlantıyı test et</button><span class="ok">Sağlıklı · son kontrol 1 dk önce</span><button class="ib sm" style="margin-left: auto">Kurulum paketi (Compose / Helm)</button></div>
+</div>
+<div class="rowc"><span class="tx"><b>Şifreleme anahtarı (BYOK)</b><small>Sizin KMS'inizde · anahtar iptal edilince veri okunamaz</small></span><span class="st">Bağlı</span><button class="ib sm">Yönet</button></div>
+<div class="rowc"><span class="tx"><b>Toplantı sunucusu</b><small>Kendi LiveKit sunucunuz · wss://rtc.acme.com</small></span><span class="st">Bağlı</span><button class="ib sm">Yönet</button></div>
+<div class="rowc"><span class="tx"><b>Dosya ve kayıt depolama</b><small>Sistem varsayılanı</small></span><span class="st sys">Sistem</span><button class="ib sm">Değiştir</button></div>
+<div class="rowc"><span class="tx"><b>E-posta</b><small>Sistem varsayılanı</small></span><span class="st sys">Sistem</span><button class="ib sm">Değiştir</button></div>
+<div class="rowc"><span class="tx"><b>Yapay zekâ</b><small>Hibrit kurulumda varsayılan kapalı · kendi modelinizi bağlayın</small></span><span class="st sys">Kapalı</span><button class="ib sm">Bağla</button></div>
+<span class="mut" style="font-size: 12px">Anahtarlar şifreli saklanır ve tekrar gösterilmez. Sağlayıcı değişince başlamış toplantılar ve eski kayıtlar önceki sağlayıcıda kalır.</span>
+</div>
+<div class="colm">
+<div class="card plan">
+<div class="ch"><h2>Kurumsal</h2><button class="ib sm pri" style="margin-left: auto">Planı değiştir</button></div>
+<div class="kv"><span>Üyeler</span><b>128 · sınırsız</b></div>
+<div class="kv"><span>Kayıt depolama</span><b>Kendi sunucunuzda</b></div>
+<div class="kv"><span>Dosya depolama</span><b>Kendi sunucunuzda</b></div>
+<div class="kv"><span>Kayıt saklama süresi</span><b>Sınırsız</b></div>
+<div class="kv"><span>Görüntü kalitesi</span><b>1080p</b></div>
+<div class="kv"><span>Oda başına katılımcı</span><b>En fazla 100 · oda türüne göre</b></div>
+<div class="kv"><span>Mesaj geçmişi</span><b>Sınırsız</b></div>
+<div class="kv"><span>Desteklenen sürümler</span><b>Son 2 ana sürüm</b></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

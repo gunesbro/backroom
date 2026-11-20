@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Misafir girişi</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.pg{--pn:#fff;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#f6f7f9;height:760px;display:flex;align-items:center;justify-content:center;gap:28px;font-size:14px;padding:24px;box-sizing:border-box;flex-wrap:wrap}
+.col{display:flex;flex-direction:column;gap:10px}
+.st{font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase;font-weight:600}
+.c{width:360px;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--acc)}
+.c h2{margin:0;font-size:22px}
+.mut{color:var(--mut)}
+.pv{height:118px;border-radius:10px;background:#1f2430;color:#cfd5e1;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;font-size:13px}
+.big{width:64px;height:64px;border-radius:50%;background:#ffc9c9;color:#1f2430;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700}
+.dev{display:flex;gap:8px}
+.tg{flex:1;height:40px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:13px;color:var(--ink)}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font-weight:600;font-size:13px}
+.f input{height:40px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;font:inherit}
+.note{font-size:12px;color:var(--mut);line-height:1.5;padding:10px;border-radius:8px;background:#f6f7f9}
+.go{height:44px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600}
+.sec{height:44px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink)}
+.spin{width:44px;height:44px;border-radius:50%;border:4px solid var(--accs);border-top-color:var(--acc);box-sizing:border-box;align-self:center}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col"><span class="st">1 · Bilgi ve cihaz</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>Acme</div>
+<h2>Müşteri demo</h2>
+<span class="mut">Bugün 14:00 · şu an Toplantı 2'de. Bağlantı toplantıya aittir, oda değişse de çalışır. Katılmak için toplantıdaki birinin onayı gerekir.</span>
+<div class="pv"><span class="big">CÖ</span><span>Kamera kapalı</span></div>
+<div class="dev"><button class="tg">Mikrofon kapalı ▾</button><button class="tg">Kamera kapalı ▾</button></div>
+<div class="f"><label for="gn">Ad soyad</label><input id="gn" value="Can Öztürk"></div>
+<div class="f"><label for="ge">E-posta</label><input id="ge" type="email" value="can@mail.com"></div>
+<div class="note">Yalnızca bu toplantının sesine, görüntüsüne ve toplantı sohbetine erişirsin. Toplantı kaydedilebilir, sohbet toplantı bitince silinir.</div>
+<button class="go">Katılma isteği gönder</button>
+</div></div>
+<div class="col"><span class="st">2 · Onay bekleniyor</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>Acme</div>
+<span class="spin" aria-hidden="true"></span>
+<h2 style="text-align: center">İsteğin iletildi</h2>
+<span class="mut" style="text-align: center">Toplantıdaki biri kabul edince otomatik olarak katılacaksın.</span>
+<div class="note">İstek kabul edilmezse 10 dakika sonra düşer. Linki yeniden açarak tekrar deneyebilirsin.</div>
+<button class="sec">İsteği iptal et</button>
+</div></div>
+<div class="col"><span class="st">3 · Reddedildi</span>
+<div class="c">
+<div class="brand"><span class="logo"></span>Acme</div>
+<h2>Katılamadın</h2>
+<span class="mut">Toplantıdakiler isteğini kabul etmedi ya da toplantı sona erdi.</span>
+<button class="sec">Kapat</button>
+</div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

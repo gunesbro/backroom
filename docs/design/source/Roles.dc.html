@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Roller ve izinler</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;overflow:hidden}
+.top{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--pn);border-bottom:1px solid var(--ln)}
+.logo{width:22px;height:22px;border-radius:6px;background:var(--acc)}
+.ib{height:36px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink)}
+.sm{height:30px;padding:0 10px;font-size:13px}
+.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.body{flex:1;display:flex;min-height:0}
+.nav{width:248px;flex:none;background:var(--sd);border-right:1px solid var(--ln);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px}
+.nav h4{margin:10px 8px 4px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.nv{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:6px;background:none;font:inherit;color:var(--ink)}
+.nv.on{background:var(--accs);color:var(--accd);font-weight:600}
+.mut{color:var(--mut)}
+.roles{width:250px;flex:none;border-right:1px solid var(--ln);background:var(--pn);padding:16px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:4px}
+.roles h2{margin:0 4px 8px;font-size:18px}
+.rl{display:flex;align-items:center;gap:8px;width:100%;padding:9px 10px;border:1px solid transparent;border-radius:8px;background:none;font:inherit;color:var(--ink);text-align:left}
+.rl.on{background:var(--accs);border-color:var(--acc);font-weight:600}
+.rl small{margin-left:auto;font-size:11px;color:var(--mut);font-weight:400}
+.sw{width:10px;height:10px;border-radius:3px;flex:none}
+.lbl{margin:10px 4px 2px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.main{flex:1;padding:20px 28px;overflow:hidden;display:flex;flex-direction:column;gap:12px;min-width:0}
+.hd{display:flex;align-items:center;gap:10px}
+.hd h1{margin:0;font-size:20px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--ln)}
+.tab{height:36px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:none;font:inherit;color:var(--mut)}
+.tab.on{border-bottom-color:var(--acc);color:var(--accd);font-weight:600}
+.grp{background:var(--pn);border:1px solid var(--ln);border-radius:12px}
+.gh{display:flex;align-items:center;gap:8px;padding:10px 14px;font-weight:600;border-bottom:1px solid var(--ln)}
+.gh small{margin-left:auto;font-weight:400;color:var(--mut)}
+.pm{display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid #edf0f3}
+.pm:first-of-type{border-top:0}
+.pm .tx{flex:1;line-height:1.35}
+.pm .tx small{display:block;font-size:12px;color:var(--mut)}
+.pm input{width:18px;height:18px;accent-color:#3b5bdb}
+.coll{display:flex;align-items:center;gap:8px;padding:12px 14px;font-weight:600}
+.coll small{margin-left:auto;font-weight:400;color:var(--mut)}
+.note{padding:10px 12px;border-radius:10px;background:#eef2ff;border:1px solid #c5d0fa;color:#1f2a5c;font-size:13px}
+</style>
+</helmet>
+<div class="app" style="width: 100%">
+<div class="top"><button class="ib sm">← Uygulamaya dön</button><span class="logo"></span><b>Acme · Organizasyon ayarları</b></div>
+<div class="body">
+<div class="nav">
+<h4>Organizasyon</h4>
+<button class="nv">Genel</button>
+<button class="nv">Üyeler</button>
+<button class="nv on">Roller ve izinler</button>
+<button class="nv">Katlar ve odalar</button>
+<button class="nv">Davetler ve katılım</button>
+<button class="nv">Misafirler</button>
+<button class="nv">Kimlik ve giriş (SSO)</button>
+<h4>Yönetim</h4>
+<button class="nv">Moderasyon</button>
+<button class="nv">Denetim kaydı</button>
+<button class="nv">Altyapı sağlayıcıları</button>
+<button class="nv">Plan ve kota</button>
+</div>
+<div class="roles">
+<h2>Roller</h2>
+<span class="lbl">Sistem</span>
+<button class="rl"><span class="sw" style="background: #1f2430"></span>Sahip<small>Kilitli · 1</small></button>
+<button class="rl on"><span class="sw" style="background: #3b5bdb"></span>Yönetici<small>4 kişi</small></button>
+<button class="rl"><span class="sw" style="background: #8d95a3"></span>Üye<small>Varsayılan · 118</small></button>
+<span class="lbl">Özel</span>
+<button class="rl"><span class="sw" style="background: #e8890c"></span>Moderatör<small>6 kişi</small></button>
+<button class="rl"><span class="sw" style="background: #2f9e44"></span>Kat sorumlusu<small>3 kişi</small></button>
+<button class="ib sm" style="margin-top: 8px">+ Rol oluştur</button>
+<span class="mut" style="font-size: 12px; margin-top: auto; line-height: 1.5">Sahibin tüm izinleri vardır ve değiştirilemez. Sahiplik yalnızca devredilebilir.</span>
+</div>
+<div class="main">
+<div class="hd"><h1>Yönetici</h1><span class="mut">Sistem rolü · izinleri düzenlenebilir</span><button class="ib sm pri" style="margin-left: auto">Kaydet</button></div>
+<div class="tabs"><button class="tab on">İzinler</button><button class="tab">Üyeler (4)</button><button class="tab">Görünüm</button></div>
+<div class="grp">
+<div class="gh">Takvim<small>1/1 açık</small></div>
+<label class="pm"><span class="tx">Üye takvimlerini görüntüle<small>Uygulama içi toplantılar, durum şeridi ve platform görünür; günlük toplamlar, oyun odası, kişisel oda, özel ve Google/Outlook etkinlikleri hiç görünmez</small></span><input type="checkbox" checked></label>
+<div class="pm"><span class="tx">Kapsam<small>Kimlerin takvimi görülebilir</small></span><button class="ib sm">Kat 2, Kat 3 ▾</button></div>
+</div>
+<div class="grp">
+<div class="gh">Odalar ve katlar<small>5/7 açık</small></div>
+<label class="pm"><span class="tx">Katları ve haritayı düzenle</span><input type="checkbox" checked></label>
+<label class="pm"><span class="tx">Koltuk ata</span><input type="checkbox" checked></label>
+<label class="pm"><span class="tx">Kat erişimini yönet<small>Katı gruplara kısıtla</small></span><input type="checkbox"></label>
+</div>
+<div class="grp"><div class="coll">Toplantı (kayıt başlatma, misafir davet etme) ▸<small>3/4 açık</small></div></div>
+<div class="grp"><div class="coll">Organizasyon, üyeler, kanallar, moderasyon (çıkar, deaktif et) ▸<small>19/24 açık</small></div></div>
+<div class="note">Hiçbir rol, sahip dahil, üyesi olmadığı özel kanalları ve DM'leri okuyamaz veya dışa aktaramaz. Sahip yalnızca açık kanalları dışa aktarabilir. Bu bir izin değil, ürün kuralıdır.</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

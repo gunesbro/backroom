@@ -1,0 +1,12 @@
+{
+  "senderName": "{organization} ({product})",
+  "unnamedSenderName": "{product} daveti",
+  "subject": "{product}: {organization} çalışma alanına davet edildin",
+  "intro": "{product} üzerinden {organization} çalışma alanına katılmaya davet edildin.",
+  "button": "Daveti kabul et",
+  "linkHint": "Kabul etmek için bu bağlantıyı aç ve bu e-posta adresiyle giriş yap ya da hesap oluştur:",
+  "copyHint": "Düğme çalışmazsa bu adresi tarayıcına kopyala:",
+  "limits": "Bağlantı yalnızca bu e-posta adresiyle ve sınırlı bir süre için çalışır.",
+  "unexpected": "Bu daveti beklemiyorsan bu e-postayı yok sayabilirsin: bağlantıyı açıp katılmayı seçmedikçe hiçbir şey olmaz. E-postayla asla şifreni sormayız.",
+  "unnamedOrganization": "ekibinin"
+}

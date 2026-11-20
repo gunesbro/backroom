@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Organizasyon menüsü ve bildirimler</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;position:relative;overflow:hidden}
+.top{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--pn);border-bottom:1px solid var(--ln)}
+.search{flex:1;max-width:460px;margin:0 auto;padding:8px 12px;border:1px solid var(--ln);border-radius:8px;color:var(--mut);background:var(--bg)}
+.ib{height:30px;padding:0 10px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;font-size:12px;color:var(--ink)}
+.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.org{display:flex;align-items:center;width:224px;height:40px;padding:0 8px 0 6px;gap:10px;border:0;border-radius:10px;background:var(--sd);font:inherit;color:var(--ink);text-align:left}
+.ologo{width:30px;height:30px;border-radius:8px;background:#1f2a5c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+.ologo.o2{background:#a84300}.ologo.o3{background:#1e6b34}
+.oname{flex:1;min-width:0;line-height:1.2}
+.oname b{display:block;font-size:14px}
+.oname small{display:block;font-size:11px;font-weight:400;color:var(--mut)}
+.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.bell{position:relative;width:40px;height:40px;border:1px solid var(--acc);border-radius:10px;background:var(--accs);color:var(--accd);display:flex;align-items:center;justify-content:center}
+.bell .cnt{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#c92a2a;color:#fff;font-size:11px;font-weight:700;line-height:16px;text-align:center;border:2px solid var(--pn)}
+.body{flex:1;display:flex;min-height:0}
+.side{width:248px;flex:none;background:var(--sd);border-right:1px solid var(--ln);display:flex;flex-direction:column;gap:2px;padding:10px;box-sizing:border-box}
+.side h4{margin:12px 8px 4px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.it{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px}
+.it.on{background:var(--accs);font-weight:600}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#2f9e44;flex:none}
+.av{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#c5d0fa;color:#1f2430;font-size:11px;font-weight:700;flex:none}
+.av.c2{background:#ffd8a8}.av.c3{background:#b2f2bb}.av.c4{background:#e5dbff}.av.c5{background:#ffc9c9}
+.me{margin-top:auto;display:flex;align-items:center;gap:4px;padding:6px;background:var(--pn);border:1px solid var(--ln);border-radius:12px}
+.mebtn{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px;border:0;border-radius:8px;background:none;font:inherit;color:var(--ink);text-align:left}
+.avw{position:relative;flex:none;display:flex}
+.avw .av{width:34px;height:34px;font-size:12px}
+.sdot{position:absolute;right:-2px;bottom:-2px;width:13px;height:13px;border-radius:50%;background:#2f9e44;border:2.5px solid var(--pn);box-sizing:border-box}
+.me .who{flex:1;line-height:1.3;min-width:0}
+.me .who b{display:block;font-size:13px}
+.me .who small{display:block;font-size:11px;color:var(--mut)}
+.mi2{width:30px;height:30px;border:0;border-radius:8px;background:none;color:var(--mut);display:flex;align-items:center;justify-content:center;flex:none;padding:0}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--pn)}
+.hd{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--ln)}
+.mut{color:var(--mut)}
+.msgs{flex:1;padding:16px 20px;color:var(--mut)}
+.pop{position:absolute;z-index:4;background:var(--pn);border:1px solid var(--ln);border-radius:14px;box-shadow:0 16px 40px rgba(20,24,33,.2);display:flex;flex-direction:column}
+.orgm{top:58px;left:12px;width:300px;padding:8px;gap:2px}
+.lbl{margin:6px 8px 4px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.ol{display:flex;align-items:center;gap:10px;width:100%;padding:8px;border:0;border-radius:10px;background:none;font:inherit;color:var(--ink);text-align:left}
+.ol.on{background:var(--accs)}
+.ol .oname small{color:var(--mut)}
+.unread{font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;background:var(--acc);color:#fff}
+.chk{color:var(--accd)}
+.hr{height:1px;background:var(--ln);margin:6px 4px}
+.act{display:flex;align-items:center;gap:10px;width:100%;min-height:36px;padding:0 10px;border:0;border-radius:8px;background:none;font:inherit;font-size:13px;color:var(--ink);text-align:left}
+.act .ico{color:var(--mut)}
+.notif{top:58px;right:12px;width:380px;max-height:560px;overflow:hidden}
+.nh{display:flex;align-items:center;gap:8px;padding:12px 14px 8px}
+.nh b{font-size:16px}
+.tabs{display:flex;gap:4px;padding:0 10px 8px;border-bottom:1px solid var(--ln)}
+.tab{height:30px;padding:0 10px;border:0;border-radius:6px;background:none;font:inherit;font-size:13px;color:var(--mut)}
+.tab.on{background:var(--accs);color:var(--accd);font-weight:600}
+.dnd{margin:8px 12px 0;padding:8px 10px;border-radius:8px;background:#fff8e6;color:#5a3d00;font-size:12px}
+.nl{display:flex;flex-direction:column;padding:6px}
+.n{display:flex;gap:10px;padding:10px 8px;border-radius:10px;position:relative}
+.n.new{background:#f5f7ff}
+.n.new::before{content:"";position:absolute;left:-2px;top:20px;width:6px;height:6px;border-radius:50%;background:var(--acc)}
+.nt{flex:1;min-width:0;font-size:13px;line-height:1.4}
+.nt small{display:block;color:var(--mut);font-size:12px}
+.nt .q{display:block;margin-top:4px;padding:6px 8px;border-radius:6px;background:var(--bg);color:var(--ink)}
+.nt .row{display:flex;gap:6px;margin-top:6px}
+.ic2{width:28px;height:28px;border-radius:50%;background:var(--sd);color:var(--mut);display:flex;align-items:center;justify-content:center;flex:none}
+.nf{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:1px solid var(--ln);font-size:13px}
+.lnk{border:0;background:none;font:inherit;font-size:13px;color:var(--accd);font-weight:600;padding:0}
+.side{gap:0;padding:8px 8px 10px}
+.sb-q{display:flex;flex-direction:column;gap:1px;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--ln)}
+.sb-i{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;font-size:14px;color:var(--ink);white-space:nowrap;min-width:0;position:relative}
+.sb-i > .tx{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sb-i.on{background:var(--acc);color:#fff;font-weight:600}
+.sb-i.on .sb-ic,.sb-i.on .sb-meta{color:#fff}
+.sb-i.un{font-weight:700}
+.sb-i.mu{color:var(--mut);opacity:.8}
+.sb-ic{width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:15px;font-weight:400}
+.sb-ic svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.sb-meta{margin-left:auto;font-size:11px;color:var(--mut);font-weight:400;flex:none}
+.sb-b{margin-left:auto;min-width:18px;height:18px;padding:0 6px;box-sizing:border-box;border-radius:9px;background:#e03131;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;flex:none}
+.sb-mute{margin-left:auto;width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.sb-h{display:flex;align-items:center;gap:4px;height:28px;padding:0 4px 0 2px;margin-top:6px;border-radius:6px;font-size:13px;font-weight:600;color:var(--mut)}
+.sb-h .car{width:18px;height:18px;display:flex;align-items:center;justify-content:center}
+.sb-h .car svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.sb-h .tx{flex:1}
+.sb-h .ha{display:none;width:22px;height:22px;border:0;border-radius:5px;background:none;color:var(--mut);padding:0;align-items:center;justify-content:center}
+.sb-h .ha svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.sb-h.hov{background:rgba(127,135,150,.12)}
+.sb-h.hov .ha,.sb-h:hover .ha{display:flex}
+.sb-h .ha.on{display:flex;background:rgba(127,135,150,.22);color:var(--ink)}
+.sb-dav{position:relative;width:22px;height:22px;flex:none}
+.sb-dav .sb-a{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:9px;letter-spacing:-.02em;line-height:1;font-weight:700;color:#1f2430}
+.sb-dav .p{position:absolute;right:-3px;bottom:-3px;width:7px;height:7px;border-radius:50%;background:#2f9e44;border:2px solid var(--sd)}
+.sb-dav .p.aw{background:transparent;box-shadow:inset 0 0 0 1.6px #8d95a3}
+.sb-dav .p.dnd{background:#e03131}
+.sb-i.on .sb-dav .p{border-color:var(--acc)}
+.sb-grp{width:22px;height:22px;flex:none;border-radius:5px;background:var(--ln);color:var(--ink);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.sb-more{color:var(--mut);font-size:13px}
+.sb-more .sb-ic{font-size:16px}
+.sb-add{color:var(--mut)}
+.sb-live{margin-left:auto;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;background:#d3f9d8;color:#1e6b34;flex:none}
+.sb-scroll{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1px}
+.me{margin-top:8px}
+</style>
+</helmet>
+<div class="app" style="width: 100%">
+<div class="top"><button class="org" aria-label="Organizasyon değiştir" aria-expanded="true"><span class="ologo">AC</span><span class="oname"><b>Acme</b><small>128 üye</small></span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14l5-5 5 5"></path></svg></button><div class="search">Ara: mesaj, dosya, kişi, oda</div><button class="bell" aria-label="Bildirimler, 2 okunmamış" aria-expanded="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span class="cnt">2</span></button></div>
+<div class="body">
+<div class="side">
+<div class="sb-q">
+<div class="sb-i "><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 7h2M13 7h2M9 11h2M13 11h2M10 21v-4h4v4"></path></svg></span><span class="tx">Odalar</span><span class="sb-meta">Kat 2 · 6 kişi</span></div>
+<div class="sb-i "><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg></span><span class="tx">Takvim</span><span class="sb-meta">14:00 Sprint</span></div>
+<div class="sb-i un "><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path><path d="M8 10h8M8 14h5"></path></svg></span><span class="tx">Thread'ler</span></div>
+<div class="sb-i "><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg></span><span class="tx">Kaydedilenler</span></div>
+</div>
+<div class="sb-scroll">
+<div class="sb-h"><span class="car"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span><span class="tx">Kanallar</span><button class="ha" aria-label="Kanallar seçenekleri" title="Bölüm seçenekleri"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"></circle><circle cx="12" cy="12" r="1.3" fill="currentColor"></circle><circle cx="19" cy="12" r="1.3" fill="currentColor"></circle></svg></button><button class="ha" aria-label="Kanallar bölümüne ekle" title="Ekle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></div>
+<div class="sb-i on"><span class="sb-ic">#</span><span class="tx">genel</span></div>
+<div class="sb-i un"><span class="sb-ic">#</span><span class="tx">duyurular</span><span class="sb-b">3</span></div>
+<div class="sb-i " aria-label="Özel kanal: tasarım"><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></span><span class="tx">tasarım</span></div>
+<div class="sb-i mu"><span class="sb-ic">#</span><span class="tx">rastgele</span><svg class="sb-mute" viewBox="0 0 24 24" aria-label="Sessize alındı" role="img"><path d="M13.7 21a2 2 0 0 1-3.4 0M18.6 13A17 17 0 0 1 18 8M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.3-5M2 2l20 20"></path></svg></div>
+<div class="sb-i sb-add"><span class="sb-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></span><span class="tx">Kanal ekle</span></div>
+<div class="sb-h"><span class="car"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span><span class="tx">Proje Atlas</span><button class="ha" aria-label="Proje Atlas seçenekleri" title="Bölüm seçenekleri"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"></circle><circle cx="12" cy="12" r="1.3" fill="currentColor"></circle><circle cx="19" cy="12" r="1.3" fill="currentColor"></circle></svg></button><button class="ha" aria-label="Proje Atlas bölümüne ekle" title="Ekle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></div>
+<div class="sb-i un"><span class="sb-ic">#</span><span class="tx">atlas-backend</span><span class="sb-b">1</span></div>
+<div class="sb-h"><span class="car"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span><span class="tx">Doğrudan mesajlar</span><button class="ha" aria-label="Doğrudan mesajlar seçenekleri" title="Bölüm seçenekleri"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor"></circle><circle cx="12" cy="12" r="1.3" fill="currentColor"></circle><circle cx="19" cy="12" r="1.3" fill="currentColor"></circle></svg></button><button class="ha" aria-label="Doğrudan mesajlar bölümüne ekle" title="Ekle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></div>
+<div class="sb-i "><span class="sb-dav"><span class="sb-a" style="background:#c5d0fa">VY</span><span class="p "></span></span><span class="tx">Veli Yılmaz</span></div>
+<div class="sb-i un"><span class="sb-dav"><span class="sb-a" style="background:#e5dbff">ZA</span><span class="p "></span></span><span class="tx">Zeynep Arslan</span><span class="sb-b">1</span></div>
+<div class="sb-i mu" aria-label="Grup mesajı, 3 kişi: Ayşe, Veli, Mert"><span class="sb-grp" aria-hidden="true">3</span><span class="tx">Ayşe, Veli, Mert</span><svg class="sb-mute" viewBox="0 0 24 24" aria-label="Sessize alındı" role="img"><path d="M13.7 21a2 2 0 0 1-3.4 0M18.6 13A17 17 0 0 1 18 8M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.3-5M2 2l20 20"></path></svg></div>
+<div class="sb-i un" aria-label="Grup mesajı, 6 kişi"><span class="sb-grp" aria-hidden="true">6</span><span class="tx">Ayşe, Can, Elif, Mert +2</span></div>
+<div class="sb-i "><span class="sb-dav"><span class="sb-a" style="background:#b2f2bb">MŞ</span><span class="p aw"></span></span><span class="tx">Mert Şahin</span></div>
+<div class="sb-i sb-more"><span class="sb-ic" style="font-size:16px">⋯</span><span class="tx">Tüm DM'ler</span><span class="sb-meta">+14</span></div>
+</div>
+<div class="me"><button class="mebtn" aria-label="Durum ve profil menüsü"><span class="avw"><span class="av">AK</span><span class="sdot"></span></span><span class="who"><b>Ali Kaya</b><small>Çevrimiçi · Odamda</small></span></button><button class="mi2" aria-label="Mikrofon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><path d="M12 18v4"></path></svg></button><button class="mi2" aria-label="Ses çıkışı"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"></path><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg></button><button class="mi2" aria-label="Ayarlar"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button></div>
+</div>
+<div class="main"><div class="hd"><b># genel</b><span class="mut">128 üye</span></div><div class="msgs">Kanal içeriği</div></div>
+</div>
+
+<div class="pop orgm" role="menu">
+<span class="lbl">Organizasyonlarım</span>
+<button class="ol on"><span class="ologo">AC</span><span class="oname"><b>Acme</b><small>128 üye · Yönetici</small></span><svg class="ico chk" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></button>
+<button class="ol"><span class="ologo o2">BY</span><span class="oname"><b>Beta Yazılım</b><small>42 üye · Üye</small></span><span class="unread">5</span></button>
+<button class="ol"><span class="ologo o3">TK</span><span class="oname"><b>Tasarım Kulübü</b><small>86 üye · Üye</small></span></button>
+<div class="hr"></div>
+<button class="act"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6M22 11h-6"></path></svg>Acme'ye kişi davet et</button>
+<button class="act"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg>Organizasyon ayarları</button>
+<div class="hr"></div>
+<button class="act"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Organizasyon oluştur</button>
+<button class="act"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg>Davet bağlantısıyla katıl</button>
+</div>
+
+<div class="pop notif" role="dialog" aria-label="Bildirimler">
+<div class="nh"><b>Bildirimler</b><button class="lnk" style="margin-left: auto">Tümünü okundu say</button></div>
+<div class="tabs"><button class="tab on">Tümü</button><button class="tab">Bahsedilmeler 1</button><button class="tab">Toplantılar</button><button class="tab">Odalar</button></div>
+<div class="nl">
+<div class="n new"><span class="av c4">ZA</span><span class="nt"><b>Zeynep Arslan</b> kapını çalıyor<small>Kişisel odan · şimdi</small><span class="row"><button class="ib pri">İçeri al</button><button class="ib">Meşgulüm</button></span></span></div>
+<div class="n new"><span class="av">VY</span><span class="nt"><b>Veli Yılmaz</b> senden bahsetti<small># genel · 10:12</small><span class="q">@Ali Kaya, tasarım incelemesine öğleden sonra gelir misin?</span></span></div>
+<div class="n"><span class="ic2"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg></span><span class="nt"><b>Sprint planlama</b> 15 dakika sonra<small>Toplantı 1 · 14:00</small><span class="row"><button class="ib">Odaya git</button></span></span></div>
+<div class="n"><span class="ic2"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3"></circle></svg></span><span class="nt"><b>Tasarım incelemesi</b> kaydı hazır<small>Toplantı 1 · dün · 12 gün saklanacak</small></span></div>
+<div class="n"><span class="av c3">MŞ</span><span class="nt"><b>Mert Şahin</b> seni <b>#sprint</b> kanalına ekledi<small>2 gün önce</small></span></div>
+</div>
+<div class="nf"><span class="mut">Rahatsız etme açıkken bildirimler burada birikir.</span><button class="lnk">Bildirim ayarları</button></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

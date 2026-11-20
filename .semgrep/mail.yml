@@ -1,0 +1,22 @@
+# Project rules for Semgrep (run in the Security workflow with --config .semgrep).
+rules:
+  - id: raw-smtp-connection
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Only the Email module's infrastructure sends mail (docs/adr/0008). Do not open connections to
+      SMTP ports directly; use IEmailSender.
+    patterns:
+      - pattern-either:
+          - pattern: new TcpClient($HOST, $PORT)
+          - pattern: new System.Net.Sockets.TcpClient($HOST, $PORT)
+          - pattern: $CLIENT.Connect($HOST, $PORT)
+          - pattern: $CLIENT.ConnectAsync($HOST, $PORT, ...)
+          - pattern: new IPEndPoint($ADDRESS, $PORT)
+          - pattern: new DnsEndPoint($HOST, $PORT, ...)
+      - metavariable-regex:
+          metavariable: $PORT
+          regex: ^(25|465|587|2525)$
+    paths:
+      exclude:
+        - /backend/src/Modules/Email/Backroom.Modules.Email.Infrastructure/

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Masaüstü girişi</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2f4bb8;font-weight:600;text-decoration:none}a:hover{color:#1f3a99;text-decoration:underline}
+.pg{--pn:#fff;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;--bg:#f6f7f9;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#e9ecf2;height:760px;display:flex;align-items:center;justify-content:center;gap:40px;font-size:14px;padding:24px;box-sizing:border-box}
+.col{display:flex;flex-direction:column;gap:10px}
+.st{font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase;font-weight:600}
+.win{width:520px;height:440px;background:var(--bg);border:1px solid #c3c9d3;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 32px rgba(20,24,33,.12)}
+.wbar{height:36px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--pn);border-bottom:1px solid var(--ln);font-size:12px;color:var(--mut)}
+.wbar .wc{margin-left:auto;display:flex;gap:14px;color:var(--mut)}
+.url{flex:1;height:24px;display:flex;align-items:center;padding:0 10px;border-radius:6px;background:var(--bg);color:var(--mut)}
+.wbody{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px 56px;text-align:center}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--acc)}
+h2{margin:0;font-size:22px}
+p{margin:0;line-height:1.5}
+.mut{color:var(--mut)}
+.wait{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mut)}
+.spin{width:20px;height:20px;border-radius:50%;border:3px solid var(--accs);border-top-color:var(--acc);box-sizing:border-box}
+.go{height:44px;padding:0 20px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600}
+.sec{height:40px;padding:0 16px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink);font-weight:600}
+.ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#e6f4ea;color:#1e6b34}
+small{font-size:12px}
+</style>
+</helmet>
+<div class="pg" style="width: 100%">
+<div class="col"><span class="st">1 · Masaüstü uygulaması</span>
+<div class="win">
+<div class="wbar"><span class="brand" style="font-size: 12px"><span class="logo" style="width: 14px; height: 14px; border-radius: 4px"></span>[Ürün adı]</span><span class="wc" aria-hidden="true"><span>–</span><span>□</span><span>×</span></span></div>
+<div class="wbody">
+<div class="brand"><span class="logo"></span>[Ürün adı]</div>
+<h2>Tarayıcında giriş yap</h2>
+<p class="mut">Giriş, güvenlik için varsayılan tarayıcında açıldı. Giriş bitince uygulamaya kendiliğinden dönersin.</p>
+<div class="wait" role="status"><span class="spin" aria-hidden="true"></span>Tarayıcıda giriş bekleniyor…</div>
+<button class="sec">Tarayıcıyı yeniden aç</button>
+<a href="#">Giriş bağlantısını kopyala</a>
+</div>
+</div></div>
+<div class="col"><span class="st">2 · Tarayıcıda giriş tamamlandı</span>
+<div class="win">
+<div class="wbar"><span class="url">[giriş adresi]/masaustu/tamam</span></div>
+<div class="wbody">
+<span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+<h2>Giriş tamamlandı</h2>
+<p class="mut">Masaüstü uygulamasına dönebilirsin. Uygulama öne gelmediyse düğmeyi kullan.</p>
+<button class="go">Uygulamayı aç</button>
+<small class="mut">Bu sekmeyi kapatabilirsin.</small>
+</div>
+</div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

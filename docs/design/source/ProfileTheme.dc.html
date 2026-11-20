@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Profil ve görünüm</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--bg:#f6f7f9;--pn:#fff;--sd:#eef0f4;--ln:#d5dae1;--ink:#1f2430;--mut:#555d6b;--acc:#3b5bdb;--accs:#e3e9ff;--accd:#2f4bb8;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);height:760px;display:flex;flex-direction:column;font-size:14px;overflow:hidden}
+.top{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--pn);border-bottom:1px solid var(--ln)}
+.ib{height:36px;padding:0 12px;border:1px solid var(--ln);border-radius:8px;background:var(--pn);font:inherit;color:var(--ink)}
+.sm{height:30px;padding:0 10px;font-size:13px}
+.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.body{flex:1;display:flex;min-height:0}
+.nav{width:248px;flex:none;background:var(--sd);border-right:1px solid var(--ln);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px}
+.nav h4{margin:10px 8px 4px;font-size:11px;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}
+.nv{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:6px;background:none;font:inherit;color:var(--ink)}
+.nv.on{background:var(--accs);color:var(--accd);font-weight:600}
+.mut{color:var(--mut)}
+.main{flex:1;padding:20px 32px;overflow:hidden;display:flex;flex-direction:column;gap:14px;max-width:900px}
+.hd{display:flex;align-items:center;gap:10px}
+h1{margin:0;font-size:22px}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.card h2{margin:0;font-size:15px}
+.prow{display:flex;align-items:center;gap:14px}
+.big{width:64px;height:64px;border-radius:50%;background:#c5d0fa;color:#1f2430;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex:none}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.f{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.f label{font-weight:600}
+.f input,.f .sel{height:36px;padding:0 10px;border:1px solid var(--ln);border-radius:8px;font:inherit;font-size:13px;background:var(--pn);color:var(--ink);display:flex;align-items:center;box-sizing:border-box}
+.f input[readonly]{background:var(--bg);color:var(--mut)}
+.f small{font-size:12px;color:var(--mut)}
+.sel span{margin-left:auto;color:var(--mut)}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px}
+.themes{display:flex;gap:12px}
+.th{flex:1;display:flex;flex-direction:column;gap:8px;padding:8px;border:1px solid var(--ln);border-radius:12px;font-size:13px}
+.th.on{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.th .lb{display:flex;align-items:center;gap:8px;font-weight:600}
+.pv{height:82px;border-radius:8px;display:flex;overflow:hidden;border:1px solid var(--ln)}
+.pv .s{width:30%}
+.pv .c{flex:1;display:flex;flex-direction:column;gap:6px;padding:8px}
+.pv i{display:block;height:7px;border-radius:4px}
+.lt .s{background:#eef0f4}.lt .c{background:#fff}.lt i{background:#d5dae1}.lt i.a{background:#3b5bdb;width:40%}
+.dk .s{background:#12151a}.dk .c{background:#1c2028}.dk i{background:#2c323d}.dk i.a{background:#5c7cfa;width:40%}
+.sy .s{background:linear-gradient(90deg,#eef0f4 50%,#12151a 50%)}.sy .c{background:linear-gradient(90deg,#fff 50%,#1c2028 50%)}.sy i{background:#8d95a3}.sy i.a{background:#3b5bdb;width:40%}
+.soon{flex:1;display:flex;align-items:center;justify-content:center;border:1px dashed var(--ln);border-radius:12px;color:var(--mut);font-size:12px;text-align:center;padding:8px}
+</style>
+</helmet>
+<div class="app" style="width: 100%">
+<div class="top"><button class="ib sm">← Uygulamaya dön</button><b>Hesap ayarları</b><span class="mut">Tüm organizasyonlar için geçerli</span></div>
+<div class="body">
+<div class="nav">
+<h4>Hesap</h4>
+<button class="nv on">Profil</button>
+<button class="nv">Durum ve varlık</button>
+<button class="nv">Bildirimler</button>
+<button class="nv">Ses ve görüntü</button>
+<button class="nv">Görünüm</button>
+<h4>Güvenlik</h4>
+<button class="nv">Şifre ve giriş yöntemleri</button>
+<button class="nv">İki adımlı doğrulama</button>
+<button class="nv">Cihazlar ve oturumlar</button>
+<h4>Gizlilik</h4>
+<button class="nv">Verilerimi indir</button>
+<button class="nv">Hesabı sil</button>
+</div>
+<div class="main">
+<div class="hd"><h1>Profil</h1><button class="ib sm pri" style="margin-left: auto">Kaydet</button></div>
+<div class="card">
+<div class="prow"><span class="big">AK</span><div style="flex: 1"><b>Profil resmi</b><br><span class="mut" style="font-size: 13px">Resim yoksa ad soyad baş harfleri gösterilir.</span></div><button class="ib sm">Resim yükle</button></div>
+<div class="grid">
+<div class="f"><label for="pn1">Ad</label><input id="pn1" value="Ali"></div>
+<div class="f"><label for="pn2">Soyad</label><input id="pn2" value="Kaya"></div>
+<div class="f"><label for="pe">E-posta</label><input id="pe" value="ali.kaya@acme.com" readonly><small>Hesap sana ait · Acme'ye girişte Acme SSO ile ayrıca doğrulanırsın</small></div>
+<div class="f"><label>Dil</label><span class="sel">Türkçe<span>▾</span></span></div>
+</div>
+</div>
+<div class="card">
+<h2>Saat dilimi</h2>
+<label class="chk"><input type="checkbox" checked> Sistem saat dilimini kullan</label>
+<div class="grid">
+<div class="f"><label>Saat dilimi</label><span class="sel" style="background: var(--bg); color: var(--mut)">İstanbul (UTC+03:00)<span>▾</span></span><small>Bu cihazdan algılandı. Kendin seçmek için yukarıdaki kutuyu kaldır.</small></div>
+<div class="f"><label>Şu anki yerel saat</label><span class="sel" style="background: var(--bg)">01:32 · Cumartesi</span><small>Takvim, toplantı saatleri ve mesaj zamanları buna göre gösterilir.</small></div>
+</div>
+</div>
+<div class="card">
+<h2>Görünüm</h2>
+<div class="themes">
+<label class="th on"><span class="pv sy"><span class="s"></span><span class="c"><i class="a"></i><i></i><i></i></span></span><span class="lb"><input type="radio" name="tm" checked> Sistem</span><span class="mut" style="font-size: 12px">İşletim sistemine uyar</span></label>
+<label class="th"><span class="pv lt"><span class="s"></span><span class="c"><i class="a"></i><i></i><i></i></span></span><span class="lb"><input type="radio" name="tm"> Açık</span></label>
+<label class="th"><span class="pv dk"><span class="s"></span><span class="c"><i class="a"></i><i></i><i></i></span></span><span class="lb"><input type="radio" name="tm"> Koyu</span></label>
+<div class="soon">Yeni temalar ileride burada listelenecek</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

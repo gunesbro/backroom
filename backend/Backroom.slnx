@@ -1,0 +1,84 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="../global.json" />
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Aspire/">
+    <Project Path="src/Aspire/Backroom.AppHost/Backroom.AppHost.csproj" />
+    <Project Path="src/Aspire/Backroom.ServiceDefaults/Backroom.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/Backroom.BuildingBlocks.Application/Backroom.BuildingBlocks.Application.csproj" />
+    <Project Path="src/BuildingBlocks/Backroom.BuildingBlocks.Domain/Backroom.BuildingBlocks.Domain.csproj" />
+    <Project Path="src/BuildingBlocks/Backroom.BuildingBlocks.Infrastructure/Backroom.BuildingBlocks.Infrastructure.csproj" />
+    <Project Path="src/BuildingBlocks/Backroom.BuildingBlocks.Presentation/Backroom.BuildingBlocks.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Contracts/">
+    <Project Path="src/Contracts/Backroom.ControlPlane.Contracts/Backroom.ControlPlane.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Backroom.Cell.Host/Backroom.Cell.Host.csproj" />
+    <Project Path="src/Hosts/Backroom.ControlPlane.Host/Backroom.ControlPlane.Host.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/CellManagement/">
+    <Project Path="src/Modules/CellManagement/Backroom.Modules.CellManagement.Application/Backroom.Modules.CellManagement.Application.csproj" />
+    <Project Path="src/Modules/CellManagement/Backroom.Modules.CellManagement.Contracts/Backroom.Modules.CellManagement.Contracts.csproj" />
+    <Project Path="src/Modules/CellManagement/Backroom.Modules.CellManagement.Infrastructure/Backroom.Modules.CellManagement.Infrastructure.csproj" />
+    <Project Path="src/Modules/CellManagement/Backroom.Modules.CellManagement.Presentation/Backroom.Modules.CellManagement.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/ControlPlaneConnector/">
+    <Project Path="src/Modules/ControlPlaneConnector/Backroom.Modules.ControlPlaneConnector.Infrastructure/Backroom.Modules.ControlPlaneConnector.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Directory/">
+    <Project Path="src/Modules/Directory/Backroom.Modules.Directory.Application/Backroom.Modules.Directory.Application.csproj" />
+    <Project Path="src/Modules/Directory/Backroom.Modules.Directory.Infrastructure/Backroom.Modules.Directory.Infrastructure.csproj" />
+    <Project Path="src/Modules/Directory/Backroom.Modules.Directory.Presentation/Backroom.Modules.Directory.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Email/">
+    <Project Path="src/Modules/Email/Backroom.Modules.Email.Application/Backroom.Modules.Email.Application.csproj" />
+    <Project Path="src/Modules/Email/Backroom.Modules.Email.Infrastructure/Backroom.Modules.Email.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Organization/">
+    <Project Path="src/Modules/Organization/Backroom.Modules.Organization.Application/Backroom.Modules.Organization.Application.csproj" />
+    <Project Path="src/Modules/Organization/Backroom.Modules.Organization.Contracts/Backroom.Modules.Organization.Contracts.csproj" />
+    <Project Path="src/Modules/Organization/Backroom.Modules.Organization.Infrastructure/Backroom.Modules.Organization.Infrastructure.csproj" />
+    <Project Path="src/Modules/Organization/Backroom.Modules.Organization.Presentation/Backroom.Modules.Organization.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Permissions/">
+    <Project Path="src/Modules/Permissions/Backroom.Modules.Permissions.Contracts/Backroom.Modules.Permissions.Contracts.csproj" />
+    <Project Path="src/Modules/Permissions/Backroom.Modules.Permissions.Infrastructure/Backroom.Modules.Permissions.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Backroom.ArchitectureTests/Backroom.ArchitectureTests.csproj" />
+    <Project Path="tests/Backroom.BuildingBlocks.IntegrationTests/Backroom.BuildingBlocks.IntegrationTests.csproj" />
+    <Project Path="tests/Backroom.BuildingBlocks.UnitTests/Backroom.BuildingBlocks.UnitTests.csproj" />
+    <Project Path="tests/Backroom.Testing/Backroom.Testing.csproj" />
+    <Project Path="tests/Backroom.Testing.UnitTests/Backroom.Testing.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/" />
+  <Folder Name="/tests/Modules/CellManagement/">
+    <Project Path="tests/Modules/CellManagement/Backroom.Modules.CellManagement.IntegrationTests/Backroom.Modules.CellManagement.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Aspire/">
+    <Project Path="tests/Aspire/Backroom.ServiceDefaults.IntegrationTests/Backroom.ServiceDefaults.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Hosts/">
+    <Project Path="tests/Hosts/Backroom.Cell.Host.UnitTests/Backroom.Cell.Host.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/Permissions/">
+    <Project Path="tests/Modules/Permissions/Backroom.Modules.Permissions.IntegrationTests/Backroom.Modules.Permissions.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/Organization/">
+    <Project Path="tests/Modules/Organization/Backroom.Modules.Organization.IntegrationTests/Backroom.Modules.Organization.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/Email/">
+    <Project Path="tests/Modules/Email/Backroom.Modules.Email.IntegrationTests/Backroom.Modules.Email.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/Directory/">
+    <Project Path="tests/Modules/Directory/Backroom.Modules.Directory.IntegrationTests/Backroom.Modules.Directory.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

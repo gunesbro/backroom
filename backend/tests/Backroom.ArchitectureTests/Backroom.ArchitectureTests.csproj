@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="TngTech.ArchUnitNET.xUnitV3" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <!-- Every production project is referenced so its assembly is loaded by the tests. Add new modules here. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BuildingBlocks\Backroom.BuildingBlocks.Domain\Backroom.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\Backroom.BuildingBlocks.Application\Backroom.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\Aspire\Backroom.ServiceDefaults\Backroom.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\Backroom.ControlPlane.Host\Backroom.ControlPlane.Host.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\Backroom.Cell.Host\Backroom.Cell.Host.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CellManagement\Backroom.Modules.CellManagement.Application\Backroom.Modules.CellManagement.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CellManagement\Backroom.Modules.CellManagement.Infrastructure\Backroom.Modules.CellManagement.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CellManagement\Backroom.Modules.CellManagement.Presentation\Backroom.Modules.CellManagement.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Email\Backroom.Modules.Email.Application\Backroom.Modules.Email.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Email\Backroom.Modules.Email.Infrastructure\Backroom.Modules.Email.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\ControlPlaneConnector\Backroom.Modules.ControlPlaneConnector.Infrastructure\Backroom.Modules.ControlPlaneConnector.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

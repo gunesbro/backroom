@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Backroom Spike",
+  "identifier": "io.github.gunesbro.backroom.spike",
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:7880 http://localhost:7880 wss://*.livekit.cloud https://*.livekit.cloud; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    }
+  }
+}
