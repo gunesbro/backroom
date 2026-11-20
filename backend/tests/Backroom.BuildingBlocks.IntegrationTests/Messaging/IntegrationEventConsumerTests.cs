@@ -81,10 +81,14 @@ public sealed class IntegrationEventConsumerTests(PostgresDatabase database, Rab
 
         // Delete the queues, not only purge them: a durable queue left bound to the module's exchange would
         // receive the events other test classes expect elsewhere (OutboxRelayTests' unrouted queue). The next
-        // host declares them again. Deleting a missing queue is a no-op.
-        foreach (var queue in new[] { Queue, DeadLetterQueue }.Concat(s_retryDelays.Select(RetryQueue)))
+        // host declares them again. Deleting a missing queue is a no-op. A channel of its own, because a test
+        // may have closed _testChannel.
+        await using (var channel = await _testConnection.CreateChannelAsync(cancellationToken: CancellationToken.None))
         {
-            await _testChannel.QueueDeleteAsync(queue, cancellationToken: CancellationToken.None);
+            foreach (var queue in new[] { Queue, DeadLetterQueue }.Concat(s_retryDelays.Select(RetryQueue)))
+            {
+                await channel.QueueDeleteAsync(queue, cancellationToken: CancellationToken.None);
+            }
         }
 
         foreach (var disposable in _disposables)
