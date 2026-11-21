@@ -28,6 +28,9 @@ public sealed class PostgresDatabase : IAsyncLifetime
     /// <summary>The outbox relay: BYPASSRLS, privileges only on outbox tables (granted by their migrations).</summary>
     public const string RelayRole = "backroom_relay";
 
+    /// <summary>Cross-organization maintenance jobs: BYPASSRLS, no table privileges until a test grants them.</summary>
+    public const string MaintenanceRole = "backroom_maintenance";
+
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder(Image)
         .WithDatabase(DatabaseName)
         .Build();
@@ -36,6 +39,7 @@ public sealed class PostgresDatabase : IAsyncLifetime
     private readonly string _migratorPassword = NewPassword();
     private readonly string _applicationPassword = NewPassword();
     private readonly string _relayPassword = NewPassword();
+    private readonly string _maintenancePassword = NewPassword();
     private readonly SemaphoreSlim _respawnerLock = new(1, 1);
     private readonly Dictionary<string, Respawner> _respawners = new(StringComparer.Ordinal);
 
@@ -51,6 +55,8 @@ public sealed class PostgresDatabase : IAsyncLifetime
 
     public string RelayConnectionString => ConnectionStringFor(RelayRole, _relayPassword);
 
+    public string MaintenanceConnectionString => ConnectionStringFor(MaintenanceRole, _maintenancePassword);
+
     public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
@@ -60,9 +66,11 @@ public sealed class PostgresDatabase : IAsyncLifetime
             CREATE ROLE {MigratorRole} LOGIN PASSWORD '{_migratorPassword}' NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
             CREATE ROLE {ApplicationRole} LOGIN PASSWORD '{_applicationPassword}' NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB NOINHERIT;
             CREATE ROLE {RelayRole} LOGIN PASSWORD '{_relayPassword}' NOSUPERUSER BYPASSRLS NOCREATEROLE NOCREATEDB NOINHERIT;
+            CREATE ROLE {MaintenanceRole} LOGIN PASSWORD '{_maintenancePassword}' NOSUPERUSER BYPASSRLS NOCREATEROLE NOCREATEDB NOINHERIT;
             GRANT CREATE, CONNECT ON DATABASE {DatabaseName} TO {MigratorRole};
             GRANT CONNECT ON DATABASE {DatabaseName} TO {ApplicationRole};
             GRANT CONNECT ON DATABASE {DatabaseName} TO {RelayRole};
+            GRANT CONNECT ON DATABASE {DatabaseName} TO {MaintenanceRole};
             REVOKE CREATE ON SCHEMA public FROM PUBLIC;
             """);
     }
@@ -76,6 +84,7 @@ public sealed class PostgresDatabase : IAsyncLifetime
             CREATE SCHEMA IF NOT EXISTS {schema} AUTHORIZATION {MigratorRole};
             GRANT USAGE ON SCHEMA {schema} TO {ApplicationRole};
             GRANT USAGE ON SCHEMA {schema} TO {RelayRole};
+            GRANT USAGE ON SCHEMA {schema} TO {MaintenanceRole};
             ALTER DEFAULT PRIVILEGES FOR ROLE {MigratorRole} IN SCHEMA {schema}
                 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {ApplicationRole};
             """);

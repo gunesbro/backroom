@@ -12,11 +12,13 @@ internal sealed class DevelopmentDatabases
     private const string MigratorRole = "backroom_migrator";
     private const string ApplicationRole = "backroom_app";
     private const string RelayRole = "backroom_relay";
+    private const string MaintenanceRole = "backroom_maintenance";
 
     private readonly IResourceBuilder<PostgresServerResource> _postgres;
     private readonly IResourceBuilder<ParameterResource> _migratorPassword;
     private readonly IResourceBuilder<ParameterResource> _applicationPassword;
     private readonly IResourceBuilder<ParameterResource> _relayPassword;
+    private readonly IResourceBuilder<ParameterResource> _maintenancePassword;
 
     public DevelopmentDatabases(IDistributedApplicationBuilder builder, IResourceBuilder<PostgresServerResource> postgres)
     {
@@ -24,6 +26,7 @@ internal sealed class DevelopmentDatabases
         _migratorPassword = Password(builder, "postgres-migrator-password");
         _applicationPassword = Password(builder, "postgres-app-password");
         _relayPassword = Password(builder, "postgres-relay-password");
+        _maintenancePassword = Password(builder, "postgres-maintenance-password");
     }
 
     /// <summary>
@@ -42,6 +45,7 @@ internal sealed class DevelopmentDatabases
             .WithEnvironment("DatabaseMigration__MigratorPassword", _migratorPassword)
             .WithEnvironment("DatabaseMigration__ApplicationPassword", _applicationPassword)
             .WithEnvironment("DatabaseMigration__RelayPassword", _relayPassword)
+            .WithEnvironment("DatabaseMigration__MaintenancePassword", _maintenancePassword)
             .WaitFor(database);
 
         foreach (var host in hosts)
@@ -57,6 +61,14 @@ internal sealed class DevelopmentDatabases
     /// </summary>
     public void AddRelay(string databaseName, IResourceBuilder<ProjectResource> worker) =>
         worker.WithEnvironment("OutboxRelay__ConnectionString", ConnectionString(databaseName, RelayRole, _relayPassword));
+
+    /// <summary>
+    /// Gives <paramref name="worker"/> the maintenance role's connection for its cross-organization jobs
+    /// (docs/adr/0010). The role bypasses row-level security and holds only the column privileges job
+    /// migrations grant it, so only workers get it. No host calls this until the first job exists.
+    /// </summary>
+    public void AddMaintenance(string databaseName, IResourceBuilder<ProjectResource> worker) =>
+        worker.WithEnvironment("MaintenanceJobs__ConnectionString", ConnectionString(databaseName, MaintenanceRole, _maintenancePassword));
 
     private static IResourceBuilder<ParameterResource> Password(IDistributedApplicationBuilder builder, string name) =>
         builder.AddParameter(name, new GenerateParameterDefault { MinLength = 24, Special = false }, secret: true, persist: true);

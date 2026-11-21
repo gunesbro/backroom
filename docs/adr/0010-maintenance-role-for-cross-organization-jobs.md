@@ -1,6 +1,6 @@
 # 0010. A maintenance database role for cross-organization jobs
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-20
 
 ## Context
@@ -17,12 +17,13 @@ The control plane is out of scope: its invitation jobs run as its application ro
 
 - A fourth cell database role, `backroom_maintenance`, runs cross-organization maintenance jobs. It has `BYPASSRLS` and `NOINHERIT`, owns nothing, is not a superuser, cannot create roles or databases, holds no server privileges (`pg_read_server_files` and similar), is not a member of any role and has no members, and has `CONNECT` on the cell database and `USAGE` on module schemas.
 - The role has timeouts set on itself (`ALTER ROLE … SET`): `statement_timeout`, `lock_timeout` and `idle_in_transaction_session_timeout`. `SKIP LOCKED` skips locked rows but still waits for table locks, for example a migration's `ALTER TABLE`. With these timeouts a job gives up and retries in its next run instead of queueing behind the lock, and it never holds locks while idle.
-- Before first use the runner checks that its role meets every point above except the timeouts: BYPASSRLS; not (a member of) a superuser; not (a member of) an owner of database objects; no server privileges; no role memberships in either direction. The check lives in `DatabaseRoleGuard` and is shared with the outbox relay. The relay's check becomes stricter too, because today it does not reject server privileges or role memberships. If the check fails, the worker does not start.
+- Before first use the runner checks that its role meets every point above except the timeouts: BYPASSRLS; not (a member of) a superuser; not (a member of) an owner of database objects; no server privileges; no role memberships in either direction. The check lives in `DatabaseRoleGuard` and is shared with the outbox relay. The relay's check becomes stricter too, because today it does not reject server privileges or role memberships. If the check fails, the worker does not start. Since PostgreSQL 16 a non-superuser administrator with `CREATEROLE` is made an ADMIN-only member (no `INHERIT`, no `SET`) of every role it creates; the check ignores such a membership, because the provisioning role is trusted and a role that passes the check cannot have `CREATEROLE` itself.
 
 ### Privileges
 
 - By default the role has **no table privileges**. It is never named in `ALTER DEFAULT PRIVILEGES`, and it never gets `EXECUTE` on `SECURITY DEFINER` functions. The migration of the module that owns a job grants exactly the columns that job needs.
 - PostgreSQL needs `SELECT` on every column a query references, including the columns in `WHERE`, so a job may filter only on state and time columns (ids, `org_id`, status, timestamps). It never gets `SELECT` on content columns (message bodies, file names, email addresses or email content). A job that erases content gets `UPDATE` of those columns only, and finds its rows through a non-content marker. For example, invitation retention sets `email = NULL, email_erased_at = $now` and filters on `email_erased_at IS NULL` instead of `email IS NOT NULL`.
+- `FOR UPDATE SKIP LOCKED` needs `UPDATE` privilege on at least one column of the table (checked when the building block was implemented), so a job that only deletes also gets `UPDATE` on its least sensitive column, a state or time column, never content.
 - `DELETE` is granted only to a job that deletes whole rows, together with `SELECT` on its filter columns. Foreign keys with `ON DELETE CASCADE` run as the table owner and so reach tables the role has no grants on. A migration that grants `DELETE` lists the cascades it can trigger, and every cascade stays inside the owning module's schema.
 
 ### Runner and jobs

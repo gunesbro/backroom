@@ -22,6 +22,7 @@ public sealed class DatabaseMigratorTests(MigratorServer server) : IClassFixture
 
         roles.Should().Equal(
             "backroom_app:false:false:false:false",
+            "backroom_maintenance:false:true:false:false",
             "backroom_migrator:false:false:false:false",
             "backroom_relay:false:true:false:false");
     }
@@ -57,6 +58,7 @@ public sealed class DatabaseMigratorTests(MigratorServer server) : IClassFixture
     [InlineData("backroom_app", "INSERT")]
     [InlineData("backroom_app", "DELETE")]
     [InlineData("backroom_relay", "SELECT")]
+    [InlineData("backroom_maintenance", "SELECT")]
     public async Task Migrate_WhenDone_KeepsTheMigrationHistoryFromServiceRolesAsync(string role, string privilege)
     {
         // Regression: the application role could write the history and so skip pending migrations.
@@ -64,6 +66,42 @@ public sealed class DatabaseMigratorTests(MigratorServer server) : IClassFixture
         await services.GetRequiredService<DatabaseMigrator>().MigrateAsync(CancellationToken);
 
         (await QueryAsync($"SELECT has_table_privilege('{role}', 'isolated_module.__ef_migrations_history', '{privilege}')::text")).Should().Equal("false");
+    }
+
+    [Fact]
+    public async Task Bootstrap_ForTheMaintenanceRole_SetsTheTimeoutsOnTheRoleAsync()
+    {
+        await BootstrapAsync();
+
+        (await QueryAsync("SELECT unnest(rolconfig) FROM pg_roles WHERE rolname = 'backroom_maintenance' ORDER BY 1")).Should().Equal(
+            $"idle_in_transaction_session_timeout={DatabaseBootstrapper.MaintenanceIdleInTransactionTimeout}",
+            $"lock_timeout={DatabaseBootstrapper.MaintenanceLockTimeout}",
+            $"statement_timeout={DatabaseBootstrapper.MaintenanceStatementTimeout}");
+    }
+
+    [Fact]
+    public async Task Bootstrap_ForTheMaintenanceRole_AppliesTheTimeoutsToItsSessionsAsync()
+    {
+        await BootstrapAsync();
+        await using var connection = new NpgsqlConnection(server.ConnectionStringFor(DatabaseRoles.Maintenance, server.MaintenancePassword));
+        await connection.OpenAsync(CancellationToken);
+        await using var command = new NpgsqlCommand("SELECT current_setting('statement_timeout') || ',' || current_setting('lock_timeout') || ',' || current_setting('idle_in_transaction_session_timeout')", connection);
+
+        (await command.ExecuteScalarAsync(CancellationToken)).Should().Be("30s,5s,1min");
+    }
+
+    [Fact]
+    public async Task Migrate_WhenDone_GivesTheMaintenanceRoleNoTablePrivilegesAsync()
+    {
+        await using var services = CreateServices(bootstrap: true, modules => modules.AddModuleDbContext<IsolatedModuleContext>(IsolatedModuleContext.Schema));
+        await services.GetRequiredService<DatabaseMigrator>().MigrateAsync(CancellationToken);
+
+        (await QueryAsync("SELECT has_schema_privilege('backroom_maintenance', 'isolated_module', 'USAGE')::text")).Should().Equal("true");
+        (await QueryAsync("SELECT has_schema_privilege('backroom_maintenance', 'isolated_module', 'CREATE')::text")).Should().Equal("false");
+        (await QueryAsync(
+            "SELECT p || ':' || has_table_privilege('backroom_maintenance', 'isolated_module.items', p)::text FROM unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) AS p"))
+            .Should().OnlyContain(row => row.EndsWith(":false", StringComparison.Ordinal));
+        (await QueryAsync("SELECT has_database_privilege('backroom_maintenance', current_database(), 'CONNECT')::text")).Should().Equal("true");
     }
 
     [Fact]
@@ -149,6 +187,7 @@ public sealed class DatabaseMigratorTests(MigratorServer server) : IClassFixture
                 options.MigratorPassword = server.MigratorPassword;
                 options.ApplicationPassword = server.ApplicationPassword;
                 options.RelayPassword = server.RelayPassword;
+                options.MaintenancePassword = server.MaintenancePassword;
             }
         });
         return services.BuildServiceProvider();
@@ -156,7 +195,7 @@ public sealed class DatabaseMigratorTests(MigratorServer server) : IClassFixture
 
     private Task BootstrapAsync() =>
         DatabaseBootstrapper.BootstrapAsync(
-            server.AdministratorConnectionString, server.MigratorPassword, server.ApplicationPassword, server.RelayPassword, CancellationToken);
+            server.AdministratorConnectionString, server.MigratorPassword, server.ApplicationPassword, server.RelayPassword, server.MaintenancePassword, CancellationToken);
 
     private async Task ExecuteAsMigratorAsync(string sql)
     {

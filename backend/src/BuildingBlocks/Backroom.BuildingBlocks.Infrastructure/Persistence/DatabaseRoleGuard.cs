@@ -46,6 +46,31 @@ public sealed class DatabaseRoleGuard
                   AND pg_catalog.pg_has_role(current_user, r.oid, 'MEMBER'))
         """;
 
+    /// <summary>
+    /// True when the current role is a member of another role, or another role can use its privileges.
+    /// Memberships in it that carry neither INHERIT nor SET are ignored when the member can create roles:
+    /// since PostgreSQL 16 a non-superuser administrator with CREATEROLE (the managed-cloud case) gets such an
+    /// ADMIN-only membership in every role it creates. The provisioning role is trusted, and a service role that
+    /// passes this guard cannot have CREATEROLE itself, so it can never be the member of another service role.
+    /// </summary>
+    internal const string HasRoleMembershipsSql = """
+        EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.rolname = current_user
+                WHERE m.member = r.oid
+                   OR (m.roleid = r.oid AND (m.inherit_option OR m.set_option
+                       OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles a WHERE a.oid = m.member AND a.rolcreaterole))))
+        """;
+
+    /// <summary>
+    /// True when the current role is fit for a dedicated cross-organization role (the outbox relay, the
+    /// maintenance jobs): it has BYPASSRLS itself (without it, it would silently see no rows), but is
+    /// neither (a member of) a superuser nor (a member of) an owner of database objects (an owner could read
+    /// and change everything), holds no server privileges, and has no role memberships in either direction
+    /// (it could <c>SET ROLE</c>, or a member could use its privileges).
+    /// </summary>
+    internal const string DedicatedBypassRoleSql =
+        "SELECT rolbypassrls AND NOT " + MemberOfSuperuserSql + " AND NOT " + OwnsObjectsSql + " AND NOT " + HoldsServerPrivilegesSql +
+        " AND NOT " + HasRoleMembershipsSql + " FROM pg_catalog.pg_roles WHERE rolname = current_user";
+
     private const string BypassesRowSecuritySql =
         "SELECT " + MemberOfSuperuserSql + " OR " + MemberOfBypassRlsSql + " OR " + OwnsObjectsSql + " OR " + HoldsServerPrivilegesSql;
 
@@ -68,5 +93,13 @@ public sealed class DatabaseRoleGuard
         }
 
         _verified = true;
+    }
+
+    /// <summary>Whether the connection's role passes <see cref="DedicatedBypassRoleSql"/>.</summary>
+    internal static async Task<bool> IsDedicatedBypassRoleAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        await using var command = new NpgsqlCommand(DedicatedBypassRoleSql, connection);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
     }
 }

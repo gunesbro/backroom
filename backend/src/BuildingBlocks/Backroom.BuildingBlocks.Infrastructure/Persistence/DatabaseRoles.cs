@@ -17,4 +17,11 @@ public static class DatabaseRoles
     /// tables only.
     /// </summary>
     public const string Relay = "backroom_relay";
+
+    /// <summary>
+    /// Cross-organization maintenance jobs (docs/adr/0010): BYPASSRLS, because a job handles every
+    /// organization in one bounded batch, but no table privileges by default. Each job's module grants
+    /// it the columns that job needs in its migration (<c>MaintenanceGrants</c>).
+    /// </summary>
+    public const string Maintenance = "backroom_maintenance";
 }

@@ -18,10 +18,12 @@ public sealed class DatabaseMigrationOptions
     /// </summary>
     public string? BootstrapConnectionString { get; set; }
 
-    /// <summary>Development bootstrap: passwords for the migrator, application and relay roles.</summary>
+    /// <summary>Development bootstrap: passwords for the migrator, application, relay and maintenance roles.</summary>
     public string? MigratorPassword { get; set; }
 
     public string? ApplicationPassword { get; set; }
 
     public string? RelayPassword { get; set; }
+
+    public string? MaintenancePassword { get; set; }
 }
