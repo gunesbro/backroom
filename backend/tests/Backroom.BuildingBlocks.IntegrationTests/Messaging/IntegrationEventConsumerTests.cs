@@ -79,18 +79,15 @@ public sealed class IntegrationEventConsumerTests(PostgresDatabase database, Rab
     {
         await _host.StopAsync(CancellationToken.None);
 
-        // Queues are shared by the tests of this class; leave them empty. A test may have deleted one,
-        // and a failed purge closes its channel, so each purge gets its own.
-        foreach (var queue in new[] { Queue, DeadLetterQueue }.Concat(s_retryDelays.Select(RetryQueue)))
+        // Delete the queues, not only purge them: a durable queue left bound to the module's exchange would
+        // receive the events other test classes expect elsewhere (OutboxRelayTests' unrouted queue). The next
+        // host declares them again. Deleting a missing queue is a no-op. A channel of its own, because a test
+        // may have closed _testChannel.
+        await using (var channel = await _testConnection.CreateChannelAsync(cancellationToken: CancellationToken.None))
         {
-            await using var channel = await _testConnection.CreateChannelAsync(cancellationToken: CancellationToken.None);
-            try
+            foreach (var queue in new[] { Queue, DeadLetterQueue }.Concat(s_retryDelays.Select(RetryQueue)))
             {
-                await channel.QueuePurgeAsync(queue, CancellationToken.None);
-            }
-            catch (RabbitMQ.Client.Exceptions.OperationInterruptedException)
-            {
-                // The queue does not exist; the next host declares it again.
+                await channel.QueueDeleteAsync(queue, cancellationToken: CancellationToken.None);
             }
         }
 
