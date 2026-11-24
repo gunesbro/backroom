@@ -502,6 +502,7 @@
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.ControlPlane.Contracts": "[1.0.0, )",
           "Backroom.Modules.Organization.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Presence.Contracts": "[1.0.0, )",
           "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
           "Grpc.Net.Client": "[2.85.0, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )"
@@ -580,6 +581,9 @@
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
         }
+      },
+      "backroom.modules.presence.contracts": {
+        "type": "Project"
       },
       "backroom.modules.realtime.contracts": {
         "type": "Project",

@@ -21,6 +21,7 @@
     <ProjectReference Include="..\Backroom.Modules.Realtime.Contracts\Backroom.Modules.Realtime.Contracts.csproj" />
     <ProjectReference Include="..\..\Messaging\Backroom.Modules.Messaging.Contracts\Backroom.Modules.Messaging.Contracts.csproj" />
     <ProjectReference Include="..\..\Organization\Backroom.Modules.Organization.Contracts\Backroom.Modules.Organization.Contracts.csproj" />
+    <ProjectReference Include="..\..\Presence\Backroom.Modules.Presence.Contracts\Backroom.Modules.Presence.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

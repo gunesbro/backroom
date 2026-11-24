@@ -4,6 +4,7 @@ using Backroom.BuildingBlocks.Presentation.Cors;
 using Backroom.Cell.Host;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
+using Backroom.Modules.Presence.Presentation;
 using Backroom.Modules.Realtime.Infrastructure;
 using Backroom.ServiceDefaults;
 
@@ -55,6 +56,7 @@ if (role == CellRole.App)
 {
     app.MapOrganizationEndpoints();
     app.MapMessagingEndpoints();
+    app.MapPresenceEndpoints();
     app.MapRealtimeHub();
 }
 

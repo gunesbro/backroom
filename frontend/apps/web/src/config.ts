@@ -32,6 +32,11 @@ export const config = {
    * reached through the same per-cell tokens, and the cell's own `Features:Invitations`. On in development.
    */
   invitationsUiEnabled: import.meta.env.VITE_INVITATIONS_UI_ENABLED === 'true',
+  /**
+   * Feature flag: the status menu and presence (Phase 2 step 28), with the servers' `Features:Presence`. Activity is
+   * reported only to cells messaging connects to. On in development.
+   */
+  presenceEnabled: import.meta.env.VITE_PRESENCE_ENABLED === 'true',
   /** The control plane's origin; empty means this origin (the development server proxies /api). */
   controlPlaneUrl: import.meta.env.VITE_CONTROL_PLANE_URL ?? '',
   /** Data regions offered for new organizations, comma-separated region ids. */

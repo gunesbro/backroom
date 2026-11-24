@@ -56,6 +56,7 @@ message ConnectResponse {
     SessionRevoked session_revoked = 14;
     InvitationAccepted invitation_accepted = 15;
     MembershipSnapshotRequested membership_snapshot_requested = 16;
+    AccountStatusChanged account_status_changed = 17;
   }
 }
 
@@ -213,6 +214,23 @@ message MembershipSnapshotRequested {
   string organization_id = 1;
 }
 
+// An account's manual status and time zone (docs/contracts/phase-2.md, flow 9), sent to every cell where the account has a
+// membership. It is account-level profile data, not organization content. The cell applies it only when version is newer
+// than the copy it holds, so a resend or an older message changes nothing. Unset timestamps and empty strings mean "none".
+message AccountStatusChanged {
+  string account_id = 1;
+  google.protobuf.Timestamp dnd_until = 2;
+  // One emoji (a single grapheme cluster); empty when there is no custom status or it has only text.
+  string custom_emoji = 3;
+  // At most 100 characters; empty when there is no custom status or it has only an emoji.
+  string custom_text = 4;
+  google.protobuf.Timestamp custom_expires_at = 5;
+  // IANA time zone id reported by the person's client; the cell never returns it to anyone else.
+  string time_zone = 6;
+  // Monotonic per account.
+  uint64 version = 7;
+}
+
 message FullSyncRequest {}
 
 message FullSyncResponse {
@@ -220,6 +238,8 @@ message FullSyncResponse {
   repeated OrganizationAssignment organizations = 1;
   // Only revocations of accounts that are members of an organization in this cell.
   repeated SessionRevoked revoked_sessions = 2;
+  // Account statuses of accounts that are members of an organization in this cell (at most 10,000).
+  repeated AccountStatusChanged account_statuses = 3;
 }
 
 message OrganizationAssignment {

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Backroom.BuildingBlocks.Infrastructure.Messaging;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.Organization.Contracts;
+using Backroom.Modules.Presence.Contracts;
 using Backroom.Modules.Realtime.Contracts;
 using Backroom.Modules.Realtime.Infrastructure.Gateway;
 using Backroom.Modules.Realtime.Infrastructure.Revocation;
@@ -45,12 +46,14 @@ public static class RealtimeModule
                     && options.MaxReceiveMessageSizeBytes is >= 256 and <= 64 * 1024
                     && options.MaxConcurrentPublishes is > 0 and <= 10_000
                     && options.MaxSubscribeCallsPerWindow is > 0 and <= 10_000
-                    && options.MaxRefusedSubscribesPerConnection is > 0 and <= 10_000,
+                    && options.MaxRefusedSubscribesPerConnection is > 0 and <= 10_000
+                    && options.MaxWatchedPerConnection is > 0 and <= 1000,
                 "The Realtime limits are out of range.")
             .Validate(
                 options => options.PublishTimeout > TimeSpan.Zero
                     && options.CommandTimeout > TimeSpan.Zero
                     && options.SubscribeWindow > TimeSpan.Zero
+                    && options.ActivityInterval > TimeSpan.Zero && options.ActivityInterval <= TimeSpan.FromMinutes(1)
                     && options.KeepAliveInterval > TimeSpan.Zero
                     && options.ClientTimeoutInterval >= options.KeepAliveInterval * 2
                     && options.HandshakeTimeout > TimeSpan.Zero
@@ -107,6 +110,8 @@ public static class RealtimeModule
     public static IServiceCollection AddRealtimeGateway(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        // Presence replaces this when the module is added (AddPresenceTracking); without it the hub refuses the presence methods.
+        services.TryAddSingleton<IPresenceTracker, NoPresenceTracker>();
         services.AddHostedService<GroupRemovalListener>();
         services.AddHostedService<SessionRevocationListener>();
         return services;
@@ -120,6 +125,7 @@ public static class RealtimeModule
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddRealtimeDatabase();
+        services.TryAddSingleton<IPresenceMemberships, NoPresenceMemberships>();
         return services.AddIntegrationEventHandler<MemberRemoved, MemberRemovedConsumer>(RealtimeDbContext.Schema);
     }
 }

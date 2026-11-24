@@ -1,4 +1,11 @@
-import { EVENT_NAMES, type ConnectionStatus, type RealtimeEventName, type RealtimeEvents } from './events';
+import {
+  EVENT_NAMES,
+  MAX_WATCHED_ACCOUNTS,
+  type ActivityState,
+  type ConnectionStatus,
+  type RealtimeEventName,
+  type RealtimeEvents,
+} from './events';
 import { createSignalrHub, type Hub, type HubFactory } from './hub';
 
 export type RealtimeListener<K extends RealtimeEventName> = (payload: RealtimeEvents[K]) => void;
@@ -12,6 +19,13 @@ export interface RealtimeClient {
   unsubscribeOrganization: (orgId: string) => void;
   subscribeChannel: (orgId: string, channelId: string) => void;
   unsubscribeChannel: (orgId: string, channelId: string) => void;
+  /**
+   * Replaces the people this connection watches in one organization (at most 200; the rest are cut off); replayed
+   * after every connect. An empty list stops watching.
+   */
+  watchPresence: (orgId: string, accountIds: readonly string[]) => void;
+  /** Tells the cell whether the person is active or idle; not replayed (a new connection starts active). Callers throttle. */
+  reportActivity: (state: ActivityState) => void;
   on: <K extends RealtimeEventName>(event: K, listener: RealtimeListener<K>) => () => void;
   /** Called on every status change; `reconnected` is true for a connect that follows a loss. */
   onStatus: (listener: (status: ConnectionStatus, reconnected: boolean) => void) => () => void;
@@ -45,7 +59,13 @@ const defaultSchedule = (callback: () => void, ms: number) => {
   };
 };
 
-type Join = { method: string; args: string[] };
+type Join = { method: string; args: unknown[] };
+
+/** The connection has one watch set, whatever the organization. */
+const PRESENCE_KEY = 'presence';
+
+/** Hub calls that put the connection into groups: a refusal (`realtime.not_found`) means do not ask again. */
+const isJoin = (method: string) => method.startsWith('Subscribe') || method === 'WatchPresence';
 
 export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
   const hubFactory = options.hubFactory ?? createSignalrHub;
@@ -58,6 +78,7 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     MessagePosted: new Set(),
     ChannelCreated: new Set(),
     SessionRevoked: new Set(),
+    PresenceChanged: new Set(),
   };
   const statusListeners = new Set<(status: ConnectionStatus, reconnected: boolean) => void>();
   // The groups to be in, as hub method plus arguments; replayed after every connect.
@@ -85,8 +106,9 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
   /** Resolves when the hub answered (or refused); never rejects. */
   const invoke = (target: Hub, key: string, { method, args }: Join): Promise<void> => {
     const run = queue.then(() => {
-      // Dropped since it was queued (its organization was refused): do not ask, a refusal counts against the limit.
-      if (method.startsWith('Subscribe') && !wanted.has(key)) return undefined;
+      // Dropped or replaced since it was queued (its organization was refused, a newer watch set): do not ask, a
+      // refusal counts against the limit.
+      if (isJoin(method) && key !== '' && wanted.get(key)?.args !== args) return undefined;
       return target.invoke(method, ...args);
     });
     queue = run.catch(() => undefined);
@@ -95,11 +117,13 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
       (error: unknown) => {
         // Refused for every reason the same way (not a member, unknown or non-public channel): do not ask again.
         // A refused organization takes its channels with it, or every reconnect would run into the refusal limit.
-        if (method.startsWith('Subscribe') && isHubError(error, 'realtime.not_found')) {
-          wanted.delete(key);
+        if (isJoin(method) && isHubError(error, 'realtime.not_found')) {
+          if (wanted.get(key)?.args === args) wanted.delete(key);
           if (method === 'SubscribeOrganization') {
-            for (const other of [...wanted.keys()]) {
-              if (other.startsWith(`channel:${args[0] ?? ''}/`)) wanted.delete(other);
+            const orgId = String(args[0]);
+            for (const [other, entry] of [...wanted]) {
+              if (other.startsWith(`channel:${orgId}/`)) wanted.delete(other);
+              if (other === PRESENCE_KEY && entry.args[0] === orgId) wanted.delete(other);
             }
           }
         }
@@ -107,11 +131,11 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     );
   };
 
-  const join = (key: string, method: string, args: string[]) => {
+  const join = (key: string, method: string, args: unknown[]) => {
     wanted.set(key, { method, args });
     if (ready && hub) void invoke(hub, key, { method, args });
   };
-  const leave = (key: string, method: string, args: string[]) => {
+  const leave = (key: string, method: string, args: unknown[]) => {
     const had = wanted.delete(key);
     if (had && ready && hub) void invoke(hub, key, { method, args });
   };
@@ -218,6 +242,19 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     },
     unsubscribeChannel: (orgId, channelId) => {
       leave(`channel:${orgId}/${channelId}`, 'UnsubscribeChannel', [orgId, channelId]);
+    },
+    watchPresence: (orgId, accountIds) => {
+      const ids = [...new Set(accountIds)].slice(0, MAX_WATCHED_ACCOUNTS);
+      if (ids.length === 0) {
+        // Sent once, outside the replayed groups (an empty set is never replayed).
+        if (wanted.delete(PRESENCE_KEY) && ready && hub)
+          void invoke(hub, '', { method: 'WatchPresence', args: [orgId, []] });
+        return;
+      }
+      join(PRESENCE_KEY, 'WatchPresence', [orgId, ids]);
+    },
+    reportActivity: (state) => {
+      if (ready && hub) void invoke(hub, '', { method: 'ReportActivity', args: [state] });
     },
     on: (event, listener) => {
       const set = listeners[event] as Set<typeof listener>;

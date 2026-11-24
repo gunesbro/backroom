@@ -93,7 +93,8 @@ public sealed class MemberRemovalTests(PostgresDatabase database, KeycloakRealm 
     // What the worker does for the event: its consumer tells every app node through Valkey.
     private async Task PublishRemovalAsync(Guid organizationId, Guid accountId)
     {
-        var consumer = new MemberRemovedConsumer(NodeA.Services.GetRequiredService<GroupRemovalBroadcast>());
+        var consumer = new MemberRemovedConsumer(
+            NodeA.Services.GetRequiredService<GroupRemovalBroadcast>(), NodeA.Services.GetRequiredService<Backroom.Modules.Presence.Contracts.IPresenceMemberships>());
         await consumer.HandleAsync(new MemberRemoved(Guid.CreateVersion7(), organizationId, DateTimeOffset.UtcNow, accountId, 2), CancellationToken);
     }
 

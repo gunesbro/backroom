@@ -39,6 +39,34 @@ internal sealed class ConnectionState(string connectionId, Guid accountId)
     /// <summary>Closes the connection (the client reconnects, and its token is checked again).</summary>
     public void Abort() => _abort?.Invoke();
 
+    private readonly HashSet<string> _watched = new(StringComparer.Ordinal);
+    private DateTimeOffset _lastActivity = DateTimeOffset.MinValue;
+
+    /// <summary>Under the gate: the presence groups of the connection's watch set (a subset of its groups).</summary>
+    public IReadOnlyCollection<string> Watched => _watched;
+
+    /// <summary>Under the gate: joins a presence group of the watch set (counted among the groups).</summary>
+    public void AddWatched(string group, Guid organizationId)
+    {
+        _groups[group] = organizationId;
+        _watched.Add(group);
+    }
+
+    /// <summary>
+    /// Counts an activity report: <see langword="false"/> when the last one accepted was less than <paramref name="interval"/> ago (the
+    /// report is dropped). A connection's hub calls run one at a time (one invocation per client), so no lock is needed.
+    /// </summary>
+    public bool TryCountActivity(DateTimeOffset now, TimeSpan interval)
+    {
+        if (now - _lastActivity < interval)
+        {
+            return false;
+        }
+
+        _lastActivity = now;
+        return true;
+    }
+
     private DateTimeOffset _windowStart;
     private int _calls;
     private int _refusals;
@@ -72,7 +100,11 @@ internal sealed class ConnectionState(string connectionId, Guid accountId)
     public void Add(string group, Guid organizationId) => _groups[group] = organizationId;
 
     /// <summary>Under the gate.</summary>
-    public bool Remove(string group) => _groups.Remove(group);
+    public bool Remove(string group)
+    {
+        _watched.Remove(group);
+        return _groups.Remove(group);
+    }
 
     /// <summary>Under the gate: the groups of <paramref name="organizationId"/>.</summary>
     public List<string> GroupsOf(Guid organizationId)

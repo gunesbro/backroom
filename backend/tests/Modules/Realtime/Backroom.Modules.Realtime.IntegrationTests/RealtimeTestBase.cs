@@ -47,12 +47,15 @@ public abstract class RealtimeTestBase(PostgresDatabase database, KeycloakRealm 
     /// <summary>A second key both nodes trust next to the realm's, for tokens a test signs itself.</summary>
     protected virtual Microsoft.IdentityModel.Tokens.SecurityKey? ExtraSigningKey => null;
 
+    /// <summary>The clock of both nodes (a test's fake one); the system clock when <see langword="null"/>.</summary>
+    protected virtual TimeProvider? Time => null;
+
     public async ValueTask InitializeAsync()
     {
         await RealtimeSchema.MigrateOnceAsync(database, CancellationToken);
         CellId = await keycloak.CreateCellScopeAsync();
-        NodeA = await CellNode.StartAsync(database, keycloak.Url, CellId, valkey.ConnectionString, Settings, ExtraSigningKey, cancellationToken: CancellationToken);
-        NodeB = await CellNode.StartAsync(database, keycloak.Url, CellId, valkey.ConnectionString, Settings, ExtraSigningKey, cancellationToken: CancellationToken);
+        NodeA = await CellNode.StartAsync(database, keycloak.Url, CellId, valkey.ConnectionString, Settings, ExtraSigningKey, Time, cancellationToken: CancellationToken);
+        NodeB = await CellNode.StartAsync(database, keycloak.Url, CellId, valkey.ConnectionString, Settings, ExtraSigningKey, Time, cancellationToken: CancellationToken);
     }
 
     public async ValueTask DisposeAsync()
@@ -91,6 +94,13 @@ public abstract class RealtimeTestBase(PostgresDatabase database, KeycloakRealm 
     internal async Task<HttpResponseMessage> PostAsync(CellNode node, string path, string username, object body)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(path, UriKind.Relative)) { Content = JsonContent.Create(body) };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(username));
+        return await node.Client.SendAsync(request, CancellationToken);
+    }
+
+    internal async Task<HttpResponseMessage> GetAsync(CellNode node, string path, string username)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(path, UriKind.Relative));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(username));
         return await node.Client.SendAsync(request, CancellationToken);
     }

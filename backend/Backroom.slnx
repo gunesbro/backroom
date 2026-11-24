@@ -59,6 +59,11 @@
     <Project Path="src/Modules/Realtime/Backroom.Modules.Realtime.Contracts/Backroom.Modules.Realtime.Contracts.csproj" />
     <Project Path="src/Modules/Realtime/Backroom.Modules.Realtime.Infrastructure/Backroom.Modules.Realtime.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Presence/">
+    <Project Path="src/Modules/Presence/Backroom.Modules.Presence.Contracts/Backroom.Modules.Presence.Contracts.csproj" />
+    <Project Path="src/Modules/Presence/Backroom.Modules.Presence.Infrastructure/Backroom.Modules.Presence.Infrastructure.csproj" />
+    <Project Path="src/Modules/Presence/Backroom.Modules.Presence.Presentation/Backroom.Modules.Presence.Presentation.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Organization/">
     <Project Path="src/Modules/Organization/Backroom.Modules.Organization.Application/Backroom.Modules.Organization.Application.csproj" />
     <Project Path="src/Modules/Organization/Backroom.Modules.Organization.Contracts/Backroom.Modules.Organization.Contracts.csproj" />

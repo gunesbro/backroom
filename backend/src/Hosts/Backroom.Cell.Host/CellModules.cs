@@ -8,6 +8,7 @@ using Backroom.Modules.Messaging.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure.Invitations;
 using Backroom.Modules.Permissions.Infrastructure;
+using Backroom.Modules.Presence.Infrastructure;
 using Backroom.Modules.Realtime.Infrastructure;
 
 namespace Backroom.Cell.Host;
@@ -37,10 +38,14 @@ internal static class CellModules
         // from the app role; the worker consumes member-removed).
         builder.Services.AddRealtime();
         builder.Services.AddMessaging();
+        // Presence in Valkey (no schema): the status copy the worker applies, the reader of the app's endpoint.
+        builder.Services.AddPresence();
         if (role == CellRole.App)
         {
             // The hub's checks and the listener that removes connections from groups (the hub itself is mapped in Program).
             builder.Services.AddRealtimeGateway();
+            // Online and idle from the hub's connections, and the node's presence sweeper.
+            builder.Services.AddPresenceTracking();
         }
 
         // Every role needs the invitation keys: the app issues codes, the worker will build the links.

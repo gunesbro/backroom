@@ -21,7 +21,7 @@ const MAX_RESPONSE_CHARS = 1_000_000;
 export async function requestJson<T>(
   url: string,
   getAccessToken: AccessTokenSource,
-  init: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown; signal?: AbortSignal | undefined } = {},
+  init: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; signal?: AbortSignal | undefined } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',

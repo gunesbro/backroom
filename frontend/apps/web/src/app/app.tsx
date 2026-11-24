@@ -43,6 +43,7 @@ import {
   openOrganization,
   type OrganizationsApi,
 } from '@/features/organizations';
+import { createStatusApi, StatusApiContext, type StatusApi } from '@/features/presence';
 import { ApiError, type AccessTokenSource } from '@/shared/http';
 import { readItem, writeItem } from '@/shared/storage';
 import { LocaleProvider } from '@/shared/locale-provider';
@@ -125,6 +126,10 @@ type Services = {
   realtime?: RealtimeFactory | undefined;
   /** Overrides the invitation UI feature flag (tests). */
   invitationsUiEnabled?: boolean | undefined;
+  /** Overrides the presence feature flag (tests). */
+  presenceEnabled?: boolean | undefined;
+  /** Replaces the control plane's status API (tests). */
+  createStatusApi?: ((getAccessToken: AccessTokenSource) => StatusApi) | undefined;
   authClient?: AuthClient | undefined;
   createApi?: ((getAccessToken: AccessTokenSource) => OrganizationsApi) | undefined;
 };
@@ -136,6 +141,8 @@ export function App({
   cellTokens,
   messagingEnabled,
   invitationsUiEnabled,
+  presenceEnabled,
+  createStatusApi: statusApiFactory,
   realtime,
 }: Services = {}) {
   const hash = useHash();
@@ -159,6 +166,8 @@ export function App({
             cellTokens={cellTokens}
             messagingEnabled={messagingEnabled}
             invitationsUiEnabled={invitationsUiEnabled}
+            presenceEnabled={presenceEnabled}
+            createStatusApi={statusApiFactory}
             realtimeFactory={realtime}
           />
         </AuthProvider>
@@ -172,8 +181,18 @@ function SignedIn({
   cellTokens,
   messagingEnabled = config.messagingEnabled,
   invitationsUiEnabled = config.invitationsUiEnabled,
+  presenceEnabled = config.presenceEnabled,
+  createStatusApi: statusApiFactory,
   realtimeFactory,
-}: Pick<Services, 'createApi' | 'cellTokens' | 'messagingEnabled' | 'invitationsUiEnabled'> & {
+}: Pick<
+  Services,
+  | 'createApi'
+  | 'cellTokens'
+  | 'messagingEnabled'
+  | 'invitationsUiEnabled'
+  | 'presenceEnabled'
+  | 'createStatusApi'
+> & {
   realtimeFactory?: RealtimeFactory | undefined;
 }) {
   const { getAccessToken, getCellToken } = useAuth();
@@ -201,6 +220,15 @@ function SignedIn({
   const realtime = useMemo(
     () => (messagingEnabled ? (realtimeFactory ?? createRealtimeFactory(cellTokenSource)) : null),
     [messagingEnabled, realtimeFactory, cellTokenSource],
+  );
+
+  // The own status lives in the control plane; with the flag off there is no API and the status menu stays passive.
+  const statusApi = useMemo(
+    () =>
+      presenceEnabled
+        ? (statusApiFactory ?? ((tokens) => createStatusApi(config.controlPlaneUrl, tokens)))(getAccessToken)
+        : null,
+    [presenceEnabled, statusApiFactory, getAccessToken],
   );
 
   const queryClient = useQueryClient();
@@ -232,7 +260,9 @@ function SignedIn({
       <MessagingApiContext.Provider value={messagingApi}>
         <RealtimeContext.Provider value={realtime}>
           <InvitationsApiContext.Provider value={invitationsApi}>
-            <OrganizationsGate onJoin={join} />
+            <StatusApiContext.Provider value={statusApi}>
+              <OrganizationsGate onJoin={join} />
+            </StatusApiContext.Provider>
           </InvitationsApiContext.Provider>
         </RealtimeContext.Provider>
       </MessagingApiContext.Provider>

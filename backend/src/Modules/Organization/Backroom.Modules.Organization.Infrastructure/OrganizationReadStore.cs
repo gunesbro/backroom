@@ -10,6 +10,8 @@ internal sealed class OrganizationReadStore(DatabaseSession session) : IOrganiza
 {
     private const string IsActiveMemberSql = "SELECT 1 FROM organization.members WHERE account_id = $1 AND status = 'active'";
 
+    private const string SelectActiveMembersSql = "SELECT account_id FROM organization.members WHERE account_id = ANY($1) AND status = 'active'";
+
     private const string GetSql = "SELECT id, name FROM organization.organizations WHERE id = $1";
 
     // Other people's emails are not even read: the database returns only the reader's own.
@@ -26,6 +28,27 @@ internal sealed class OrganizationReadStore(DatabaseSession session) : IOrganiza
         await using var command = new NpgsqlCommand(IsActiveMemberSql, session.Connection, session.Transaction);
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
         return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    public async Task<IReadOnlyList<Guid>> SelectActiveMembersAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(accountIds);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(accountIds.Count, IOrganizationMembershipCheck.MaxAccountsPerSelection);
+        if (accountIds.Count == 0)
+        {
+            return [];
+        }
+
+        await using var command = new NpgsqlCommand(SelectActiveMembersSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid[]> { TypedValue = [.. accountIds] });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var members = new List<Guid>(accountIds.Count);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            members.Add(reader.GetGuid(0));
+        }
+
+        return members;
     }
 
     public async Task<OrganizationSummary?> GetAsync(Guid organizationId, CancellationToken cancellationToken)

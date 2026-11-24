@@ -11,14 +11,20 @@ public sealed class RealtimeOptions
     /// <summary>The cell's id, part of every group name and Valkey channel (cells share development servers).</summary>
     public string CellId { get; set; } = string.Empty;
 
-    /// <summary>Groups one connection may join (organization and channel groups together).</summary>
-    public int MaxSubscriptionsPerConnection { get; set; } = 200;
+    /// <summary>Groups one connection may join (organization, channel and presence groups together; docs/contracts/phase-2.md, "Limits").</summary>
+    public int MaxSubscriptionsPerConnection { get; set; } = 600;
+
+    /// <summary>People one connection may watch with <c>WatchPresence</c> (the contract's 200).</summary>
+    public int MaxWatchedPerConnection { get; set; } = 200;
+
+    /// <summary>At most one <c>ReportActivity</c> per connection this often; extra reports are dropped.</summary>
+    public TimeSpan ActivityInterval { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>Connections one account may hold open on one node; further ones are closed.</summary>
     public int MaxConnectionsPerAccount { get; set; } = 20;
 
-    /// <summary>The largest message a client may send; the hub methods take two ids.</summary>
-    public int MaxReceiveMessageSizeBytes { get; set; } = 4 * 1024;
+    /// <summary>The largest message a client may send: <c>WatchPresence</c> carries up to 200 ids (about 8 KB in MessagePack).</summary>
+    public int MaxReceiveMessageSizeBytes { get; set; } = 16 * 1024;
 
     /// <summary>
     /// The longest a live event publish waits for Valkey before the event is given up (a client catches up with a read).

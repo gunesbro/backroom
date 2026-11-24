@@ -30,7 +30,8 @@ internal static class IdentityUnderTest
         TimeProvider timeProvider,
         Microsoft.IdentityModel.Tokens.SecurityKey? trustedKey = null,
         string authority = LogoutTokenIssuer.Issuer,
-        string? listenOn = null)
+        string? listenOn = null,
+        IReadOnlyDictionary<string, string?>? settings = null)
     {
         await MigrateAsync(database, cancellationToken);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = Environments.Development });
@@ -46,6 +47,11 @@ internal static class IdentityUnderTest
         builder.Configuration["Authentication:Authority"] = authority;
         builder.Configuration["Database:ConnectionString"] = database.ApplicationConnectionString();
         builder.Configuration["CellManagement:Keycloak:AdminClientSecret"] = "test-secret";
+        foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
+        {
+            builder.Configuration[key] = value;
+        }
+
         builder.Services.AddSingleton(timeProvider);
 
         builder.AddAccessTokenAuthentication(Audiences.ControlPlane, [KeycloakClients.Web, KeycloakClients.Desktop, KeycloakClients.Operations]);

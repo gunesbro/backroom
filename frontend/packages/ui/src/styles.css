@@ -40,6 +40,10 @@
   /* Unread counts and other badges. */
   --ph-badge: #c92a2a;
   --ph-on-badge: #fff;
+  /* Presence dots (docs/design: Thread): online, away (idle), do not disturb; always next to words or a label. */
+  --ph-presence-online: #2f9e44;
+  --ph-presence-away: #e8890c;
+  --ph-presence-dnd: #c92a2a;
   /* Rows under the pointer: a sidebar heading, a message. */
   --ph-hover: rgb(127 135 150 / 12%);
   --ph-hover-strong: rgb(127 135 150 / 22%);
@@ -98,6 +102,9 @@
     --ph-on-note: #dbe2ff;
     --ph-danger: #ff8a8a;
     --ph-danger-soft: #3a1f22;
+    --ph-presence-online: #40c057;
+    --ph-presence-away: #f59f00;
+    --ph-presence-dnd: #ff6b6b;
     --ph-row-hover: #222731;
     --ph-tooltip: #e6e9ef;
     --ph-on-tooltip: #1f2430;
@@ -129,6 +136,9 @@
   --ph-on-note: #dbe2ff;
   --ph-danger: #ff8a8a;
   --ph-danger-soft: #3a1f22;
+  --ph-presence-online: #40c057;
+  --ph-presence-away: #f59f00;
+  --ph-presence-dnd: #ff6b6b;
   --ph-row-hover: #222731;
   --ph-tooltip: #e6e9ef;
   --ph-on-tooltip: #1f2430;

@@ -16,6 +16,7 @@ internal sealed class HubClient : IAsyncDisposable
     private readonly Channel<MessagePostedPayload> _messages = Channel.CreateUnbounded<MessagePostedPayload>();
     private readonly Channel<ChannelCreatedPayload> _channels = Channel.CreateUnbounded<ChannelCreatedPayload>();
     private readonly Channel<SessionRevokedPayload> _revoked = Channel.CreateUnbounded<SessionRevokedPayload>();
+    private readonly Channel<PresenceChangedPayload> _presence = Channel.CreateUnbounded<PresenceChangedPayload>();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private HubClient(HubConnection connection)
@@ -24,6 +25,7 @@ internal sealed class HubClient : IAsyncDisposable
         connection.On<MessagePostedPayload>(LiveEventNames.MessagePosted, payload => _messages.Writer.TryWrite(payload));
         connection.On<ChannelCreatedPayload>(LiveEventNames.ChannelCreated, payload => _channels.Writer.TryWrite(payload));
         connection.On<SessionRevokedPayload>(LiveEventNames.SessionRevoked, payload => _revoked.Writer.TryWrite(payload));
+        connection.On<PresenceChangedPayload>(LiveEventNames.PresenceChanged, payload => _presence.Writer.TryWrite(payload));
         connection.Closed += _ =>
         {
             _closed.TrySetResult();
@@ -77,6 +79,14 @@ internal sealed class HubClient : IAsyncDisposable
     public Task SubscribeChannelAsync(Guid organizationId, Guid channelId) => _connection.InvokeAsync("SubscribeChannel", organizationId, channelId);
 
     public Task UnsubscribeChannelAsync(Guid organizationId, Guid channelId) => _connection.InvokeAsync("UnsubscribeChannel", organizationId, channelId);
+
+    public Task WatchPresenceAsync(Guid organizationId, params Guid[] accountIds) => _connection.InvokeAsync("WatchPresence", organizationId, accountIds);
+
+    public Task ReportActivityAsync(string state) => _connection.InvokeAsync("ReportActivity", state);
+
+    public Task<PresenceChangedPayload> NextPresenceAsync() => ReadAsync(_presence.Reader);
+
+    public bool HasUnreadPresence => _presence.Reader.TryPeek(out _);
 
     public Task<MessagePostedPayload> NextMessageAsync() => ReadAsync(_messages.Reader);
 

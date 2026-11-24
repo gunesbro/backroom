@@ -1,5 +1,6 @@
 import { Avatar, Icon, MenuButton, OrgMark, SoonButton, type MenuEntry } from '@backroom/ui';
 import { useAuth } from '@/features/auth';
+import { PresenceDot, useStatusMenu } from '@/features/presence';
 import { useTranslate } from '@/shared/locale';
 import type { AccountOrganization } from './api';
 import { messages } from './messages';
@@ -96,8 +97,8 @@ export function OrganizationSwitcher({
 }
 
 /**
- * docs/design: Main and Thread, the account at the foot of the sidebar: the status and profile menu (sign-out
- * works; status and settings come later) and the microphone, audio and settings buttons of later phases.
+ * docs/design: Main and Thread, the account at the foot of the sidebar: the status and profile menu (status with the
+ * presence feature flag, sign-out; settings come later) and the microphone, audio and settings buttons of later phases.
  */
 export function AccountBar() {
   const t = useTranslate(messages);
@@ -105,12 +106,16 @@ export function AccountBar() {
   const signOut = useSignOut();
   const soon = t('soon');
   const toneKey = user.accountId ?? user.email;
-  const entries: MenuEntry[] = [
+  const status = useStatusMenu();
+  const statusEntries: MenuEntry[] = status?.entries ?? [
     { kind: 'item', id: 'online', label: t('online'), soon },
     { kind: 'item', id: 'away', label: t('away'), soon },
     { kind: 'item', id: 'dnd', label: t('doNotDisturb'), soon },
     { kind: 'separator', id: 'sep-1' },
     { kind: 'item', id: 'custom', label: t('customStatus'), soon },
+  ];
+  const entries: MenuEntry[] = [
+    ...statusEntries,
     { kind: 'item', id: 'room', label: t('backToRoom'), soon },
     { kind: 'separator', id: 'sep-2' },
     { kind: 'item', id: 'profile', label: t('profileSettings'), soon },
@@ -121,7 +126,9 @@ export function AccountBar() {
     <section className="bo-account" aria-label={t('account')}>
       <MenuButton
         label={t('accountMenu')}
-        description={user.name}
+        description={
+          status ? [user.name, status.presenceLabel, status.line].filter(Boolean).join(', ') : user.name
+        }
         buttonClassName="bo-account__button"
         menuClassName="bo-account__menu"
         placement="above"
@@ -137,14 +144,23 @@ export function AccountBar() {
         }
         button={
           <>
-            <Avatar name={user.name} toneKey={toneKey} />
+            {status ? (
+              <span className="bp-avatar">
+                <Avatar name={user.name} toneKey={toneKey} />
+                {/* Named in the button's description: content inside a labelled button is not read. */}
+                <PresenceDot presence={status.presence} />
+              </span>
+            ) : (
+              <Avatar name={user.name} toneKey={toneKey} />
+            )}
             <span className="bo-account__who">
               <b>{user.name}</b>
-              <small>{user.email}</small>
+              <small>{status?.line ?? user.email}</small>
             </span>
           </>
         }
       />
+      {status?.overlay}
       <SoonButton className="bo-account__tool" label={t('microphone')} soon={soon}>
         <Icon name="mic" />
       </SoonButton>

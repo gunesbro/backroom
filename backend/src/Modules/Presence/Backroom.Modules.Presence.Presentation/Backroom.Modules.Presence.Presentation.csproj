@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
+    <ProjectReference Include="..\Backroom.Modules.Presence.Contracts\Backroom.Modules.Presence.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -183,6 +183,8 @@ export type MenuEntry =
       checked?: boolean;
       /** A later phase: shown, focusable, disabled and described with this text; does nothing. */
       soon?: string;
+      /** Shown and described, but cannot be chosen (an automatic state, for example); its detail says why. */
+      disabled?: boolean;
       onSelect?: () => void;
       /** Danger style (sign out, leave). */
       danger?: boolean;
@@ -294,7 +296,7 @@ export function MenuButton({
           key={entry.id}
           role={entry.checked === undefined ? 'menuitem' : 'menuitemradio'}
           aria-checked={entry.checked}
-          aria-disabled={entry.soon ? true : undefined}
+          aria-disabled={entry.soon || entry.disabled ? true : undefined}
           aria-describedby={soonId}
           tabIndex={-1}
           className={classes(
@@ -303,7 +305,7 @@ export function MenuButton({
             entry.danger && 'ph-menu__item--danger',
           )}
           onClick={() => {
-            if (entry.soon) return;
+            if (entry.soon || entry.disabled) return;
             close(true);
             entry.onSelect?.();
           }}

@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- What the link may ask Identity: the revoked sessions a cell must hold (docs/contracts/phase-1.md, "Identity and tokens"). -->
+  <!-- What the link may ask Identity: the revoked sessions and account statuses a cell must hold (docs/contracts/phase-1.md, "Identity and tokens"; phase-2.md, flow 9). -->
 
 </Project>

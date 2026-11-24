@@ -13,4 +13,7 @@ public interface ILiveEventPublisher
 
     /// <summary>Sends <c>ChannelCreated</c> to the organization's group.</summary>
     Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken);
+
+    /// <summary>Sends <c>PresenceChanged</c> to the person's presence group in the payload's organization.</summary>
+    Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken);
 }

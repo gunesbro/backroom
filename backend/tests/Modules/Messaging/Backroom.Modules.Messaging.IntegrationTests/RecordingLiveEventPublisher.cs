@@ -54,6 +54,9 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
         }
     }
 
+    /// <summary>Messaging publishes no presence; recorded nowhere.</summary>
+    public Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
     private async Task BeforeAsync()
     {
         if (OnPublish is { } hook)

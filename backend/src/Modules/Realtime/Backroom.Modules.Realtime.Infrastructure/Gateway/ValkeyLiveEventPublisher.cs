@@ -48,6 +48,13 @@ internal sealed partial class ValkeyLiveEventPublisher : ILiveEventPublisher, ID
             LiveEventNames.ChannelCreated, GroupNames.Organization(_options.CellId, payload.OrgId), payload, payload.OrgId, cancellationToken);
     }
 
+    public Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return PublishAsync(
+            LiveEventNames.PresenceChanged, GroupNames.Presence(_options.CellId, payload.OrgId, payload.AccountId), payload, payload.OrgId, cancellationToken);
+    }
+
     public void Dispose() => _slots.Dispose();
 
     private async Task PublishAsync(string eventName, string group, object payload, Guid organizationId, CancellationToken cancellationToken)

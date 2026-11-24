@@ -35,6 +35,9 @@ internal sealed class TestCell : IAsyncDisposable
     /// <summary>What the connector applied through Realtime's contract; needs the database given to <see cref="Create"/>.</summary>
     public RecordingSessionRevocation Revocations => _provider.GetRequiredService<RecordingSessionRevocation>();
 
+    /// <summary>What the connector applied through Presence's contract; needs the database given to <see cref="Create"/>.</summary>
+    public RecordingAccountStatusSink Statuses => _provider.GetRequiredService<RecordingAccountStatusSink>();
+
     public CellRegistrationWorker Worker => _provider.GetRequiredService<CellRegistrationWorker>();
 
     /// <summary>Whether the cell is rejected; what its health check reports.</summary>
@@ -121,6 +124,9 @@ internal sealed class TestCell : IAsyncDisposable
             services.AddSingleton<Backroom.Modules.Realtime.Contracts.ISessionRevocation>(provider => provider.GetRequiredService<RecordingSessionRevocation>());
             services.AddSingleton<FullSyncRunner>();
             services.AddScoped<IDownstreamHandler<Backroom.ControlPlane.Contracts.V1.SessionRevoked>, SessionRevokedHandler>();
+            services.AddSingleton<RecordingAccountStatusSink>();
+            services.AddSingleton<Backroom.Modules.Presence.Contracts.IAccountStatusSink>(provider => provider.GetRequiredService<RecordingAccountStatusSink>());
+            services.AddScoped<IDownstreamHandler<Backroom.ControlPlane.Contracts.V1.AccountStatusChanged>, AccountStatusChangedHandler>();
             services.AddHttpClient(CellLinkWorker.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
                 .ConfigurePrimaryHttpMessageHandler(() => controlPlane.GetTestServer().CreateHandler());
             // linkTime: a separate clock for the link worker only (the token cache keeps real time).

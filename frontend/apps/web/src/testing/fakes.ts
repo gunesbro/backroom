@@ -49,6 +49,8 @@ export function fakeRealtimeFactory(): RealtimeFactory {
       unsubscribeOrganization: () => undefined,
       subscribeChannel: () => undefined,
       unsubscribeChannel: () => undefined,
+      watchPresence: () => undefined,
+      reportActivity: () => undefined,
       on: () => () => undefined,
       onStatus: () => () => undefined,
       status: () => 'connected',

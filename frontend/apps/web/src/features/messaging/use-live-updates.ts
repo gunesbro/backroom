@@ -11,6 +11,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import type { ConnectionStatus, RealtimeClient } from '@backroom/realtime';
 import { useAuth } from '@/features/auth';
+import { useActivityReporting } from '@/features/presence';
 import { applyChannelCreated, applyLiveMessage, catchUpChannel } from './live-cache';
 import { channelsKey } from './queries';
 import { RealtimeContext } from './realtime-context';
@@ -67,6 +68,8 @@ export function useLiveUpdates({
   ownAccountId: string | undefined;
 }) {
   const client = useRealtimeClient(cell);
+  // Idle after 10 minutes without input, active again on input (presence, Phase 2 flow 9); off with its flag.
+  useActivityReporting(client);
   const queryClient = useQueryClient();
   const { signOut } = useAuth();
   const catchUpRef = useRef<(() => void) | undefined>(undefined);
