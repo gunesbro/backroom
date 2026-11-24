@@ -1,8 +1,12 @@
 /** The part of a message the cache needs; everything else is stored as given. */
 export interface MessageLike {
   readonly id: string;
-  /** Commit-ordered sequence number inside one conversation. */
+  /** Commit-ordered sequence number inside one conversation; id and seq are one-to-one. */
   readonly seq: number;
+  /** Version used when merging; defaults to seq. A copy with a lower version never replaces a higher one. */
+  readonly versionSeq?: number;
+  /** Set on a tombstone (deleted message). A tombstone always wins and live content is never restored over it. */
+  readonly deletedAt?: string | number | null;
 }
 
 export interface Cursors {
@@ -63,13 +67,13 @@ export interface LocalStore<M extends MessageLike = MessageLike> {
   purgeConversation(cellId: string, conversationId: string): Promise<void>;
   /** Removes everything cached for a cell. */
   purgeCell(cellId: string): Promise<void>;
-  /** Removes everything of this account (call on sign-out). */
+  /** Deletes the whole database of this account (call on sign-out), also after a fallback to memory. */
   clear(): Promise<void>;
   close(): void;
 }
 
 export interface LocalStoreOptions {
-  /** Opaque account id; the database is named after it. Never pass tokens. */
+  /** Opaque account id. Only a hash of it names the database. Never pass tokens. */
   readonly accountId: string;
   readonly limits?: Partial<Limits>;
   /** Stored data of another schema version is wiped. */
@@ -78,6 +82,8 @@ export interface LocalStoreOptions {
   readonly indexedDB?: IDBFactory | null;
   /** Clock for the LRU order; defaults to `Date.now`. */
   readonly now?: () => number;
+  /** Where the "purge pending" marker is kept (an account hash only); defaults to localStorage in a browser, null disables it. */
+  readonly markerStorage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
   /** Called once when the store falls back to memory. Carries no data. */
   readonly onFallback?: (reason: 'unavailable' | 'error') => void;
 }
