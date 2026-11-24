@@ -39,6 +39,7 @@ var controlPlane = builder.AddProject<Projects.Backroom_ControlPlane_Host>("cont
     .WithEnvironment("Authentication__Authority", authority)
     .WithEnvironment("CellManagement__Keycloak__AdminClientSecret", services.ControlPlaneAdminSecret)
     .WithEnvironment("Features__OrganizationCreation", "true")
+    .WithEnvironment("Features__Invitations", "true")
     .WithEnvironment("Directory__Invitations__EmailHmacKey", emailHmacKey)
     .WaitFor(keycloak)
     .WithHttpHealthCheck("/health");
@@ -84,6 +85,8 @@ foreach (var cell in cells)
     var cellApp = builder.AddProject<Projects.Backroom_Cell_Host>($"cell-{cell.Id}-app", launchProfileName: "app" + cell.LaunchProfileSuffix)
         .WithEnvironment("Cell__Id", cell.Id)
         .WithEnvironment("Cell__Role", "app")
+        // Invitations (flow 3) are behind a flag; on in development, as on the control plane.
+        .WithEnvironment("Features__Invitations", "true")
         .WithEnvironment("Authentication__Authority", authority)
         // Live events: the SignalR backplane and the member-removal channel (docs/contracts/phase-1.md, "Live events"),
         // separated per cell by the prefix the cell derives from its id.
