@@ -15,6 +15,8 @@ export const messages: Messages<
   | 'signInLinkCopied'
   | 'signInLinkCopyFailed'
   | 'cancelSignIn'
+  | 'cellSignIn'
+  | 'cellSignInText'
 > = {
   en: {
     signingIn: 'Signing you in…',
@@ -33,6 +35,9 @@ export const messages: Messages<
     signInLinkCopied: 'Link copied. Paste it into your browser.',
     signInLinkCopyFailed: "The link couldn't be copied.",
     cancelSignIn: 'Cancel',
+    cellSignIn: 'One more step in your browser',
+    cellSignInText:
+      "This organization's server needs one more confirmation in your browser. Sign-in opens in your default browser; when you're done, come back to the app.",
   },
   tr: {
     signingIn: 'Giriş yapılıyor…',
@@ -51,5 +56,8 @@ export const messages: Messages<
     signInLinkCopied: 'Bağlantı kopyalandı. Tarayıcına yapıştır.',
     signInLinkCopyFailed: 'Bağlantı kopyalanamadı.',
     cancelSignIn: 'Vazgeç',
+    cellSignIn: 'Tarayıcında bir adım daha',
+    cellSignInText:
+      'Bu organizasyonun sunucusu tarayıcında bir onay daha istiyor. Giriş varsayılan tarayıcında açılır; bitince uygulamaya geri dön.',
   },
 };

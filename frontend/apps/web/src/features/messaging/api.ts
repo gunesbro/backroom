@@ -43,8 +43,42 @@ export interface MessagingApi {
   listMembers: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<MemberPage>;
 }
 
-export function createMessagingApi(cellUrl: string, getAccessToken: AccessTokenSource): MessagingApi {
-  const org = (orgId: string) => `${cellUrl}/api/v1/orgs/${encodeURIComponent(orgId)}`;
+/** The cell's address is not one a token may be sent to. */
+export class CellAddressError extends Error {
+  constructor() {
+    super('The cell address is not allowed.');
+    this.name = 'CellAddressError';
+  }
+}
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * The origin of a cell address the control plane sent, or undefined if a token must not go there: https only, and
+ * http only for a loopback host in a development build. Only the origin is used, never a path or query.
+ */
+export function cellOrigin(cellUrl: string, allowLoopbackHttp: boolean): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(cellUrl);
+  } catch {
+    return undefined;
+  }
+  if (url.username || url.password) return undefined;
+  if (url.protocol === 'https:') return url.origin;
+  if (url.protocol === 'http:' && allowLoopbackHttp && LOOPBACK_HOSTS.has(url.hostname)) return url.origin;
+  return undefined;
+}
+
+export function createMessagingApi(
+  cellUrl: string,
+  cellToken: AccessTokenSource,
+  { allowLoopbackHttp = import.meta.env.DEV }: { allowLoopbackHttp?: boolean } = {},
+): MessagingApi {
+  const origin = cellOrigin(cellUrl, allowLoopbackHttp);
+  // Every request asks for its token first, so a refused address never receives one.
+  const getAccessToken: AccessTokenSource = origin ? cellToken : () => Promise.reject(new CellAddressError());
+  const org = (orgId: string) => `${origin ?? 'about:blank'}/api/v1/orgs/${encodeURIComponent(orgId)}`;
   const channel = (orgId: string, channelId: string) =>
     `${org(orgId)}/channels/${encodeURIComponent(channelId)}`;
   return {
@@ -91,7 +125,7 @@ export type MessagingApiFactory = (cell: Cell) => MessagingApi;
 /** A token for one cell (audience `cell-{id}`). Never the control plane's token: a cell must not receive it. */
 export type CellTokenSource = (cellId: string) => Promise<string>;
 
-/** Null while messaging is off (the feature flag, or no cell token source yet): then no cell is called. */
+/** Null while messaging is off (the feature flag): then no cell is called. */
 export const MessagingApiContext = createContext<MessagingApiFactory | null>(null);
 
 export function useMessagingEnabled(): boolean {

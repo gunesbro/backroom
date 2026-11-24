@@ -1,3 +1,5 @@
+import type { TokenTarget } from './cell-tokens';
+
 /** The signed-in account as the sign-in server describes it (OIDC profile claims). */
 export type AuthUser = {
   email: string;
@@ -20,8 +22,12 @@ export interface AuthClient {
    */
   start: () => Promise<AuthUser>;
   signIn: () => Promise<void>;
-  /** A valid access token for our APIs, renewed when needed. */
-  getAccessToken: () => Promise<string>;
+  /**
+   * A valid access token for one target (the control plane or one cell), renewed when needed. A cell whose scope this
+   * sign-in lacks is authorized once (the web leaves for Keycloak; the desktop app asks for the browser sign-in) and
+   * then rejects with CellUnavailableError until the next sign-in.
+   */
+  getAccessToken: (target: TokenTarget) => Promise<string>;
   signOut: () => Promise<void>;
   /** Only the desktop app signs in through the system browser while the app waits (docs/design DesktopLogin). */
   browserSignIn?: BrowserSignIn | undefined;
@@ -36,6 +42,11 @@ export interface BrowserSignIn {
   link: () => Promise<string | null>;
   /** Stops waiting; `run` then rejects with `cancelled`. */
   cancel: () => Promise<void>;
+  /**
+   * Gives up on the cell waiting for the browser sign-in (CellSignInPendingError); it then shows as unavailable until
+   * the next sign-in. `run` is what adds it.
+   */
+  dismissCell: () => void;
 }
 
 /** No session yet: the desktop app shows its browser sign-in screen. */

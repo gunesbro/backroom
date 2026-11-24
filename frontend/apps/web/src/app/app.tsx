@@ -10,6 +10,8 @@ import { Brand, Card, Heading, Page, Spinner, Status } from '@backroom/ui';
 import { config } from '@/config';
 import {
   AuthProvider,
+  CellSignInPendingError,
+  CellUnavailableError,
   createDesktopAuthClient,
   createOidcAuthClient,
   isDesktopApp,
@@ -81,8 +83,11 @@ function createQueryClient(signIn: () => Promise<void>) {
     mutationCache: new MutationCache({ onError }),
     defaultOptions: {
       queries: {
-        // A 4xx will not change by asking again.
-        retry: (failures, error) => failures < 3 && !(error instanceof ApiError && error.status < 500),
+        // A 4xx will not change by asking again, nor will a cell this sign-in cannot use.
+        retry: (failures, error) =>
+          failures < 3 &&
+          !(error instanceof ApiError && error.status < 500) &&
+          !(error instanceof CellUnavailableError || error instanceof CellSignInPendingError),
         staleTime: 30_000,
       },
     },
@@ -99,13 +104,13 @@ function createAuthClient(): AuthClient {
           window.location.reload();
         },
       })
-    : createOidcAuthClient(config.auth);
+    : createOidcAuthClient({ ...config.auth, controlPlaneUrl: config.controlPlaneUrl });
 }
 
 type Services = {
-  /** Tokens for cells; not wired yet (the per-cell token change), so messaging stays off in the real app. */
+  /** Tokens for cells; the signed-in client's per-cell tokens by default (tests pass their own). */
   cellTokens?: CellTokenSource | undefined;
-  /** Overrides the feature flag (tests). */
+  /** Overrides the messaging feature flag (tests). */
   messagingEnabled?: boolean | undefined;
   authClient?: AuthClient | undefined;
   createApi?: ((getAccessToken: AccessTokenSource) => OrganizationsApi) | undefined;
@@ -141,20 +146,18 @@ function SignedIn({
   cellTokens,
   messagingEnabled = config.messagingEnabled,
 }: Pick<Services, 'createApi' | 'cellTokens' | 'messagingEnabled'>) {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, getCellToken } = useAuth();
   const api = useMemo(
     () => (createApi ?? ((tokens) => createOrganizationsApi(config.controlPlaneUrl, tokens)))(getAccessToken),
     [createApi, getAccessToken],
   );
 
-  // A cell gets only a token made for it (contract, "Audience per target"), never the control plane's. Without the
-  // flag or the token source there is no factory, and no cell is called.
+  // A cell gets only a token made for it (contract, "Audience per target"), never the control plane's: the signed-in
+  // client's cell token unless a test passes its own source. With the flag off there is no factory and no cell is called.
+  const cellTokenSource = cellTokens ?? getCellToken;
   const messagingApi = useMemo<MessagingApiFactory | null>(
-    () =>
-      messagingEnabled && cellTokens
-        ? (cell) => createMessagingApi(cell.url, () => cellTokens(cell.id))
-        : null,
-    [messagingEnabled, cellTokens],
+    () => (messagingEnabled ? (cell) => createMessagingApi(cell.url, () => cellTokenSource(cell.id)) : null),
+    [messagingEnabled, cellTokenSource],
   );
 
   const queryClient = useQueryClient();

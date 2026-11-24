@@ -103,7 +103,8 @@ impl Auth {
                         Received::Answer(Answer::Code(code)) => {
                             self.session.complete_sign_in(&Secret::new(code), &verifier, &redirect_uri).await
                         }
-                        Received::Answer(Answer::Error(_)) | Received::WrongIssuer => Err(AuthError::Denied),
+                        Received::Answer(Answer::Error(error)) => Err(answer_error(&error)),
+                        Received::WrongIssuer => Err(AuthError::Denied),
                     };
                     let body = if result.is_ok() { page::complete(locale) } else { page::failed(locale) };
                     respond(&mut stream, 200, &body).await;
@@ -129,6 +130,16 @@ impl Auth {
             .expect("attempt lock")
             .as_ref()
             .map(|attempt| attempt.url.clone())
+    }
+}
+
+/// The web view retries a sign-in without its remembered cells on `invalid_scope` (contract, "A cell whose scope
+/// was not granted"); every other refusal is a denial.
+fn answer_error(error: &str) -> AuthError {
+    if error == "invalid_scope" {
+        AuthError::InvalidScope
+    } else {
+        AuthError::Denied
     }
 }
 
@@ -266,6 +277,13 @@ mod tests {
             sign_in_scopes(&vec!["a".to_owned(); MAX_CELL_SCOPES + 1]),
             Err(AuthError::InvalidRequest)
         );
+    }
+
+    #[test]
+    fn answer_error_tells_an_unknown_scope_from_a_denial() {
+        assert_eq!(answer_error("invalid_scope"), AuthError::InvalidScope);
+        assert_eq!(answer_error("access_denied"), AuthError::Denied);
+        assert_eq!(answer_error("invalid_response"), AuthError::Denied);
     }
 
     #[test]

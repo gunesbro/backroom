@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Spinner, Status } from '@backroom/ui';
-import { useAuth } from '@/features/auth';
+import { CellSignInPendingError, CellSignInPrompt, CellUnavailableError, useAuth } from '@/features/auth';
 import { ApiError } from '@/shared/http';
 import { useLocale, useTranslate } from '@/shared/locale';
 import { useMessagingApiFactory, type Cell, type Channel, type MessagingApi } from './api';
@@ -61,7 +61,9 @@ function OrganizationWorkspace({
         onSwitch={onSwitch}
       />
       <section className="bm-main">
-        {selected ? (
+        {channels.signInPending ? (
+          <CellSignInPrompt onDismiss={channels.reload} />
+        ) : selected ? (
           <ChannelView key={selected.id} api={api} orgId={orgId} channel={selected} pending={pending} />
         ) : (
           !channels.loading && !channels.failed && <p className="ph-muted bm-empty">{t('selectChannel')}</p>
@@ -99,6 +101,8 @@ function useChannels(api: MessagingApi, orgId: string): ChannelsState {
     channels,
     loading: query.isPending,
     failed: query.isError && !query.data,
+    unavailable: query.error instanceof CellUnavailableError,
+    signInPending: query.error instanceof CellSignInPendingError,
     hasMore: query.hasNextPage,
     loadingMore: query.isFetchingNextPage,
     reload: useCallback(() => {
