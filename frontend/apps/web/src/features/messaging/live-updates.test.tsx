@@ -42,6 +42,7 @@ function fakeRealtime() {
     MessagePosted: [],
     ChannelCreated: [],
     SessionRevoked: [],
+    MembershipChanged: [],
   };
   const statusListeners: ((status: ConnectionStatus, reconnected: boolean) => void)[] = [];
   let status: ConnectionStatus = 'stopped';

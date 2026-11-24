@@ -213,7 +213,7 @@ public abstract class RealtimeTestBase(PostgresDatabase database, KeycloakRealm 
         await command.ExecuteNonQueryAsync(CancellationToken);
     }
 
-    private async Task InOrganizationAsync(Guid organizationId, Func<IServiceProvider, Task> work)
+    protected async Task InOrganizationAsync(Guid organizationId, Func<IServiceProvider, Task> work)
     {
         await using var scope = NodeA.Services.CreateAsyncScope();
         scope.ServiceProvider.GetRequiredService<OrganizationContext>().Enter(organizationId);

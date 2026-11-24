@@ -60,6 +60,7 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     MessagePosted: new Set(),
     ChannelCreated: new Set(),
     SessionRevoked: new Set(),
+    MembershipChanged: new Set(),
   };
   const statusListeners = new Set<(status: ConnectionStatus, reconnected: boolean) => void>();
   // The groups to be in, as hub method plus arguments; replayed after every connect.
@@ -109,6 +110,21 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     );
   };
 
+  // Removal from a conversation's group runs on every node after the commit, but an event already on its way can
+  // still arrive (docs/contracts/phase-2.md, removal): conversation events are delivered only for conversations this
+  // client still wants. A removal of this account (MembershipChanged) ends the want without asking the hub.
+  const accepts = (name: RealtimeEventName, payload: unknown): boolean => {
+    if (name === 'MessagePosted') {
+      const { orgId, channelId } = payload as RealtimeEvents['MessagePosted'];
+      return wanted.has(conversationKey(orgId, channelId));
+    }
+    if (name === 'MembershipChanged') {
+      const { orgId, conversationId, change } = payload as RealtimeEvents['MembershipChanged'];
+      if (change === 'removed') wanted.delete(conversationKey(orgId, conversationId));
+    }
+    return true;
+  };
+
   const join = (key: string, method: string, args: string[]) => {
     wanted.set(key, { method, args });
     if (ready && hub) void invoke(hub, key, { method, args });
@@ -151,6 +167,7 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
             // The server closes the connection next; the session is over, so never reconnect.
             started = false;
           }
+          if (!accepts(name, payload)) return;
           for (const listener of [...listeners[name]] as ((payload: unknown) => void)[]) listener(payload);
         });
       }
@@ -216,10 +233,10 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
       leave(`org:${orgId}`, 'UnsubscribeOrganization', [orgId]);
     },
     subscribeConversation: (orgId, conversationId) => {
-      join(`conversation:${orgId}/${conversationId}`, 'SubscribeConversation', [orgId, conversationId]);
+      join(conversationKey(orgId, conversationId), 'SubscribeConversation', [orgId, conversationId]);
     },
     unsubscribeConversation: (orgId, conversationId) => {
-      leave(`conversation:${orgId}/${conversationId}`, 'UnsubscribeConversation', [orgId, conversationId]);
+      leave(conversationKey(orgId, conversationId), 'UnsubscribeConversation', [orgId, conversationId]);
     },
     on: (event, listener) => {
       const set = listeners[event] as Set<typeof listener>;
@@ -236,6 +253,10 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     },
     status: () => status,
   };
+}
+
+function conversationKey(orgId: string, conversationId: string): string {
+  return `conversation:${orgId}/${conversationId}`;
 }
 
 function isHubError(error: unknown, code: string): boolean {

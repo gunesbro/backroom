@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Backroom.Modules.Messaging.Contracts;
 using Backroom.Modules.Organization.Contracts;
@@ -74,9 +75,9 @@ public sealed class ConversationGroupTests(PostgresDatabase database, KeycloakRe
         var alice = await ConnectAsync(NodeB, Alice);
         await alice.SubscribeConversationAsync(organizationId, secret);
 
-        await RemoveAsync(organizationId, secret, Bob, byConsumer: true);
+        await RemoveAsync(organizationId, secret, Bob, byConsumer: false);
         // The listeners handle messages in order, so a later one proves the first was handled.
-        await RemoveAsync(organizationId, Guid.CreateVersion7(), Bob, byConsumer: true);
+        await RemoveAsync(organizationId, Guid.CreateVersion7(), Bob, byConsumer: false);
 
         await PublishMessageAsync(organizationId, secret, "still mine");
         (await alice.NextMessageAsync()).Message.Text.Should().Be("still mine");
@@ -146,16 +147,105 @@ public sealed class ConversationGroupTests(PostgresDatabase database, KeycloakRe
         (await bobOnB.NextProbeAsync()).Should().Be("other organization");
     }
 
+    [Fact]
+    public async Task SubscribeConversation_AfterLeavingAPrivateConversation_IsRefusedAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var secret = await CreatePrivateConversationAsync(organizationId, Alice, Bob);
+        var bob = await ConnectAsync(NodeB, Bob);
+        await bob.SubscribeConversationAsync(organizationId, secret);
+        await bob.UnsubscribeConversationAsync(organizationId, secret);
+
+        await EndMembershipAsync(organizationId, secret, Bob);
+
+        (await Assert.ThrowsAsync<HubException>(() => bob.SubscribeConversationAsync(organizationId, secret))).Message.Should().EndWith("realtime.not_found");
+        (await SubscriptionCountAsync(NodeB, Bob)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SubscribeConversation_RacingARemoval_NeverKeepsTheGroupAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var secret = await CreatePrivateConversationAsync(organizationId, Alice, Bob);
+        var bob = await ConnectAsync(NodeA, Bob);
+        await bob.SubscribeOrganizationAsync(organizationId); // the connection is registered and holds a place
+        var state = NodeA.Services.GetRequiredService<ConnectionRegistry>().ConnectionsOf(await AccountAsync(Bob)).Single();
+
+        // The subscribe and the removal both wait for the connection's gate while the membership ends.
+        await state.Gate.WaitAsync(CancellationToken);
+        Task subscribe;
+        try
+        {
+            subscribe = bob.SubscribeConversationAsync(organizationId, secret);
+            await EndMembershipAsync(organizationId, secret, Bob);
+            await RemoveAsync(organizationId, secret, Bob, byConsumer: false);
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+
+        var outcome = await Record.ExceptionAsync(() => subscribe);
+        // The check runs under the gate, after the wait, so it sees the ended membership whatever order the two take.
+        outcome.Should().BeOfType<HubException>().Which.Message.Should().EndWith("realtime.not_found");
+        // Only the organization and account groups remain.
+        using (var timeout = new CancellationTokenSource(HubClient.Deadline))
+        {
+            while (await SubscriptionCountAsync(NodeA, Bob) != 2)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token);
+            }
+        }
+
+        await PublishMessageAsync(organizationId, secret, "not for bob");
+        await ProbeAsync(await AccountGroupAsync(organizationId, Bob), "later");
+        (await bob.NextProbeAsync()).Should().Be("later");
+        bob.HasUnreadMessage.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ConversationMemberRemoved_ArrivingAfterTheMemberRejoined_KeepsTheGroupAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var secret = await CreatePrivateConversationAsync(organizationId, Alice, Bob);
+        var bobOnA = await ConnectAsync(NodeA, Bob);
+        var bobOnB = await ConnectAsync(NodeB, Bob);
+
+        // Bob left and was added back; the durable event of the leave arrives only now.
+        await EndMembershipAsync(organizationId, secret, Bob);
+        await ExecuteAsync(
+            "UPDATE messaging.conversation_members SET left_at = NULL WHERE org_id = $1 AND conversation_id = $2 AND account_id = $3",
+            organizationId, secret, await AccountAsync(Bob));
+        await bobOnA.SubscribeConversationAsync(organizationId, secret);
+        await bobOnB.SubscribeConversationAsync(organizationId, secret);
+        await RemoveAsync(organizationId, secret, Bob, byConsumer: true);
+        // A later removal that is broadcast proves the listeners are past the point where the first would have arrived.
+        await RemoveAsync(organizationId, Guid.CreateVersion7(), Bob, byConsumer: true);
+
+        await PublishMessageAsync(organizationId, secret, "welcome back");
+        (await bobOnA.NextMessageAsync()).Message.Text.Should().Be("welcome back");
+        (await bobOnB.NextMessageAsync()).Message.Text.Should().Be("welcome back");
+        (await SubscriptionCountAsync(NodeA, Bob)).Should().Be(1);
+        (await SubscriptionCountAsync(NodeB, Bob)).Should().Be(1);
+    }
+
     // Messaging's after-commit call (any node), or the worker's consumer of the durable event.
     private async Task RemoveAsync(Guid organizationId, Guid conversationId, string username, bool byConsumer)
     {
         var account = await AccountAsync(username);
         if (byConsumer)
         {
-            var consumer = new ConversationMemberRemovedConsumer(
-                NodeA.Services.GetRequiredService<GroupRemovalBroadcast>(), NodeA.Services.GetRequiredService<IOptions<RealtimeOptions>>());
-            await consumer.HandleAsync(
-                new ConversationMemberRemoved(Guid.CreateVersion7(), organizationId, DateTimeOffset.UtcNow, conversationId, account, account), CancellationToken);
+            // As the worker runs it: in a unit of work of the event's organization, under row-level security.
+            await InOrganizationAsync(organizationId, services =>
+                new ConversationMemberRemovedConsumer(
+                    services.GetRequiredService<GroupRemovalBroadcast>(),
+                    services.GetRequiredService<IConversationReadAccess>(),
+                    services.GetRequiredService<IOptions<RealtimeOptions>>(),
+                    NullLogger<ConversationMemberRemovedConsumer>.Instance)
+                .HandleAsync(new ConversationMemberRemoved(Guid.CreateVersion7(), organizationId, DateTimeOffset.UtcNow, conversationId, account, account), CancellationToken));
         }
         else
         {

@@ -199,20 +199,23 @@ internal sealed partial class RealtimeHub(
                 throw new HubException(NotFound);
             }
 
-            foreach (var group in missing)
+            // All or nothing: when a join fails, the groups this call joined are left again, so an organization
+            // subscription never holds the organization group without the account group (or the other way round).
+            var joined = new List<string>(missing.Length);
+            try
             {
-                state.Add(group, organizationId);
-                try
+                foreach (var group in missing)
                 {
+                    state.Add(group, organizationId);
+                    joined.Add(group);
                     await Groups.AddToGroupAsync(Context.ConnectionId, group, cancellationToken);
+                    RealtimeTelemetry.Subscriptions.Add(1);
                 }
-                catch
-                {
-                    state.Remove(group);
-                    throw;
-                }
-
-                RealtimeTelemetry.Subscriptions.Add(1);
+            }
+            catch
+            {
+                await LeaveAfterFailureAsync(state, joined);
+                throw;
             }
         }
         finally
@@ -239,6 +242,34 @@ internal sealed partial class RealtimeHub(
         finally
         {
             state.Gate.Release();
+        }
+    }
+
+    // Under the gate. The last group may or may not have been joined when its join failed, so every group is left
+    // (leaving one that was never joined is harmless); a group that cannot be left ends with the connection.
+    private async Task LeaveAfterFailureAsync(ConnectionState state, List<string> joined)
+    {
+        for (var i = 0; i < joined.Count; i++)
+        {
+            var group = joined[i];
+            state.Remove(group);
+            if (i < joined.Count - 1)
+            {
+                RealtimeTelemetry.Subscriptions.Add(-1);
+            }
+
+            try
+            {
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, group, CancellationToken.None);
+            }
+#pragma warning disable CA1031 // The join's failure is what the caller gets; a group that cannot be left goes with the connection.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogRollbackFailed(logger, exception.GetType().Name);
+                Context.Abort();
+                return;
+            }
         }
     }
 
@@ -276,6 +307,9 @@ internal sealed partial class RealtimeHub(
 
     [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Telling a connection that its session was revoked failed ({ExceptionType}); it is closed anyway.")]
     private static partial void LogNoticeFailed(ILogger logger, string exceptionType);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Leaving the groups of a failed subscription failed ({ExceptionType}); the connection is closed.")]
+    private static partial void LogRollbackFailed(ILogger logger, string exceptionType);
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "The subscription check failed ({ExceptionType}) in organization {OrganizationId}.")]
     private static partial void LogCheckFailed(ILogger logger, string exceptionType, Guid organizationId);

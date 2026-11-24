@@ -286,6 +286,61 @@ describe('RealtimeClient', () => {
   });
 });
 
+describe('RealtimeClient conversation events after leaving', () => {
+  const posted = (channelId: string) => ({
+    orgId: 'o1',
+    channelId,
+    message: {
+      id: 'm1',
+      seq: 1,
+      clientMessageId: 'x',
+      authorAccountId: 'a',
+      text: 'hi',
+      createdAt: '2026-11-25T10:00:00Z',
+    },
+  });
+
+  it('MessagePosted_AfterUnsubscribing_IsNotDelivered', async () => {
+    const { client, hubs } = setup();
+    const received: string[] = [];
+    client.on('MessagePosted', (payload) => received.push(payload.channelId));
+    client.subscribeConversation('o1', 'c1');
+    client.start();
+    await flush();
+
+    hubs[0]?.emit('MessagePosted', posted('c1'));
+    client.unsubscribeConversation('o1', 'c1');
+    // Already on its way when the server took the connection out of the group.
+    hubs[0]?.emit('MessagePosted', posted('c1'));
+    hubs[0]?.emit('MessagePosted', posted('never-joined'));
+
+    expect(received).toEqual(['c1']);
+  });
+
+  it('MembershipChanged_Removed_StopsDeliveryAndTheReplay', async () => {
+    const { client, hubs, retries } = setup();
+    const received: string[] = [];
+    const changes: string[] = [];
+    client.on('MessagePosted', (payload) => received.push(payload.channelId));
+    client.on('MembershipChanged', (payload) => changes.push(`${payload.conversationId} ${payload.change}`));
+    client.subscribeConversation('o1', 'c1');
+    client.subscribeConversation('o1', 'c2');
+    client.start();
+    await flush();
+
+    hubs[0]?.emit('MembershipChanged', { orgId: 'o1', conversationId: 'c1', change: 'removed' });
+    hubs[0]?.emit('MessagePosted', posted('c1'));
+    hubs[0]?.emit('MessagePosted', posted('c2'));
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    expect(changes).toEqual(['c1 removed']);
+    expect(received).toEqual(['c2']);
+    expect(hubs[1]?.invoked).toEqual(['SubscribeConversation o1 c2']);
+  });
+});
+
 describe('RealtimeClient queued joins', () => {
   it('Subscribe_QueuedForARefusedOrganization_IsNotSent', async () => {
     const { client, hubs } = setup();

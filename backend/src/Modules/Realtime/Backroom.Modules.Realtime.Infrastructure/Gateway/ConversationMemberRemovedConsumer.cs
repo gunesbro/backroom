@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Backroom.BuildingBlocks.Application.Messaging;
 using Backroom.Modules.Messaging.Contracts;
@@ -11,13 +12,32 @@ namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 /// which is best effort. Removing is idempotent, so the repeat and a redelivered event are harmless; when Valkey is
 /// down the handler throws and the event is delivered again.
 /// </summary>
-internal sealed class ConversationMemberRemovedConsumer(GroupRemovalBroadcast broadcast, IOptions<RealtimeOptions> options)
+/// <remarks>
+/// The event can arrive late (a backlog, a redelivery). If the account may read the conversation again by then (it
+/// rejoined, or it is an open public channel), the eviction is skipped: it would only cut a reader off from live events
+/// it may have, and the after-commit path has already evicted the old subscription. The check runs in the consumer's
+/// unit of work, under row-level security for the event's organization.
+/// </remarks>
+internal sealed partial class ConversationMemberRemovedConsumer(
+    GroupRemovalBroadcast broadcast,
+    IConversationReadAccess conversations,
+    IOptions<RealtimeOptions> options,
+    ILogger<ConversationMemberRemovedConsumer> logger)
     : IIntegrationEventHandler<ConversationMemberRemoved>
 {
-    public Task HandleAsync(ConversationMemberRemoved integrationEvent, CancellationToken cancellationToken)
+    public async Task HandleAsync(ConversationMemberRemoved integrationEvent, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(integrationEvent);
-        return broadcast.PublishConversationAsync(
+        if (await conversations.CanReadAsync(integrationEvent.OrgId, integrationEvent.ConversationId, integrationEvent.AccountId, cancellationToken))
+        {
+            LogSkipped(logger, integrationEvent.AccountId, integrationEvent.ConversationId, integrationEvent.OrgId);
+            return;
+        }
+
+        await broadcast.PublishConversationAsync(
             integrationEvent.OrgId, integrationEvent.ConversationId, integrationEvent.AccountId, options.Value.CommandTimeout, cancellationToken);
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Account {AccountId} may read conversation {ConversationId} of organization {OrganizationId} again; the late removal was skipped.")]
+    private static partial void LogSkipped(ILogger logger, Guid accountId, Guid conversationId, Guid organizationId);
 }
