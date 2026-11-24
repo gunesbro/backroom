@@ -1,9 +1,22 @@
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
+import { isDesktopApp, tauriInvoke } from '@/features/auth';
 import { parseBlocks, safeHref, type Block, type TextNode } from './blocks';
+
+/**
+ * In the desktop app a link goes to the system browser through the shell's opener plugin (capability scoped to http,
+ * https and mailto), never into a new webview window. On the web the anchor opens a tab with `noopener noreferrer`.
+ */
+function openInSystemBrowser(event: MouseEvent<HTMLAnchorElement>, href: string): void {
+  event.preventDefault();
+  tauriInvoke('plugin:opener|open_url', { url: href }).catch(() => {
+    // Nothing to show: the link simply does not open.
+  });
+}
 
 function run(node: TextNode, key: number): ReactNode {
   let content: ReactNode = node.text;
   let href: string | null = null;
+  const desktop = isDesktopApp();
   for (const mark of node.marks ?? []) {
     switch (mark.type) {
       case 'bold':
@@ -25,7 +38,25 @@ function run(node: TextNode, key: number): ReactNode {
   }
   if (href) {
     content = (
-      <a href={href} target="_blank" rel="noopener noreferrer">
+      <a
+        href={href}
+        {...(desktop ? {} : { target: '_blank' })}
+        rel="noopener noreferrer"
+        onClick={
+          desktop
+            ? (event) => {
+                openInSystemBrowser(event, href);
+              }
+            : undefined
+        }
+        onAuxClick={
+          desktop
+            ? (event) => {
+                openInSystemBrowser(event, href);
+              }
+            : undefined
+        }
+      >
         {content}
       </a>
     );

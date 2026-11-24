@@ -1,6 +1,53 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MessageBody } from './message-blocks';
+
+const invoke = vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>();
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: (command: string, args?: Record<string, unknown>) => invoke(command, args),
+}));
+
+const linkBlocks = [
+  {
+    type: 'paragraph',
+    children: [{ type: 'text', text: 'site', marks: [{ type: 'link', href: 'https://example.com/x' }] }],
+  },
+];
+
+describe('MessageBody in the desktop app', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    invoke.mockReset();
+  });
+
+  it('Click_WhenDesktop_OpensTheSystemBrowserAndNoNewWindow', async () => {
+    vi.stubGlobal('isTauri', true);
+    invoke.mockResolvedValue(undefined);
+    render(<MessageBody text="" sending={false} blocks={linkBlocks} />);
+    const link = screen.getByRole('link', { name: 'site' });
+    expect(link).not.toHaveAttribute('target');
+
+    const notPrevented = fireEvent.click(link);
+
+    expect(notPrevented).toBe(false);
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledExactlyOnceWith('plugin:opener|open_url', {
+        url: 'https://example.com/x',
+      });
+    });
+  });
+
+  it('Click_WhenWeb_LeavesTheAnchorToTheBrowser', () => {
+    render(<MessageBody text="" sending={false} blocks={linkBlocks} />);
+    const link = screen.getByRole('link', { name: 'site' });
+    expect(link).toHaveAttribute('target', '_blank');
+
+    const notPrevented = fireEvent.click(link);
+
+    expect(notPrevented).toBe(true);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
 
 describe('MessageBody', () => {
   it('MessageBody_WhenLinkBlocks_RendersAnchorWithNoopener', () => {

@@ -42,13 +42,14 @@ export const EDITOR_NODES: readonly Klass<LexicalNode>[] = [
   CodeNode,
 ];
 
-// Control characters other than tab and newline, and lone surrogates, are refused by the server's text rules.
+// Control characters other than tab and newline, and lone surrogates, are refused by the server's text rules. Nodes
+// are not normalized one by one: NFC and trimming apply to the whole derived text (docs/contracts/phase-2.md).
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
 function cleanText(text: string): string {
-  return text.replace(CONTROL, '').replace(LONE_SURROGATE, '').normalize('NFC');
+  return text.replace(CONTROL, '').replace(LONE_SURROGATE, '');
 }
 
 const FORMATS: readonly (readonly [TextFormatType, Mark['type']])[] = [
@@ -121,7 +122,8 @@ function listItemsOf(list: ListNode, items: ListItem[]): void {
       for (const inner of nested) listItemsOf(inner, items);
       continue;
     }
-    items.push({ type: 'list_item', children: runsOf(item) });
+    const children = runsOf(item);
+    if (children.length > 0) items.push({ type: 'list_item', children });
     for (const inner of nested) listItemsOf(inner, items);
   }
 }
@@ -145,9 +147,10 @@ export function $readBlocks(): Block[] {
       }
     } else if ($isCodeNode(node)) {
       const children = mergeRuns([{ type: 'text', text: cleanText(node.getTextContent()) }]);
-      blocks.push({ type: 'code_block', children });
+      if (children.length > 0) blocks.push({ type: 'code_block', children });
     } else if ($isQuoteNode(node)) {
-      blocks.push({ type: 'quote', children: runsOf(node) });
+      const children = runsOf(node);
+      if (children.length > 0) blocks.push({ type: 'quote', children });
     } else if ($isElementNode(node)) {
       blocks.push({ type: 'paragraph', children: runsOf(node) });
     }

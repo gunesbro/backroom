@@ -1,6 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axe from 'axe-core';
-import { $selectAll, type LexicalEditor } from 'lexical';
+import {
+  $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  $isTextNode,
+  $selectAll,
+  type LexicalEditor,
+} from 'lexical';
 import { describe, expect, it, vi } from 'vitest';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { Composer } from './composer';
@@ -206,6 +213,42 @@ describe('Rich text composer', () => {
     const { input } = await setup();
     fireEvent.keyDown(input, { key: 'k', ctrlKey: true });
     expect(await screen.findByRole('textbox', { name: 'Link address' })).toBeInTheDocument();
+  });
+
+  it('Composer_WhenUnderlineOrHighlightIsApplied_ClearsItSoTheEditorShowsWhatIsSent', async () => {
+    const { editor, write, blocks } = await setup();
+    write(paragraph('plain'));
+    act(() => {
+      editor.update(
+        () => {
+          $selectAll();
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            selection.formatText('underline');
+            selection.formatText('highlight');
+            for (const node of selection.getNodes()) {
+              if ($isTextNode(node)) node.setStyle('color: red');
+            }
+          }
+        },
+        { discrete: true },
+      );
+    });
+
+    expect(blocks()).toEqual(paragraph('plain'));
+    expect(
+      editor.read(() => {
+        const text = $getRoot().getFirstDescendant();
+        return $isTextNode(text)
+          ? [text.hasFormat('underline'), text.hasFormat('highlight'), text.getStyle()]
+          : [];
+      }),
+    ).toEqual([false, false, '']);
+  });
+
+  it('Composer_WhenRendered_TheTextboxHasAPlaceholderForAssistiveTechnology', async () => {
+    const { input } = await setup();
+    expect(input).toHaveAttribute('aria-placeholder', 'Message #general');
   });
 
   it('Composer_WhenTabPressed_DoesNotCaptureTheKey', async () => {

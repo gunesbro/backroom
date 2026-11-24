@@ -34,7 +34,7 @@ export const config = {
   invitationsUiEnabled: import.meta.env.VITE_INVITATIONS_UI_ENABLED === 'true',
   /**
    * Feature flag: the rich text composer (Phase 2 step 6): Lexical editor, formatting toolbar, blocks. Off: the plain
-   * textarea. On in development (.env.development).
+   * textarea. Off in development too (.env.development) until the server-side step 6 PR accepts client blocks.
    */
   richTextEnabled: import.meta.env.VITE_RICH_TEXT_ENABLED === 'true',
   /** The control plane's origin; empty means this origin (the development server proxies /api). */

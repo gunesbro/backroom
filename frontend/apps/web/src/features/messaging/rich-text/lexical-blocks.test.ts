@@ -94,6 +94,22 @@ describe('Lexical block serialization', () => {
     expect(blocksToText(result)).toBe('abc');
   });
 
+  it('Read_WhenTextIsNotNormalized_KeepsNodesAsTypedAndNormalizesTheDerivedText', () => {
+    const result = roundTrip([{ type: 'paragraph', children: [text('e'), text('́', 'bold')] }]);
+    expect(result[0]).toEqual({ type: 'paragraph', children: [text('e'), text('́', 'bold')] });
+    expect(blocksToText(result)).toBe('é');
+  });
+
+  it('Read_WhenQuoteCodeBlockAndListItemAreEmpty_DropsThem', () => {
+    const result = roundTrip([
+      { type: 'paragraph', children: [text('keep')] },
+      { type: 'quote', children: [] },
+      { type: 'code_block', children: [] },
+      { type: 'bulleted_list', children: [{ type: 'list_item', children: [] }] },
+    ]);
+    expect(result).toEqual([{ type: 'paragraph', children: [text('keep')] }]);
+  });
+
   it('Read_WhenTextIsNotNormalized_ProducesNfc', () => {
     const result = roundTrip([{ type: 'paragraph', children: [text('é')] }]);
     expect(blocksToText(result)).toBe('é');

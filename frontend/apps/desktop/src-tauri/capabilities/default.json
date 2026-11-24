@@ -12,6 +12,10 @@
     "allow-cancel-sign-in",
     "allow-access-token",
     "allow-forget-session",
-    "allow-sign-out"
+    "allow-sign-out",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }, { "url": "mailto:*" }]
+    }
   ]
 }

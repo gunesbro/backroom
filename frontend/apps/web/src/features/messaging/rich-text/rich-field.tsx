@@ -36,6 +36,7 @@ import {
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
+  TextNode,
   createEditor,
   type LexicalEditor,
   type TextFormatType,
@@ -85,6 +86,18 @@ const SHORTCUTS = [
   ORDERED_LIST,
   QUOTE,
   CODE,
+];
+
+const UNDO_DEPTH = 100;
+
+const DISALLOWED_FORMATS: readonly TextFormatType[] = [
+  'underline',
+  'highlight',
+  'subscript',
+  'superscript',
+  'lowercase',
+  'uppercase',
+  'capitalize',
 ];
 
 const THEME = {
@@ -233,7 +246,15 @@ export function RichField({
     const unregister = [
       registerRichText(editor),
       registerList(editor),
-      registerHistory(editor, createEmptyHistoryState(), 300),
+      // Undo is bounded: 100 steps.
+      registerHistory(editor, createEmptyHistoryState(), 300, undefined, undefined, UNDO_DEPTH),
+      // What cannot be sent is not shown: only bold, italic, strike and code survive (Ctrl+U, pasted styles).
+      editor.registerNodeTransform(TextNode, (node) => {
+        for (const format of DISALLOWED_FORMATS) {
+          if (node.hasFormat(format)) node.toggleFormat(format);
+        }
+        if (node.getStyle() !== '') node.setStyle('');
+      }),
       registerMarkdownShortcuts(editor, SHORTCUTS),
       editor.registerCommand(
         KEY_ENTER_COMMAND,
@@ -510,6 +531,7 @@ export function RichField({
           className="bm-composer__input bm-rt__input"
           role="textbox"
           aria-multiline="true"
+          aria-placeholder={placeholder}
           aria-label={label}
           aria-describedby={describedBy}
           aria-invalid={invalid ? true : undefined}
