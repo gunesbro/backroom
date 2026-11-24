@@ -7,4 +7,8 @@ internal sealed record DevelopmentResources(
     IResourceBuilder<ParameterResource> ControlPlaneAdminSecret,
     IResourceBuilder<RabbitMQServerResource> RabbitMq,
     IResourceBuilder<MailPitContainerResource> Mailpit,
-    IResourceBuilder<ValkeyResource> Valkey);
+    IResourceBuilder<ValkeyResource> Valkey)
+{
+    /// <summary>Object storage; <see langword="null"/> in an isolated run, which leaves it out.</summary>
+    public DevelopmentObjectStorage? ObjectStorage { get; init; }
+}

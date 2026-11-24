@@ -43,6 +43,12 @@
     <Project Path="src/Modules/Email/Backroom.Modules.Email.Application/Backroom.Modules.Email.Application.csproj" />
     <Project Path="src/Modules/Email/Backroom.Modules.Email.Infrastructure/Backroom.Modules.Email.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Files/">
+    <Project Path="src/Modules/Files/Backroom.Modules.Files.Application/Backroom.Modules.Files.Application.csproj" />
+    <Project Path="src/Modules/Files/Backroom.Modules.Files.Contracts/Backroom.Modules.Files.Contracts.csproj" />
+    <Project Path="src/Modules/Files/Backroom.Modules.Files.Infrastructure/Backroom.Modules.Files.Infrastructure.csproj" />
+    <Project Path="src/Modules/Files/Backroom.Modules.Files.Presentation/Backroom.Modules.Files.Presentation.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Identity/">
     <Project Path="src/Modules/Identity/Backroom.Modules.Identity.Application/Backroom.Modules.Identity.Application.csproj" />
     <Project Path="src/Modules/Identity/Backroom.Modules.Identity.Contracts/Backroom.Modules.Identity.Contracts.csproj" />
@@ -100,6 +106,9 @@
   </Folder>
   <Folder Name="/tests/Modules/Realtime/">
     <Project Path="tests/Modules/Realtime/Backroom.Modules.Realtime.IntegrationTests/Backroom.Modules.Realtime.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/Files/">
+    <Project Path="tests/Modules/Files/Backroom.Modules.Files.IntegrationTests/Backroom.Modules.Files.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/tests/Modules/Messaging/">
     <Project Path="tests/Modules/Messaging/Backroom.Modules.Messaging.IntegrationTests/Backroom.Modules.Messaging.IntegrationTests.csproj" />

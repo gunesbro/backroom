@@ -39,6 +39,7 @@ public static class MessagingModule
         services.TryAddScoped<IConversationStore, ConversationStore>();
         services.TryAddScoped<IConversationReadAccess, ConversationReadAccess>();
         services.TryAddScoped<IMessageStore, MessageStore>();
+        services.TryAddScoped<IMessageFileAccess, MessageFileAccess>();
         services.TryAddScoped<AfterCommitLiveEvents>();
         services.TryAddScoped<MembershipService>();
         services.TryAddScoped<ChannelService>();

@@ -13,4 +13,7 @@ public enum ErrorKind
     Conflict,
     Forbidden,
     RateLimited,
+
+    /// <summary>The request declares or carries more than is allowed (HTTP 413).</summary>
+    ContentTooLarge,
 }

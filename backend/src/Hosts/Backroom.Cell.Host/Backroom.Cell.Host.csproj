@@ -4,6 +4,8 @@
     <ProjectReference Include="..\..\Aspire\Backroom.ServiceDefaults\Backroom.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
+    <ProjectReference Include="..\..\Modules\Files\Backroom.Modules.Files.Infrastructure\Backroom.Modules.Files.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Files\Backroom.Modules.Files.Presentation\Backroom.Modules.Files.Presentation.csproj" />
     <ProjectReference Include="..\..\Modules\Messaging\Backroom.Modules.Messaging.Infrastructure\Backroom.Modules.Messaging.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Messaging\Backroom.Modules.Messaging.Presentation\Backroom.Modules.Messaging.Presentation.csproj" />
     <ProjectReference Include="..\..\Modules\Realtime\Backroom.Modules.Realtime.Infrastructure\Backroom.Modules.Realtime.Infrastructure.csproj" />

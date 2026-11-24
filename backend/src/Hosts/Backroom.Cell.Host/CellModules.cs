@@ -4,6 +4,9 @@ using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure;
 using Backroom.Modules.Email.Infrastructure;
 using Backroom.Modules.Email.Infrastructure.Sending;
+using Backroom.Modules.Files.Infrastructure;
+using Backroom.Modules.Files.Infrastructure.Storage;
+using Backroom.Modules.Files.Presentation;
 using Backroom.Modules.Messaging.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure.Invitations;
@@ -23,6 +26,7 @@ internal static class CellModules
         return services
             .AddOrganizationDatabase()
             .AddMessagingDatabase()
+            .AddFilesDatabase()
             .AddPermissionsDatabase()
             .AddEmailDatabase()
             .AddRealtimeDatabase()
@@ -42,6 +46,13 @@ internal static class CellModules
         builder.Services.AddPresence();
         if (role == CellRole.App)
         {
+            // Files (Phase 2 step 21) are behind a flag until the gate; only the app role signs uploads and downloads.
+            // The storage keys are checked at startup, so a cell with the flag on and no storage does not start.
+            if (builder.Configuration.GetValue<bool>(FilesEndpoints.FilesFlag))
+            {
+                builder.Services.AddFiles().BindConfiguration(S3StorageOptions.SectionName);
+            }
+
             // The hub's checks and the listener that removes connections from groups (the hub itself is mapped in Program).
             builder.Services.AddRealtimeGateway();
             // Online and idle from the hub's connections, and the node's presence sweeper.

@@ -46,6 +46,7 @@ public sealed class ErrorTests
         Error.Conflict("m.a", "d").Kind.Should().Be(ErrorKind.Conflict);
         Error.Forbidden("m.a", "d").Kind.Should().Be(ErrorKind.Forbidden);
         Error.RateLimited("m.a", "d", TimeSpan.FromSeconds(1)).Kind.Should().Be(ErrorKind.RateLimited);
+        Error.ContentTooLarge("m.a", "d").Kind.Should().Be(ErrorKind.ContentTooLarge);
         Error.Unexpected("m.a", "d").Kind.Should().Be(ErrorKind.Unexpected);
     }
 
