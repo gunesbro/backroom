@@ -55,12 +55,12 @@ internal sealed class CellRegistry(NpgsqlDataSource dataSource, TimeProvider tim
         LIMIT $1
         """;
 
-    // Development: the cell exists, and while it is pending its key (from the AppHost) is valid again.
+    // Development: the cell exists with the AppHost's address, and while it is pending its key (from the AppHost) is valid again.
     private const string SeedSql = """
         WITH cell AS (
             INSERT INTO cell_management.cells (id, name, type, region, public_url, status, created_at)
             VALUES ($1, $2, $3, $4, $5, 'pending', $6)
-            ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
+            ON CONFLICT (id) DO UPDATE SET public_url = EXCLUDED.public_url
             RETURNING id, status)
         INSERT INTO cell_management.registration_keys (key_hash, cell_id, expires_at)
         SELECT $7, id, $8 FROM cell WHERE status = 'pending'

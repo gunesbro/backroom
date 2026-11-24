@@ -265,6 +265,7 @@ Keys: the versioned cell invitation keys (HMAC) and the cell's private key live 
 
 - AppHost runs the control plane, Keycloak (realm import: clients `web`, `ops`, test users `alice@example.test`, `bob@example.test`, SMTP pointing at Mailpit as required by ADR 0008 item 7) and two cells (`cell-a`, `cell-b`), each in `app` and `worker` roles. The AppHost registers both cells on first run.
 - The two cells share one PostgreSQL server, Valkey and RabbitMQ in development, separated by database (`cell_a`, `cell_b`), key prefix and virtual host. In production each cell has its own instances.
+- Database roles are server-wide, so the development cells share one set of role passwords; that is a development simplification. Deployments provision the roles and their passwords per server, so each cell's server has its own.
 
 ## Permissions used in Phase 1
 

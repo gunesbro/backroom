@@ -156,6 +156,28 @@ public sealed class CellRegistrationTests(PostgresDatabase database, KeycloakRea
     }
 
     [Fact]
+    public async Task SeedDevelopmentCell_WhenTheCellExists_TakesTheConfiguredAddressAsync()
+    {
+        // A development cell seeded before the AppHost configured its address kept http://localhost/ for good.
+        var cellId = "t" + Guid.CreateVersion7().ToString("N")[^10..];
+        var key = System.Security.Cryptography.RandomNumberGenerator.GetString("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 43);
+        var registry = _controlPlane.Services.GetRequiredService<CellRegistry>();
+        var before = new DevelopmentCellOptions();
+        before.DevelopmentCells.Add(new DevelopmentCell { Id = cellId, Name = "Cell A", RegistrationKey = key });
+        await new DevelopmentCellSeeder(registry, Options.Create(before), _time).StartAsync(CancellationToken);
+        var after = new DevelopmentCellOptions();
+        after.DevelopmentCells.Add(new DevelopmentCell { Id = cellId, Name = "Cell A", RegistrationKey = key, PublicUrl = new Uri("http://localhost:5173/") });
+
+        await new DevelopmentCellSeeder(registry, Options.Create(after), _time).StartAsync(CancellationToken);
+
+        await using var connection = new NpgsqlConnection(database.SuperuserConnectionString);
+        await connection.OpenAsync(CancellationToken);
+        await using var command = new NpgsqlCommand("SELECT public_url FROM cell_management.cells WHERE id = $1", connection);
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cellId });
+        ((string)(await command.ExecuteScalarAsync(CancellationToken))!).Should().Be("http://localhost:5173/");
+    }
+
+    [Fact]
     public async Task Register_WithAKeyFollowedByANewline_IsRefusedAsync()
     {
         var (_, key) = await ProvisionAsync();

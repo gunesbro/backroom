@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Health;
 
 namespace Backroom.Modules.ControlPlaneConnector.Infrastructure.Registration;
 
@@ -16,6 +17,7 @@ namespace Backroom.Modules.ControlPlaneConnector.Infrastructure.Registration;
 internal sealed partial class CellRegistrationWorker(
     CellKeyStore keyStore,
     CellCredentials credentials,
+    CellLinkStatus status,
     IHttpClientFactory httpClientFactory,
     IOptions<ControlPlaneConnectorOptions> options,
     TimeProvider timeProvider,
@@ -26,7 +28,14 @@ internal sealed partial class CellRegistrationWorker(
     private const string MissingSettingsMessage =
         "The cell is not registered yet and has no registration key or control plane URL.";
 
+    internal const string RegistrationRefusedReason =
+        "The control plane refused the cell's registration: the registration key is used, expired or unknown, or the cell's key directory is not the one that registered.";
+
     private static readonly TimeSpan s_maxBackoff = TimeSpan.FromMinutes(1);
+
+    // Client errors other than a timeout or rate limit do not go away by retrying.
+    private static bool IsRejection(System.Net.HttpStatusCode status) =>
+        (int)status is >= 400 and < 500 and not 408 and not 429;
 
     private static bool CanRegister(ControlPlaneConnectorOptions settings) =>
         !string.IsNullOrWhiteSpace(settings.RegistrationKey) && settings.ControlPlaneUrl is not null;
@@ -65,6 +74,13 @@ internal sealed partial class CellRegistrationWorker(
         if (!response.IsSuccessStatusCode)
         {
             LogRegistrationRefused(logger, (int)response.StatusCode);
+            if (IsRejection(response.StatusCode))
+            {
+                // A used, expired or unknown key: only an operator can fix it (a new registration key, or the cell's key
+                // directory restored); report it while retrying.
+                status.Reject(RegistrationRefusedReason);
+            }
+
             return false;
         }
 
@@ -75,6 +91,7 @@ internal sealed partial class CellRegistrationWorker(
         }
 
         await keyStore.MarkRegisteredAsync(settings.CellId, cancellationToken);
+        status.Clear();
         LogRegistered(logger, settings.CellId);
         return true;
     }

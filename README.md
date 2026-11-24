@@ -73,7 +73,7 @@ With Docker Desktop running, from the repository root:
 dotnet run --project backend/src/Aspire/Backroom.AppHost
 ```
 
-This starts every backing service as a container, the control plane and one cell (`app` and `worker` roles), and opens the Aspire dashboard at http://localhost:15000 (the login link with its token is printed in the terminal). The first run downloads the container images and takes a few minutes. Press Ctrl+C to stop everything. PostgreSQL, Valkey, RabbitMQ, Keycloak and SeaweedFS keep their data in Docker volumes; Mailpit and LiveKit start empty each time.
+This starts every backing service as a container, the control plane and two shared cells, `a` and `b` (each with `app` and `worker` roles, its own database, RabbitMQ virtual host and Valkey key prefix), and opens the Aspire dashboard at http://localhost:15000 (the login link with its token is printed in the terminal). The first run downloads the container images and takes a few minutes. Press Ctrl+C to stop everything. PostgreSQL, Valkey, RabbitMQ, Keycloak and SeaweedFS keep their data in Docker volumes; Mailpit and LiveKit start empty each time.
 
 A development certificate is recommended: `dotnet dev-certs https --trust` (Aspire may also create and trust one on first run). With it, Keycloak is served over HTTPS and the `https` launch profile works; the default launch profile is `http`.
 
@@ -81,14 +81,19 @@ A development certificate is recommended: `dotnet dev-certs https --trust` (Aspi
 | --- | --- | --- |
 | Aspire dashboard | http://localhost:15000 | Logs, traces, metrics and resource status |
 | Control plane | http://localhost:5100 | `/health` in Development |
-| Cell (app role) | http://localhost:5200 | `/health` in Development |
-| Cell (worker role) | http://localhost:5201 | `/health` in Development |
+| Cell a (app role) | http://localhost:5200 | `/health` in Development |
+| Cell a (worker role) | http://localhost:5201 | `/health` in Development |
+| Cell b (app, worker roles) | http://localhost:5202, http://localhost:5203 | Second cell; `Backroom__Cells=1` runs only cell a (saves two host processes; see below) |
 | Keycloak | https://localhost:8443 | Plain HTTP on the same port if no development certificate is trusted; admin credentials are in the dashboard (keycloak resource) |
 | Mailpit | http://localhost:8025, SMTP `localhost:1025` | Catches all email; never relays |
 | RabbitMQ | management UI linked from the dashboard | |
 | PostgreSQL, Valkey | connection strings in the dashboard | |
 | SeaweedFS (S3) | http://localhost:8333 | No credentials in development |
 | LiveKit | ws://localhost:7880, RTC TCP 7881, UDP 7882 | API key `backroom-dev`; the secret is generated on first run |
+
+Two cells roughly double the cell footprint (two .NET host pairs, six processes in all). On a small machine run one cell: `$env:Backroom__Cells = "1"` before `dotnet run`. The cells share one PostgreSQL server (roles are server-wide, so one set of role passwords), one Valkey (keys and channels are prefixed with the cell id) and one RabbitMQ (a virtual host per cell, created by the short-lived `rabbitmq-vhosts` container).
+
+Each cell keeps its key and registration marker in `%APPDATA%\Backroom\dev\<apphost-id>\cells\<cell-id>`. `<apphost-id>` is the prefix of this checkout's PostgreSQL volume in `docker volume ls` (for `backroom.apphost-24f7985b54-postgres-data` it is `backroom.apphost-24f7985b54`), so every checkout and worktree has its own folders. A checkout that ran cells before this layout kept them in `%APPDATA%\Backroom\cells\<cell-id>`: copy each of those folders to the new place, or delete this checkout's Docker volumes so the cells register again. Otherwise the worker reports `control-plane-link` as unhealthy, because the control plane refuses to register a cell it already registered with the old key.
 
 Passwords and the LiveKit secret are generated on first run and stored in the AppHost's user secrets (`dotnet user-secrets list --project backend/src/Aspire/Backroom.AppHost`). They never go into the repository.
 
