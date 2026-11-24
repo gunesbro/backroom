@@ -451,6 +451,72 @@ describe('unavailable IndexedDB', () => {
     expect(onFallback).toHaveBeenCalledWith('error');
     expect(await store.getMessages('c1', 'a')).toHaveLength(1);
   });
+  it('PurgeNotice_FromAMemoryTab_IsAppliedByATabWithWorkingIndexedDb', async () => {
+    const factory = new IDBFactory();
+    const tabA = await open(factory, {}, { markerStorage: fakeStorage() });
+    const tabB = await open(factory);
+    await tabB.putPage('c1', 'a', [msg(1)]);
+    await tabB.putPage('c1', 'b', [msg(1)]);
+    let broken = true;
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- re-applied with the right receiver below
+    const original = IDBDatabase.prototype.transaction;
+    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (this: IDBDatabase, ...args) {
+      if (broken) throw new DOMException('closing', 'InvalidStateError');
+      return original.apply(this, args);
+    });
+    await tabA.purgeConversation('c1', 'a'); // A falls back and cannot reach IndexedDB
+    broken = false;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await tabB.getMessages('c1', 'a')).toBeUndefined();
+    expect(await tabB.getMessages('c1', 'b')).toBeDefined();
+    tabA.close();
+    tabB.close();
+  });
+
+  it('PendingDelete_RetriesWithBackoffOffTheHotPath', async () => {
+    const markers = fakeStorage();
+    const { factory, store } = await fallenBackWithStoredData(markers);
+    await store.purgeCell('c1'); // fails against IndexedDB: marker set
+    expect(markers.values.size).toBe(1);
+    vi.restoreAllMocks();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const del = vi.spyOn(factory, 'deleteDatabase');
+      del.mockImplementationOnce(() => {
+        throw new Error('blocked');
+      });
+      store.close();
+      const again = await open(factory, {}, { markerStorage: markers });
+      expect(again.kind).toBe('memory'); // the delete at open failed; the data is not read
+      expect(del).toHaveBeenCalledTimes(1);
+      await again.putPage('c1', 'x', [msg(1)]);
+      await again.getMessages('c1', 'x');
+      expect(del).toHaveBeenCalledTimes(1); // operations never retry the delete
+      await vi.advanceTimersByTimeAsync(999);
+      expect(del).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(del).toHaveBeenCalledTimes(2); // first retry after 1 s, succeeds
+      await vi.waitFor(() => {
+        expect(markers.values.size).toBe(0);
+      });
+      again.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Clear_LeavesNoDatabaseUntilTheNextWrite', async () => {
+    const factory = new IDBFactory();
+    const store = await open(factory);
+    await store.putPage('c1', 'a', [msg(1)]);
+    await store.clear();
+    expect(await factory.databases()).toHaveLength(0);
+    expect(await store.getMessages('c1', 'a')).toBeUndefined();
+    expect(await factory.databases()).toHaveLength(0);
+    await store.putPage('c1', 'a', [msg(2)]);
+    expect(await factory.databases()).toHaveLength(1);
+    expect(await seqsOf(store, 'c1', 'a')).toEqual([2]);
+  });
 
   async function fallenBackWithStoredData(markerStorage: ReturnType<typeof fakeStorage>) {
     const factory = new IDBFactory();

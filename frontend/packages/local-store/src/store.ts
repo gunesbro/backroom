@@ -52,7 +52,10 @@ function incomingWins(existing: MessageLike, incoming: MessageLike): boolean {
 }
 
 type Notice =
-  { type: 'conversation'; cell: string; conv: string } | { type: 'cell'; cell: string } | { type: 'clear' };
+  | { type: 'conversation'; cell: string; conv: string }
+  | { type: 'cell'; cell: string }
+  | { type: 'clear' }
+  | { type: 'open' };
 
 let instanceCounter = 0;
 
@@ -83,6 +86,11 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
 
   let backend: Backend = createMemoryBackend();
   let fellBack = false;
+  /** After clear() no database exists; the next write creates it again (reads see an empty cache). */
+  let dormant = false;
+  const retryDelaysMs = [1000, 5000, 30_000];
+  let retryRound = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingDelete = readMarker();
 
   function safeLocalStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null {
@@ -101,6 +109,12 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
   }
   function setPending(value: boolean): void {
     pendingDelete = value;
+    if (value) scheduleRetry();
+    else {
+      retryRound = 0;
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
     try {
       if (markerKey === undefined) return;
       if (value) markers?.setItem(markerKey, '1');
@@ -113,6 +127,7 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
   function fallBack(reason: 'unavailable' | 'error'): void {
     backend.close();
     backend = createMemoryBackend();
+    dormant = false;
     if (!fellBack) {
       fellBack = true;
       options.onFallback?.(reason);
@@ -140,9 +155,20 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
 
   /** A purge that could not reach IndexedDB leaves a marker; the database is deleted as soon as that works. */
   async function settlePending(): Promise<void> {
-    if (!pendingDelete) return;
-    if (backend.kind === 'indexeddb') backend.close();
+    if (!pendingDelete || backend.kind === 'indexeddb') return;
     if (await removeDatabase()) setPending(false);
+  }
+
+  /** Retries off the hot path with backoff (1 s, 5 s, 30 s); after that the next open settles it. */
+  function scheduleRetry(): void {
+    const delay = retryDelaysMs[retryRound];
+    if (!pendingDelete || retryTimer !== undefined || delay === undefined) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      retryRound++;
+      void settlePending().then(scheduleRetry);
+    }, delay);
+    (retryTimer as { unref?: () => void }).unref?.();
   }
 
   if (!factory || !dbName) {
@@ -152,6 +178,17 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
     const opened = pendingDelete ? undefined : await openIdb();
     if (opened) backend = opened;
     else fallBack('error');
+    scheduleRetry();
+  }
+
+  /** Leaves the state after clear(): opens the database again (a write does, and tells the other tabs). */
+  async function wake(announceOpen: boolean): Promise<void> {
+    if (!dormant) return;
+    dormant = false;
+    const reopened = await openIdb();
+    if (reopened) backend = reopened;
+    else fallBack('error');
+    if (announceOpen) announce({ type: 'open' });
   }
 
   async function ensureOpen(): Promise<void> {
@@ -193,20 +230,32 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
     channel.onmessage = (event: MessageEvent<Notice>) => {
       const notice = event.data;
       void withLock(lockName, async () => {
-        if (backend.kind !== 'memory') return;
-        if (notice.type === 'clear') backend = createMemoryBackend();
-        else
-          await backend.transact(
-            notice.type === 'cell' ? purgeCellOp(notice.cell) : purgeConversationOp(notice.cell, notice.conv),
-          );
-      });
+        if (notice.type === 'clear') {
+          // The sender deleted the database; do not recreate it until something is written.
+          backend.close();
+          backend = createMemoryBackend();
+          dormant = factory !== undefined && factory !== null;
+          return;
+        }
+        if (notice.type === 'open') {
+          await wake(false);
+          return;
+        }
+        if (dormant) return;
+        // Idempotent, so every backend applies it, IndexedDB included: the sender may have failed to reach it.
+        await attempt(
+          notice.type === 'cell' ? purgeCellOp(notice.cell) : purgeConversationOp(notice.cell, notice.conv),
+          undefined,
+          false,
+        );
+      }).catch(() => undefined);
     };
   }
 
-  async function attempt<T>(op: (tx: Tx) => Promise<T>, giveUp: T): Promise<T> {
-    await settlePending();
+  async function attempt<T>(op: (tx: Tx) => Promise<T>, giveUp: T, writes: boolean): Promise<T> {
     let quotaRetried = false;
     for (let round = 0; round < 3; round++) {
+      if (writes) await wake(true);
       await ensureOpen();
       try {
         return await backend.transact(op);
@@ -231,13 +280,13 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
     return giveUp;
   }
 
-  const exec = <T>(op: (tx: Tx) => Promise<T>, giveUp: T): Promise<T> =>
-    withLock(lockName, () => attempt(op, giveUp));
+  const exec = <T>(op: (tx: Tx) => Promise<T>, giveUp: T, writes = false): Promise<T> =>
+    withLock(lockName, () => attempt(op, giveUp, writes));
 
   const purge = (op: (tx: Tx) => Promise<void>, notice: Notice): Promise<void> =>
     withLock(lockName, async () => {
-      await attempt(op, undefined);
-      if (backend.kind === 'memory') await purgeStoredCopy(op);
+      await attempt(op, undefined, false);
+      if (backend.kind === 'memory' && !dormant) await purgeStoredCopy(op);
       announce(notice);
     });
 
@@ -321,39 +370,43 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
     const ordered = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
     const prepared = ordered.slice(Math.max(0, ordered.length - limits.maxMessagesPerConversation));
 
-    return exec(async (tx) => {
-      const totals = await tx.getTotals();
-      let header = await tx.getConv(cell, conv);
-      if (replace && header) {
-        await tx.deleteConv(cell, conv);
-        totals.bytes -= header.bytes;
-        totals.convs--;
-        header = undefined;
-      }
-      const before = header?.bytes ?? 0;
-      let count = header?.count ?? 0;
-      let bytes = before;
-      if (!header) totals.convs++;
-      for (const item of prepared) {
-        const existing = await tx.getMessage(cell, conv, item.seq);
-        if (existing) {
-          if (!incomingWins(existing.message as MessageLike, item.message)) continue;
-          bytes += item.bytes - existing.bytes;
-        } else {
-          count++;
-          bytes += item.bytes;
+    return exec(
+      async (tx) => {
+        const totals = await tx.getTotals();
+        let header = await tx.getConv(cell, conv);
+        if (replace && header) {
+          await tx.deleteConv(cell, conv);
+          totals.bytes -= header.bytes;
+          totals.convs--;
+          header = undefined;
         }
-        await tx.putMessage({ cell, conv, seq: item.seq, bytes: item.bytes, message: item.message });
-      }
-      if (count > limits.maxMessagesPerConversation) {
-        bytes -= await tx.deleteOldest(cell, conv, count - limits.maxMessagesPerConversation);
-        count = limits.maxMessagesPerConversation;
-      }
-      totals.bytes += bytes - before;
-      await tx.putConv({ cell, conv, count, bytes, accessedAt: tick() });
-      await enforce(tx, totals, limits.maxBytes, { cell, conv });
-      await tx.setTotals(totals);
-    }, undefined);
+        const before = header?.bytes ?? 0;
+        let count = header?.count ?? 0;
+        let bytes = before;
+        if (!header) totals.convs++;
+        for (const item of prepared) {
+          const existing = await tx.getMessage(cell, conv, item.seq);
+          if (existing) {
+            if (!incomingWins(existing.message as MessageLike, item.message)) continue;
+            bytes += item.bytes - existing.bytes;
+          } else {
+            count++;
+            bytes += item.bytes;
+          }
+          await tx.putMessage({ cell, conv, seq: item.seq, bytes: item.bytes, message: item.message });
+        }
+        if (count > limits.maxMessagesPerConversation) {
+          bytes -= await tx.deleteOldest(cell, conv, count - limits.maxMessagesPerConversation);
+          count = limits.maxMessagesPerConversation;
+        }
+        totals.bytes += bytes - before;
+        await tx.putConv({ cell, conv, count, bytes, accessedAt: tick() });
+        await enforce(tx, totals, limits.maxBytes, { cell, conv });
+        await tx.setTotals(totals);
+      },
+      undefined,
+      true,
+    );
   }
 
   function purgeConversationOp(cell: string, conv: string) {
@@ -389,7 +442,7 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
 
   return {
     get kind() {
-      return backend.kind;
+      return dormant ? 'indexeddb' : backend.kind;
     },
 
     getMessages: (cell, conv) =>
@@ -418,19 +471,23 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
       ),
 
     setCursors: (cell, patch) =>
-      exec(async (tx) => {
-        const meta: CellMeta = (await tx.getMeta(cell)) ?? { cell, seqs: {} };
-        if (patch.epoch !== undefined) meta.epoch = patch.epoch;
-        if (patch.feedCursor !== undefined) meta.feedCursor = patch.feedCursor;
-        const seqs = new Map(Object.entries(meta.seqs));
-        for (const [conv, seq] of Object.entries(patch.conversationSeqs ?? {})) {
-          seqs.delete(conv); // re-insert so the oldest entries stay first
-          seqs.set(conv, seq);
-        }
-        const dropped = Math.max(0, seqs.size - limits.maxConversationCursors);
-        meta.seqs = Object.fromEntries([...seqs].slice(dropped));
-        await tx.putMeta(meta);
-      }, undefined),
+      exec(
+        async (tx) => {
+          const meta: CellMeta = (await tx.getMeta(cell)) ?? { cell, seqs: {} };
+          if (patch.epoch !== undefined) meta.epoch = patch.epoch;
+          if (patch.feedCursor !== undefined) meta.feedCursor = patch.feedCursor;
+          const seqs = new Map(Object.entries(meta.seqs));
+          for (const [conv, seq] of Object.entries(patch.conversationSeqs ?? {})) {
+            seqs.delete(conv); // re-insert so the oldest entries stay first
+            seqs.set(conv, seq);
+          }
+          const dropped = Math.max(0, seqs.size - limits.maxConversationCursors);
+          meta.seqs = Object.fromEntries([...seqs].slice(dropped));
+          await tx.putMeta(meta);
+        },
+        undefined,
+        true,
+      ),
 
     getKv: (cell, key) =>
       exec(async (tx) => {
@@ -443,15 +500,19 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
     setKv: (cell, key, value) => {
       const bytes = sizeOf(value);
       if (bytes > limits.maxKvValueBytes) return Promise.resolve(false);
-      return exec(async (tx) => {
-        const totals = await tx.getTotals();
-        const existing = await tx.getKv(cell, key);
-        totals.bytes += bytes - (existing?.bytes ?? 0);
-        await tx.putKv({ cell, key, value, bytes, accessedAt: tick() });
-        await enforce(tx, totals, limits.maxBytes);
-        await tx.setTotals(totals);
-        return (await tx.getKv(cell, key)) !== undefined;
-      }, false);
+      return exec(
+        async (tx) => {
+          const totals = await tx.getTotals();
+          const existing = await tx.getKv(cell, key);
+          totals.bytes += bytes - (existing?.bytes ?? 0);
+          await tx.putKv({ cell, key, value, bytes, accessedAt: tick() });
+          await enforce(tx, totals, limits.maxBytes);
+          await tx.setTotals(totals);
+          return (await tx.getKv(cell, key)) !== undefined;
+        },
+        false,
+        true,
+      );
     },
 
     deleteKv: (cell, key) =>
@@ -475,9 +536,7 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
         backend = createMemoryBackend();
         if (await removeDatabase()) {
           setPending(false);
-          const reopened = await openIdb();
-          if (reopened) backend = reopened;
-          else fallBack('error');
+          dormant = factory !== undefined && factory !== null && dbName !== undefined; // reopened lazily by the next write; no empty database is left after sign-out
         } else {
           setPending(true); // keep working in memory; the database goes as soon as it can
           fallBack('error');
@@ -486,6 +545,7 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
       }),
 
     close() {
+      clearTimeout(retryTimer);
       backend.close();
       channel?.close();
     },
