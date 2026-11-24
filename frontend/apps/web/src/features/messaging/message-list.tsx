@@ -82,6 +82,7 @@ export function MessageList({
   const focusedKey = useRef<string>(undefined);
   const pendingFocus = useRef<string>(undefined);
   const focusedIndex = useRef(0);
+  const previousRows = useRef<readonly Row[]>(rows);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const rangeExtractor = useCallback((range: Range) => {
@@ -176,7 +177,11 @@ export function MessageList({
   const onLogFocus = (event: FocusEvent<HTMLElement>) => {
     const key = event.target.closest(`[${ROW_KEY_ATTRIBUTE}]`)?.getAttribute(ROW_KEY_ATTRIBUTE);
     focusedKey.current = key ?? undefined;
-    if (key) setActiveKey(key);
+    if (key) {
+      setActiveKey(key);
+      const at = rows.findIndex((row) => row.key === key);
+      if (at >= 0) focusedIndex.current = at;
+    }
   };
   const onLogBlur = (event: FocusEvent<HTMLElement>) => {
     // A row removed while it has focus can report a blur; it is the row's loss, not the person's move.
@@ -186,6 +191,8 @@ export function MessageList({
   // The focused row left the list (its page was dropped): focus goes to the row now in its place, not to the page.
   useLayoutEffect(() => {
     const key = focusedKey.current;
+    const before = previousRows.current;
+    previousRows.current = rows;
     if (key === undefined) return;
     const at = rows.findIndex((row) => row.key === key);
     if (at >= 0) {
@@ -193,14 +200,21 @@ export function MessageList({
       return;
     }
 
-    const nearest = Math.min(focusedIndex.current, rows.length - 1);
-    const nearestKey = rows[nearest]?.key;
+    // The nearest row that is still there: the next one after the old position, else the one before it.
+    const survivors = new Set(rows.map((row) => row.key));
+    const after = before.slice(focusedIndex.current + 1).find((row) => survivors.has(row.key));
+    const earlier = before.slice(0, focusedIndex.current).findLast((row) => survivors.has(row.key));
+    const nearestKey = (after ?? earlier)?.key;
+    const nearest = rows.findIndex((row) => row.key === nearestKey);
     focusedKey.current = undefined;
-    if (nearestKey === undefined) return;
+    if (nearestKey === undefined || nearest < 0) return;
     focusedIndex.current = nearest;
     setActiveKey(nearestKey);
-    pendingFocus.current = nearestKey;
     virtualizer.scrollToIndex(nearest);
+    // Drawn already: focus now (the items may not change); otherwise after the scroll draws it.
+    const element = rowElement(nearestKey);
+    if (element) element.focus({ preventScroll: true });
+    else pendingFocus.current = nearestKey;
   }, [rows, virtualizer]);
   const onRowKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const key = (event.target as HTMLElement).getAttribute(ROW_KEY_ATTRIBUTE);
@@ -220,6 +234,7 @@ export function MessageList({
     if (next === undefined || nextKey === undefined) return;
     event.preventDefault();
     setActiveKey(nextKey);
+    focusedIndex.current = next;
     virtualizer.scrollToIndex(next);
     // Already drawn: focus now; otherwise the effect above does it after the scroll draws the row.
     const element = rowElement(nextKey);

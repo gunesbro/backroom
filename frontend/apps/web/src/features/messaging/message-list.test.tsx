@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { LocaleProvider } from '@/shared/locale-provider';
 import type { Message } from './api';
 import { MessageList, type Row } from './message-list';
+import { rowKey } from './row-key';
 
 beforeAll(() => {
   // jsdom has no layout: the feed is 400 px tall, a row 40 px, and scrollTop can be set.
@@ -206,6 +207,28 @@ describe('Message feed focus and the action bar', () => {
     rerender(list(range(7, 10)));
 
     expect(document.activeElement).toBe(article('message 7'));
+  });
+
+  it('FocusedRow_AfterArrowMoves_WhenDropped_MovesFocusToTheRowNextToTheCurrentPosition', () => {
+    const { rerender } = render(list(range(1, 10)));
+    focusOn(article('message 2'));
+    fireEvent.keyDown(article('message 2'), { key: 'ArrowDown' });
+    fireEvent.keyDown(article('message 3'), { key: 'ArrowDown' });
+    fireEvent.keyDown(article('message 4'), { key: 'ArrowDown' });
+    expect(article('message 5')).toHaveFocus();
+
+    rerender(list([...range(1, 4), ...range(6, 10)]));
+
+    // The row now at the old position (message 6), which is already drawn.
+    expect(document.activeElement).toBe(article('message 6'));
+  });
+
+  it('Rows_OfTwoSendersWithTheSameClientMessageId_GetDistinctKeys', () => {
+    const mine = rowKey({ authorAccountId: 'a', clientMessageId: 'c-1', id: 'm-1' });
+    const theirs = rowKey({ authorAccountId: 'b', clientMessageId: 'c-1', id: 'm-2' });
+
+    expect(mine).not.toBe(theirs);
+    expect(rowKey({ authorAccountId: 'a', clientMessageId: '', id: 'm-3' })).toBe('m-3');
   });
 
   it('Feed_WithTheBarShown_HasNoAxeViolations', async () => {
