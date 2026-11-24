@@ -8,7 +8,7 @@
 ## Safety
 
 - **Never run against production.** The tool creates users and organizations, and the scenarios send thousands of messages. It refuses targets other than `localhost` unless `LOADTEST_ALLOW_REMOTE=yes`; use that only for a dedicated load-test stack.
-- **Do not load the AppHost you work in.** Start a separate stack (a second checkout or worktree has its own volumes) and point the tool at it.
+- **Do not load the AppHost you work in.** Start a separate stack (an isolated run has random ports and no volumes) and point the tool at it. The endpoints have no defaults, and the tool refuses the development stack's fixed ports (`tools/targets.mjs`, tested by `node --test load-tests/tools/targets.test.mjs`); `LOADTEST_ALLOW_DEVELOPMENT_STACK=yes` overrides that, for example to clean up after a mistake.
 - Outside production all email goes to Mailpit, and test users use `lt-<run>-<org>-<member>@loadtest.test` addresses. The setup tool sends invitations (membership exists only through them), at most 49 per organization; the scenarios themselves **never create invitations, organizations or users**.
 - Nothing secret is committed: the fixture (`.data/`, git-ignored) holds throwaway passwords of throwaway users, and tokens only live in the memory of the token server.
 
@@ -21,6 +21,7 @@
 ```powershell
 # Terminal 1: a load-test stack is running (see the AppHost; Keycloak admin credentials are the AppHost's parameters).
 # Keycloak's development certificate must be trusted by Node: NODE_EXTRA_CA_CERTS=<path to the dev CA>.
+$env:KEYCLOAK_URL = "<the stack's Keycloak>"; $env:CONTROL_PLANE_URL = "<its control plane>"; $env:MAILPIT_URL = "<its Mailpit>"
 $env:KEYCLOAK_ADMIN_USER = "admin"; $env:KEYCLOAK_ADMIN_PASSWORD = "<from the stack>"
 node load-tests/tools/loadtest.mjs provision      # ORGS=2 MEMBERS=5 CHANNELS=2 by default
 node load-tests/tools/loadtest.mjs serve          # leave running
@@ -40,7 +41,7 @@ node load-tests/tools/loadtest.mjs cleanup        # deletes the Keycloak users; 
 
 | Part | What it does | Metric |
 | --- | --- | --- |
-| `senders` | `SEND_RATE` messages per second (arrival rate) to random public channels, 1 to 4000 characters | `send_ms` |
+| `senders` | `SEND_RATE` messages per second (arrival rate) to random public channels, 1 to 4000 characters; `SEND_TARGET=one` sends them all to one channel (the worst case for the per-channel sequence lock) | `send_ms` |
 | `readers` | `READ_RATE` per second: first page (`limit` 50, newest first), then `HISTORY_PAGES` older pages by keyset (`before={next}`) | `history_first_page_ms`, `history_next_page_ms` |
 | `listeners` | `LISTENERS` SignalR connections (MessagePack, WebSockets) subscribed to every channel of their organization | `ws_ready_ms`, `message_visible_ms` |
 
@@ -70,16 +71,36 @@ There is no search in Phase 1, so the search p95 500 ms row has no scenario yet.
 
 | Variable | Default | Used by |
 | --- | --- | --- |
-| `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `CONTROL_PLANE_URL`, `MAILPIT_URL` | `https://localhost:8443`, `backroom`, `http://localhost:5100`, `http://localhost:8025` | tool |
+| `KEYCLOAK_URL`, `CONTROL_PLANE_URL`, `MAILPIT_URL` | required, no default | `provision`; `serve` and `cleanup` take the endpoints from the fixture |
+| `KEYCLOAK_REALM` | `backroom` | tool |
 | `KEYCLOAK_ADMIN_USER`, `KEYCLOAK_ADMIN_PASSWORD` | required | `provision`, `cleanup` |
 | `ORGS`, `MEMBERS`, `CHANNELS`, `SEED_MESSAGES`, `REGION`, `CONCURRENCY` | 2, 5, 2, 120, `eu-dev`, 4 | `provision` |
 | `TOKEN_SERVER_PORT`, `REFRESH_SECONDS`, `FIXTURE` | 5999, 150, `.data/fixture.json` | tool; k6 reads `FIXTURE` and `TOKEN_SERVER` (`http://127.0.0.1:5999`) too |
-| `DURATION`, `LISTENERS`, `SEND_RATE`, `READ_RATE`, `MESSAGE_LENGTH`, `HISTORY_PAGES`, `PAGE_SIZE` | 60s, 10, 5, 5, 80, 3, 50 | `messaging` |
+| `DURATION`, `LISTENERS`, `SEND_RATE`, `READ_RATE`, `MESSAGE_LENGTH`, `HISTORY_PAGES`, `PAGE_SIZE`, `SEND_TARGET` | 60s, 10, 5, 5, 80, 3, 50, `all` | `messaging` |
+| `RATE`, `SECONDS`, `SETTLE_SECONDS` | 100, 12, 8 | `crash-check` |
 | `STORM_RATE`, `STORM_PEAK`, `CATCHUP_LAG`, `CATCHUP_HUB` | 20, 30s, 100, true | `catch-up` |
 
 Pass k6 variables with `-e NAME=value` or the shell environment. Defaults are sized for a laptop.
 
 **5,000-user profile:** `profiles/target-5000.env` (100 organizations of 50 members, 5,000 live connections, 15 minutes). Run it on proper hardware: a dedicated stack and a separate generator machine. Setup limits: an account creates 5 organizations a day, an owner sends 50 invitations a day (hence at most 49 members per organization), and Keycloak sign-in of 5,000 users takes a while (`CONCURRENCY`).
+
+## WAL flush probe
+
+A send is acknowledged only after PostgreSQL has flushed its commit to disk, so `send_ms` and `message_visible_ms` can never be better than the disk's flush latency (docs/adr/0012). Run the probe beside every `messaging` run: one tiny synchronous commit five times a second, logged per commit.
+
+```sh
+# In the PostgreSQL container of the load-test stack (pgbench ships with the image; -n: no tables are created or touched).
+pgbench -n -f wal-flush-probe.sql -R 5 -T 125 -c 1 -l --log-prefix=probe postgres
+# Share of the probe's commits that took more than 50 ms, waiting behind an earlier one included (third column:
+# latency in microseconds). It estimates the share of the run during which a commit had to wait that long for the disk.
+awk '{ n++; if ($3 > 50000) slow++ } END { printf "%d commits, %.1f %% over 50 ms\n", n, 100 * slow / n }' probe.*
+```
+
+A run whose probe has more than about 1 % of its commits over 50 ms measures the disk, not the product: do not read a budget verdict for sends from it. Docker Desktop's virtual disk stalls for 0.3 to 0.7 s every 5 to 8 s (results/2026-11-24-send-durability.md).
+
+## Crash check
+
+`tools/crash-check.mjs` sends to one channel, remembers every acknowledged message, and after the run reads the channel back: an acknowledged message must still be there, under the sequence number it was acknowledged with. Crash the load-test stack's PostgreSQL while it sends (the comment at the top of the file shows how); it uses the fixture and the token server like k6 does. It is the check to run before changing anything about how sends become durable.
 
 ## Not covered yet
 

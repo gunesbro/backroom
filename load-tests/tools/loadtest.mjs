@@ -13,16 +13,18 @@ import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Keycloak, KeycloakAdmin } from './keycloak.mjs';
+import { assertSafeTargets } from './targets.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const env = (name, fallback) => process.env[name] || fallback;
 const num = (name, fallback) => Number(env(name, String(fallback)));
 
 const config = {
-  keycloakUrl: env('KEYCLOAK_URL', 'https://localhost:8443'),
+  // No defaults for the endpoints: a forgotten variable must never turn into the development stack (targets.mjs).
+  keycloakUrl: process.env.KEYCLOAK_URL,
   realm: env('KEYCLOAK_REALM', 'backroom'),
-  controlPlane: env('CONTROL_PLANE_URL', 'http://localhost:5100').replace(/\/$/, ''),
-  mailpit: env('MAILPIT_URL', 'http://localhost:8025').replace(/\/$/, ''),
+  controlPlane: process.env.CONTROL_PLANE_URL?.replace(/\/$/, ''),
+  mailpit: process.env.MAILPIT_URL?.replace(/\/$/, ''),
   region: env('REGION', 'eu-dev'),
   orgs: num('ORGS', 2),
   members: num('MEMBERS', 5), // per organization, the owner included
@@ -37,13 +39,19 @@ const config = {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const log = (message) => console.log(`[loadtest] ${message}`);
 
-function refuseUnsafeTargets() {
-  // Load tests create users and organizations and send many messages: only ever against a local or throwaway stack.
-  const hosts = [config.keycloakUrl, config.controlPlane].map((url) => new URL(url).hostname);
-  const local = hosts.every((host) => ['localhost', '127.0.0.1', '[::1]'].includes(host));
-  if (!local && process.env.LOADTEST_ALLOW_REMOTE !== 'yes') {
-    throw new Error('Refusing a non-local target. Set LOADTEST_ALLOW_REMOTE=yes only for a dedicated load-test stack, never production.');
-  }
+// Load tests create users and organizations and send many messages: only ever against a throwaway stack that was
+// named explicitly, never the development stack (targets.mjs).
+function refuseUnsafeEndpoints() {
+  assertSafeTargets({ KEYCLOAK_URL: config.keycloakUrl, CONTROL_PLANE_URL: config.controlPlane, MAILPIT_URL: config.mailpit });
+}
+
+/** serve and cleanup act on what the fixture names, whatever the environment says now. */
+function refuseUnsafeFixture(fixture) {
+  const targets = { 'fixture keycloak': fixture.keycloak, 'fixture controlPlane': fixture.controlPlane };
+  fixture.orgs.forEach((org, index) => {
+    targets[`fixture cellUrl of organization ${index}`] = org.cellUrl;
+  });
+  assertSafeTargets(targets);
 }
 
 async function pool(items, size, work) {
@@ -70,8 +78,8 @@ async function api(method, url, token, body) {
   return text ? JSON.parse(text) : null;
 }
 
-async function sharedCellScopes() {
-  const { cells } = await (await fetch(`${config.controlPlane}/api/v1/cells/shared`)).json();
+async function sharedCellScopes(controlPlane) {
+  const { cells } = await (await fetch(`${controlPlane}/api/v1/cells/shared`)).json();
   return cells.map((cell) => `cell:${cell.id}`);
 }
 
@@ -91,7 +99,7 @@ async function inviteCode(email) {
 }
 
 async function provision() {
-  refuseUnsafeTargets();
+  refuseUnsafeEndpoints();
   const adminUser = process.env.KEYCLOAK_ADMIN_USER;
   const adminPassword = process.env.KEYCLOAK_ADMIN_PASSWORD;
   if (!adminUser || !adminPassword) {
@@ -104,7 +112,7 @@ async function provision() {
 
   const keycloak = new Keycloak(config.keycloakUrl, config.realm);
   const admin = new KeycloakAdmin(config.keycloakUrl, config.realm, adminUser, adminPassword);
-  const scopes = ['control-plane', ...(await sharedCellScopes())];
+  const scopes = ['control-plane', ...(await sharedCellScopes(config.controlPlane))];
   const run = randomBytes(3).toString('hex');
   const password = randomBytes(18).toString('base64url');
 
@@ -183,10 +191,10 @@ async function load() {
 }
 
 async function serve() {
-  refuseUnsafeTargets();
   const fixture = await load();
+  refuseUnsafeFixture(fixture);
   const keycloak = new Keycloak(fixture.keycloak, fixture.realm);
-  const scopes = ['control-plane', ...(await sharedCellScopes())];
+  const scopes = ['control-plane', ...(await sharedCellScopes(fixture.controlPlane))];
   const state = new Map(); // user index -> { session, scope, token: { accessToken, expiresAt } }
 
   async function signInUser(user) {
@@ -234,8 +242,8 @@ async function serve() {
 }
 
 async function cleanup() {
-  refuseUnsafeTargets();
   const fixture = await load();
+  refuseUnsafeFixture(fixture);
   const admin = new KeycloakAdmin(fixture.keycloak, fixture.realm, process.env.KEYCLOAK_ADMIN_USER, process.env.KEYCLOAK_ADMIN_PASSWORD);
   let deleted = 0;
   await pool(fixture.users, config.concurrency, async (user) => {
