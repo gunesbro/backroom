@@ -90,23 +90,41 @@ public sealed class PublisherTests
             sent.Add((group, method));
             return Task.CompletedTask;
         });
-        using var publisher = new ValkeyLiveEventPublisher(hub, Options("cellx", 4), new FakeTimeProvider(), new CapturingLoggerFactory().CreateLogger<ValkeyLiveEventPublisher>());
+        using var publisher = new ValkeyLiveEventPublisher(hub, Removals(Options("cellx", 4)), Options("cellx", 4), new FakeTimeProvider(), new CapturingLoggerFactory().CreateLogger<ValkeyLiveEventPublisher>());
         var channel = new ChannelCreatedPayload(s_message.OrgId, new LiveChannel(Guid.NewGuid(), "name", DateTimeOffset.UtcNow));
 
         await publisher.PublishAsync(s_message, CancellationToken);
         await publisher.PublishAsync(channel, CancellationToken);
 
         sent.Should().Equal(
-            ($"cell:cellx:org:{s_message.OrgId:D}:channel:{s_message.ChannelId:D}", "MessagePosted"),
+            ($"cell:cellx:org:{s_message.OrgId:D}:conversation:{s_message.ChannelId:D}", "MessagePosted"),
             ($"cell:cellx:org:{s_message.OrgId:D}", "ChannelCreated"));
+    }
+
+    [Fact]
+    public async Task RemoveFromConversation_WhenValkeyIsDown_DoesNotThrowAndCountsAFailureAsync()
+    {
+        var logs = new CapturingLoggerProvider();
+        using var metrics = new MetricCounter();
+        using var publisher = Publisher(Task.CompletedTask, new FakeTimeProvider(), logs, maxConcurrent: 4);
+
+        await publisher.RemoveFromConversationAsync(s_message.OrgId, s_message.ChannelId, Guid.NewGuid(), CancellationToken);
+
+        metrics.Total("backroom.realtime.publish_failures").Should().Be(1);
+        logs.Entries.Should().ContainSingle().Which.Should().Contain("ConversationMemberRemoved").And.Contain(s_message.OrgId.ToString());
     }
 
     private static ValkeyLiveEventPublisher Publisher(Task send, FakeTimeProvider time, CapturingLoggerProvider logs, int maxConcurrent) =>
         new(
             new FakeHubContext((_, _) => send),
+            Removals(Options("cellx", maxConcurrent)),
             Options("cellx", maxConcurrent),
             time,
             new CapturingLoggerFactory(logs).CreateLogger<ValkeyLiveEventPublisher>());
+
+    // Never connected unless a test removes a member; the port refuses, so a removal fails at once.
+    private static GroupRemovalBroadcast Removals(IOptions<RealtimeOptions> options) =>
+        new(new ValkeyConnection(Microsoft.Extensions.Options.Options.Create(new ValkeyOptions { ConnectionString = "127.0.0.1:1" }), options), options, new FakeTimeProvider());
 
     private static IOptions<RealtimeOptions> Options(string cellId, int maxConcurrent) =>
         Microsoft.Extensions.Options.Options.Create(new RealtimeOptions { CellId = cellId, MaxConcurrentPublishes = maxConcurrent, PublishTimeout = TimeSpan.FromSeconds(2) });

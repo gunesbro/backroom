@@ -47,7 +47,9 @@ public static class MessagingEndpoints
         if (endpoints.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>(ConversationsFlag))
         {
             endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/join", JoinAsync).InOrganization();
-            endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/leave", LeaveAsync).InOrganization();
+            endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/leave", LeaveAsync)
+                .PublishLiveEventsAfterCommit()
+                .InOrganization();
         }
 
         return endpoints;

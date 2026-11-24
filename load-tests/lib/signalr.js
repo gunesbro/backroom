@@ -1,7 +1,7 @@
 import { WebSocket } from 'k6/websockets';
 
 // A minimal SignalR client for the MessagePack protocol (the hub accepts nothing else, and only WebSockets). It
-// encodes the few invocations a client sends (handshake, SubscribeChannel, ping) and does not decode the live events:
+// encodes the few invocations a client sends (handshake, SubscribeConversation, ping) and does not decode the live events:
 // the sender writes its send time into the message text ("lt:<epoch ms>:"), and the client finds that stamp in the
 // frame bytes. This measures delivery through the whole path (live event, Valkey, SignalR) without a decoder.
 const RECORD_SEPARATOR = '\u001e';
@@ -124,7 +124,7 @@ export function listen({ cellUrl, token, orgId, channelIds, holdMs, onReady, onV
         return;
       }
       pending = channelIds.length;
-      channelIds.forEach((id, i) => ws.send(invocation('SubscribeChannel', [orgId, id], String(i + 1))));
+      channelIds.forEach((id, i) => ws.send(invocation('SubscribeConversation', [orgId, id], String(i + 1))));
       pinger = setInterval(() => {
         if (ws.readyState === 1) ws.send(PING);
       }, 10_000);

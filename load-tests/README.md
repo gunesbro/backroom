@@ -44,7 +44,7 @@ node load-tests/tools/loadtest.mjs cleanup        # deletes the Keycloak users; 
 | `readers` | `READ_RATE` per second: first page (`limit` 50, newest first), then `HISTORY_PAGES` older pages by keyset (`before={next}`) | `history_first_page_ms`, `history_next_page_ms` |
 | `listeners` | `LISTENERS` SignalR connections (MessagePack, WebSockets) subscribed to every channel of their organization | `ws_ready_ms`, `message_visible_ms` |
 
-`message_visible_ms` is the time from the sender stamping the message ("lt:<epoch ms>:" at the start of its text) to a listener receiving the `MessagePosted` frame. The hub speaks MessagePack only; `lib/signalr.js` encodes the handshake, `SubscribeChannel` and pings itself and does not decode the frames, it only finds the stamp in the bytes. Gaps: sender and listener must share a clock (one load generator machine, or synchronized clocks), and the measure includes the network between the generator and the stack, so run the generator near the stack for budget numbers.
+`message_visible_ms` is the time from the sender stamping the message ("lt:<epoch ms>:" at the start of its text) to a listener receiving the `MessagePosted` frame. The hub speaks MessagePack only; `lib/signalr.js` encodes the handshake, `SubscribeConversation` and pings itself and does not decode the frames, it only finds the stamp in the bytes. Gaps: sender and listener must share a clock (one load generator machine, or synchronized clocks), and the measure includes the network between the generator and the stack, so run the generator near the stack for budget numbers.
 
 ### `catch-up`
 

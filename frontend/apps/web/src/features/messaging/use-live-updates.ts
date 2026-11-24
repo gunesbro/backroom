@@ -106,13 +106,13 @@ export function useLiveUpdates({
     const want = new Set(wanted === '' ? [] : wanted.split(','));
     for (const id of want) {
       if (!joined.current.has(id)) {
-        client.subscribeChannel(orgId, id);
+        client.subscribeConversation(orgId, id);
         joined.current.add(id);
       }
     }
     for (const id of [...joined.current]) {
       if (!want.has(id)) {
-        client.unsubscribeChannel(orgId, id);
+        client.unsubscribeConversation(orgId, id);
         joined.current.delete(id);
       }
     }

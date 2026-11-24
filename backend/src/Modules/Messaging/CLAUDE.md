@@ -16,7 +16,7 @@ Contracts: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (f
 ## Publishes / depends on
 
 - Integration event `messaging.message-posted.v1` (no text).
-- Live events through `ILiveEventPublisher` (Realtime.Contracts) after commit: `MessagePosted` to the channel group, `ChannelCreated` to the organization group.
+- Live events through `ILiveEventPublisher` (Realtime.Contracts) after commit: `MessagePosted` to the conversation group, `ChannelCreated` to the organization group; a leave asks Realtime to take the account's connections out of the conversation group (`RemoveFromConversationAsync`; the outbox event repeats it durably).
 - `IPermissionChecker` (Permissions.Contracts); membership comes from the organization context.
 - Integration events `messaging.conversation-created.v1`, `messaging.conversation-member-added.v1`, `messaging.conversation-member-removed.v1` (ids and the kind only).
 - Publishes `IConversationReadAccess` (Contracts): whether an account may read a conversation (an open public channel, or an open conversation it is a member of), used by Realtime's subscription check.

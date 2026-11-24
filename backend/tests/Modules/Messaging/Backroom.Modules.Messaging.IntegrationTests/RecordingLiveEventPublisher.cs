@@ -8,6 +8,7 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
     private readonly Lock _lock = new();
     private readonly List<MessagePostedPayload> _messages = [];
     private readonly List<ChannelCreatedPayload> _channels = [];
+    private readonly List<(Guid OrgId, Guid ConversationId, Guid AccountId)> _removals = [];
 
     public bool Fail { get; set; }
 
@@ -51,6 +52,26 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
         lock (_lock)
         {
             _channels.Add(payload);
+        }
+    }
+
+    public IReadOnlyList<(Guid OrgId, Guid ConversationId, Guid AccountId)> Removals
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _removals];
+            }
+        }
+    }
+
+    public async Task RemoveFromConversationAsync(Guid orgId, Guid conversationId, Guid accountId, CancellationToken cancellationToken)
+    {
+        await BeforeAsync();
+        lock (_lock)
+        {
+            _removals.Add((orgId, conversationId, accountId));
         }
     }
 

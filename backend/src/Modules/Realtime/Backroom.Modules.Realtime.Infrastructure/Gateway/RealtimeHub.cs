@@ -10,11 +10,12 @@ using Backroom.Modules.Realtime.Infrastructure.Revocation;
 namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 
 /// <summary>
-/// The hub at <see cref="RealtimeEndpoints.HubPath"/> (docs/contracts/phase-1.md, "Live events"). Clients only subscribe
+/// The hub at <see cref="RealtimeEndpoints.HubPath"/> (docs/contracts/phase-2.md, "Live events"). Clients only subscribe
 /// and unsubscribe; the server sends everything else (<see cref="Contracts.ILiveEventPublisher"/>). A subscription is
-/// granted after the same checks as a read: an active member of the organization and, for a channel, read access to it
-/// (<c>IConversationReadAccess</c>: an open public channel, or an open conversation the account is a member of). Every
-/// refusal for a missing organization, membership or channel answers the same <c>realtime.not_found</c>, so a client
+/// granted after the same checks as a read: an active member of the organization (which also joins the account's own
+/// group) and, for a conversation, read access to it (<c>IConversationReadAccess</c>: an open public channel, or an
+/// open conversation the account is a member of). Every refusal for a missing organization, membership or conversation
+/// answers the same <c>realtime.not_found</c>, so a client
 /// learns nothing about what it may not see. Errors are <see cref="HubException"/>s
 /// with a stable code and no internals; anything else the client gets is SignalR's generic failure.
 /// </summary>
@@ -103,25 +104,37 @@ internal sealed partial class RealtimeHub(
         }
     }
 
-    public Task SubscribeOrganization(Guid orgId) =>
-        SubscribeAsync(orgId, channelId: null);
+    /// <summary>
+    /// Joins the organization's group and the account's own group in it (for per-person events). The account group is
+    /// the token's account, never an argument, so it only ever holds that account's connections.
+    /// </summary>
+    public Task SubscribeOrganization(Guid orgId)
+    {
+        Require(orgId);
+        var accountId = Current().AccountId;
+        return SubscribeAsync(
+            orgId,
+            conversationId: null,
+            [GroupNames.Organization(options.Value.CellId, orgId), GroupNames.Account(options.Value.CellId, orgId, accountId)]);
+    }
 
     public Task UnsubscribeOrganization(Guid orgId)
     {
         Require(orgId);
-        return UnsubscribeAsync(GroupNames.Organization(options.Value.CellId, orgId));
+        var accountId = Current().AccountId;
+        return UnsubscribeAsync([GroupNames.Organization(options.Value.CellId, orgId), GroupNames.Account(options.Value.CellId, orgId, accountId)]);
     }
 
-    public Task SubscribeChannel(Guid orgId, Guid channelId)
+    public Task SubscribeConversation(Guid orgId, Guid conversationId)
     {
-        ValidateIds(orgId, channelId);
-        return SubscribeAsync(orgId, channelId);
+        ValidateIds(orgId, conversationId);
+        return SubscribeAsync(orgId, conversationId, [GroupNames.Conversation(options.Value.CellId, orgId, conversationId)]);
     }
 
-    public Task UnsubscribeChannel(Guid orgId, Guid channelId)
+    public Task UnsubscribeConversation(Guid orgId, Guid conversationId)
     {
-        ValidateIds(orgId, channelId);
-        return UnsubscribeAsync(GroupNames.Channel(options.Value.CellId, orgId, channelId));
+        ValidateIds(orgId, conversationId);
+        return UnsubscribeAsync([GroupNames.Conversation(options.Value.CellId, orgId, conversationId)]);
     }
 
     private static void Require(Guid id)
@@ -132,25 +145,17 @@ internal sealed partial class RealtimeHub(
         }
     }
 
-    private static void ValidateIds(Guid organizationId, Guid channelId)
+    private static void ValidateIds(Guid organizationId, Guid conversationId)
     {
-        if (organizationId == Guid.Empty || channelId == Guid.Empty)
+        if (organizationId == Guid.Empty || conversationId == Guid.Empty)
         {
             throw new HubException(InvalidArgument);
         }
     }
 
-    private async Task SubscribeAsync(Guid organizationId, Guid? channelId)
+    private async Task SubscribeAsync(Guid organizationId, Guid? conversationId, string[] groups)
     {
-        if (channelId is null)
-        {
-            Require(organizationId);
-        }
-
         var state = Current();
-        var group = channelId is { } channel
-            ? GroupNames.Channel(options.Value.CellId, organizationId, channel)
-            : GroupNames.Organization(options.Value.CellId, organizationId);
         var cancellationToken = Context.ConnectionAborted;
 
         // The gate is held from the check to the join, so a removal that follows a membership's end cannot slip between them.
@@ -170,18 +175,19 @@ internal sealed partial class RealtimeHub(
                 throw new HubException(RateLimited);
             }
 
-            if (state.Contains(group))
+            var missing = Array.FindAll(groups, group => !state.Contains(group));
+            if (missing.Length == 0)
             {
                 return;
             }
 
-            if (state.Count >= options.Value.MaxSubscriptionsPerConnection)
+            if (state.Count + missing.Length > options.Value.MaxSubscriptionsPerConnection)
             {
                 RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "subscription_limit"));
                 throw new HubException(SubscriptionLimit);
             }
 
-            if (!await MayJoinAsync(state.AccountId, organizationId, channelId, cancellationToken))
+            if (!await MayJoinAsync(state.AccountId, organizationId, conversationId, cancellationToken))
             {
                 RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "not_found"));
                 if (state.CountRefusal() >= options.Value.MaxRefusedSubscribesPerConnection)
@@ -193,18 +199,21 @@ internal sealed partial class RealtimeHub(
                 throw new HubException(NotFound);
             }
 
-            state.Add(group, organizationId);
-            try
+            foreach (var group in missing)
             {
-                await Groups.AddToGroupAsync(Context.ConnectionId, group, cancellationToken);
-            }
-            catch
-            {
-                state.Remove(group);
-                throw;
-            }
+                state.Add(group, organizationId);
+                try
+                {
+                    await Groups.AddToGroupAsync(Context.ConnectionId, group, cancellationToken);
+                }
+                catch
+                {
+                    state.Remove(group);
+                    throw;
+                }
 
-            RealtimeTelemetry.Subscriptions.Add(1);
+                RealtimeTelemetry.Subscriptions.Add(1);
+            }
         }
         finally
         {
@@ -212,16 +221,19 @@ internal sealed partial class RealtimeHub(
         }
     }
 
-    private async Task UnsubscribeAsync(string group)
+    private async Task UnsubscribeAsync(string[] groups)
     {
         var state = Current();
         await state.Gate.WaitAsync(Context.ConnectionAborted);
         try
         {
-            if (state.Remove(group))
+            foreach (var group in groups)
             {
-                RealtimeTelemetry.Subscriptions.Add(-1);
-                await Groups.RemoveFromGroupAsync(Context.ConnectionId, group, Context.ConnectionAborted);
+                if (state.Remove(group))
+                {
+                    RealtimeTelemetry.Subscriptions.Add(-1);
+                    await Groups.RemoveFromGroupAsync(Context.ConnectionId, group, Context.ConnectionAborted);
+                }
             }
         }
         finally
@@ -235,14 +247,14 @@ internal sealed partial class RealtimeHub(
 
     // The organization comes from the argument, and is accepted only after the membership check, like a request's route
     // value; row-level security limits everything the transaction reads to it.
-    private async Task<bool> MayJoinAsync(Guid accountId, Guid organizationId, Guid? channelId, CancellationToken cancellationToken)
+    private async Task<bool> MayJoinAsync(Guid accountId, Guid organizationId, Guid? conversationId, CancellationToken cancellationToken)
     {
         try
         {
             organization.Enter(organizationId);
             await unitOfWork.BeginAsync(cancellationToken);
             var allowed = await membership.IsActiveMemberAsync(accountId, cancellationToken)
-                && (channelId is not { } channel || await conversations.CanReadAsync(organizationId, channel, accountId, cancellationToken));
+                && (conversationId is not { } conversation || await conversations.CanReadAsync(organizationId, conversation, accountId, cancellationToken));
             await unitOfWork.CommitAsync(cancellationToken);
             return allowed;
         }

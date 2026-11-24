@@ -15,7 +15,7 @@ public sealed class LimitTests(PostgresDatabase database, KeycloakRealm keycloak
 {
     protected override IReadOnlyDictionary<string, string?>? Settings { get; } = new Dictionary<string, string?>
     {
-        ["Realtime:MaxSubscriptionsPerConnection"] = "2",
+        ["Realtime:MaxSubscriptionsPerConnection"] = "3",
         ["Realtime:MaxConnectionsPerAccount"] = "2",
     };
 
@@ -27,13 +27,30 @@ public sealed class LimitTests(PostgresDatabase database, KeycloakRealm keycloak
         var second = await CreateChannelAsync(NodeA, organizationId, Alice, "two");
         var client = await ConnectAsync(NodeA, Alice);
         await client.SubscribeOrganizationAsync(organizationId);
-        await client.SubscribeChannelAsync(organizationId, first);
+        await client.SubscribeConversationAsync(organizationId, first);
 
-        var failure = await Assert.ThrowsAsync<HubException>(() => client.SubscribeChannelAsync(organizationId, second));
-        await client.UnsubscribeChannelAsync(organizationId, first);
-        await client.SubscribeChannelAsync(organizationId, second);
+        var failure = await Assert.ThrowsAsync<HubException>(() => client.SubscribeConversationAsync(organizationId, second));
+        await client.UnsubscribeConversationAsync(organizationId, first);
+        await client.SubscribeConversationAsync(organizationId, second);
 
         failure.Message.Should().EndWith("realtime.subscription_limit");
+    }
+
+    [Fact]
+    public async Task SubscribeOrganization_WithRoomForOnlyOneGroup_IsRefusedBecauseItJoinsTwoAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        var first = await CreateChannelAsync(NodeA, organizationId, Alice, "one");
+        var second = await CreateChannelAsync(NodeA, organizationId, Alice, "two");
+        var client = await ConnectAsync(NodeA, Alice);
+        await client.SubscribeConversationAsync(organizationId, first);
+        await client.SubscribeConversationAsync(organizationId, second);
+
+        // The organization group and the account group count together; neither is joined alone.
+        var failure = await Assert.ThrowsAsync<HubException>(() => client.SubscribeOrganizationAsync(organizationId));
+
+        failure.Message.Should().EndWith("realtime.subscription_limit");
+        (await SubscriptionCountAsync(NodeA, Alice)).Should().Be(2);
     }
 
     [Fact]

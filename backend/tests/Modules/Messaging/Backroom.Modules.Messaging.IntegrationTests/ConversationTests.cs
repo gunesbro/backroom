@@ -93,6 +93,7 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         var removed = (await OutboxAsync(organizationId)).Should().ContainSingle(entry => entry.Type == ConversationMemberRemoved.EventType).Subject.Payload.AsObject();
         removed.Select(property => property.Key).Should().BeEquivalentTo(["event_id", "org_id", "occurred_at", "conversation_id", "account_id", "actor_account_id"]);
         removed["account_id"]!.GetValue<Guid>().Should().Be(bob);
+        Publisher.Removals.Should().Equal([(organizationId, channelId, bob)], "the live group is left after the commit");
 
         await SendMessageAsync(organizationId, channelId, Alice, "while Bob was away");
         using var rejoined = await JoinAsync(organizationId, channelId, Bob);
@@ -114,6 +115,7 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await MemberCountAsync(channelId)).Should().Be(1);
         (await OutboxAsync(organizationId)).Should().NotContain(entry => entry.Type == ConversationMemberRemoved.EventType);
+        Publisher.Removals.Should().BeEmpty();
     }
 
     [Fact]

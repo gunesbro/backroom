@@ -9,6 +9,9 @@ namespace Backroom.Modules.Realtime.IntegrationTests;
 /// <summary>A hub client on a test node's WebSocket, with the token in the query string like a browser's.</summary>
 internal sealed class HubClient : IAsyncDisposable
 {
+    /// <summary>A test-only event a test sends straight to a group (through the hub context), for groups that have no producer yet.</summary>
+    public const string ProbeEvent = "Probe";
+
     /// <summary>The longest a test waits for something that must happen; far above what it takes, so only a failure waits it out.</summary>
     public static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
@@ -16,6 +19,7 @@ internal sealed class HubClient : IAsyncDisposable
     private readonly Channel<MessagePostedPayload> _messages = Channel.CreateUnbounded<MessagePostedPayload>();
     private readonly Channel<ChannelCreatedPayload> _channels = Channel.CreateUnbounded<ChannelCreatedPayload>();
     private readonly Channel<SessionRevokedPayload> _revoked = Channel.CreateUnbounded<SessionRevokedPayload>();
+    private readonly Channel<string> _probes = Channel.CreateUnbounded<string>();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private HubClient(HubConnection connection)
@@ -24,6 +28,7 @@ internal sealed class HubClient : IAsyncDisposable
         connection.On<MessagePostedPayload>(LiveEventNames.MessagePosted, payload => _messages.Writer.TryWrite(payload));
         connection.On<ChannelCreatedPayload>(LiveEventNames.ChannelCreated, payload => _channels.Writer.TryWrite(payload));
         connection.On<SessionRevokedPayload>(LiveEventNames.SessionRevoked, payload => _revoked.Writer.TryWrite(payload));
+        connection.On<string>(ProbeEvent, payload => _probes.Writer.TryWrite(payload));
         connection.Closed += _ =>
         {
             _closed.TrySetResult();
@@ -74,9 +79,9 @@ internal sealed class HubClient : IAsyncDisposable
 
     public Task UnsubscribeOrganizationAsync(Guid organizationId) => _connection.InvokeAsync("UnsubscribeOrganization", organizationId);
 
-    public Task SubscribeChannelAsync(Guid organizationId, Guid channelId) => _connection.InvokeAsync("SubscribeChannel", organizationId, channelId);
+    public Task SubscribeConversationAsync(Guid organizationId, Guid conversationId) => _connection.InvokeAsync("SubscribeConversation", organizationId, conversationId);
 
-    public Task UnsubscribeChannelAsync(Guid organizationId, Guid channelId) => _connection.InvokeAsync("UnsubscribeChannel", organizationId, channelId);
+    public Task UnsubscribeConversationAsync(Guid organizationId, Guid conversationId) => _connection.InvokeAsync("UnsubscribeConversation", organizationId, conversationId);
 
     public Task<MessagePostedPayload> NextMessageAsync() => ReadAsync(_messages.Reader);
 
@@ -89,6 +94,10 @@ internal sealed class HubClient : IAsyncDisposable
     public bool HasUnreadMessage => _messages.Reader.TryPeek(out _);
 
     public bool HasUnreadChannel => _channels.Reader.TryPeek(out _);
+
+    public Task<string> NextProbeAsync() => ReadAsync(_probes.Reader);
+
+    public bool HasUnreadProbe => _probes.Reader.TryPeek(out _);
 
     public async ValueTask DisposeAsync() => await _connection.DisposeAsync();
 
