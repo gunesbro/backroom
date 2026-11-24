@@ -31,6 +31,15 @@ updates:
         patterns: ["Microsoft.Extensions.*"]
       testing:
         patterns: ["xunit*", "AwesomeAssertions", "NSubstitute", "TngTech.ArchUnitNET*"]
+      testcontainers:
+        patterns: ["Testcontainers*"]
+    ignore:
+      # Stay on the Microsoft package line that matches the target framework (.NET 10); a new major
+      # line comes with a deliberate framework upgrade (CLAUDE.md, "Libraries").
+      - dependency-name: "Microsoft.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /frontend
