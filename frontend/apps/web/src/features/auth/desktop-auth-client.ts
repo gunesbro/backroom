@@ -1,4 +1,13 @@
 import { SignInRequiredError, type AuthClient, type AuthUser } from './auth-client';
+import {
+  CellSignInPendingError,
+  CellUnavailableError,
+  cellOf,
+  fetchSharedCells,
+  signInCells,
+  type TokenTarget,
+} from './cell-tokens';
+import { createRememberedCells } from './remembered-cells';
 
 /** Calls a command of the desktop shell (src-tauri/src/auth); errors are the shell's error codes. */
 export type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -10,31 +19,46 @@ type Options = {
   /** Starts the app again from its sign-in check (a page reload). */
   restart: () => void;
   fetch?: typeof fetch;
+  now?: () => number;
 };
 
-/** The sign-in scopes allow at most 20 shared cells with ids of at most 16 characters (contract, "Limits"). */
-const MAX_SHARED_CELLS = 20;
-const SHARED_CELL_ID = /^[a-z0-9][a-z0-9-]{0,15}$/;
-
-/** The sign-in screen says the browser opened; it must not wait long for the list first. */
-const SHARED_CELLS_TIMEOUT_MS = 3000;
-
 /**
- * Sign-in of the desktop app: the Rust shell signs in through the system browser and keeps the refresh token;
- * this client only asks it for the account and for access tokens, one target at a time.
+ * Sign-in of the desktop app: the Rust shell signs in through the system browser, keeps the refresh token and runs
+ * every refresh one at a time; this client only asks it for the account and for access tokens, one target at a time.
  */
 export function createDesktopAuthClient({
   invoke,
   controlPlaneUrl,
   restart,
-  fetch: fetchFn = fetch,
+  fetch: fetchFn = (input, init) => fetch(input, init),
+  now = Date.now,
 }: Options): AuthClient {
-  const getAccessToken = async () => {
+  const remembered = createRememberedCells(now);
+  // The cell waiting for the browser sign-in, and the cells already authorized once since the app started; a cell
+  // still missing after that is shown as unavailable until the next sign-in, so it never loops.
+  let pending: string | undefined;
+  const attempted = new Set<string>();
+  const listeners = new Set<() => void>();
+
+  const getAccessToken = async (target: TokenTarget) => {
+    const cellId = cellOf(target);
     try {
-      return await invoke<string>('access_token', { target: 'control-plane' });
+      const token = await invoke<string>('access_token', { target });
+      if (cellId !== undefined) remembered.touch(cellId);
+      return token;
     } catch (error) {
       // The session ended (signed out elsewhere, revoked, expired): start over at the sign-in screen.
       if (error === 'signed_out') restart();
+      if (cellId !== undefined && error === 'scope_not_granted') {
+        if (attempted.has(cellId)) throw new CellUnavailableError(cellId);
+        if (pending === undefined) {
+          pending = cellId;
+          for (const listener of listeners) listener();
+        }
+        throw new CellSignInPendingError(cellId);
+      }
+      // The cell's scope no longer exists at Keycloak.
+      if (cellId !== undefined && error === 'invalid_scope') throw new CellUnavailableError(cellId);
       throw new Error(`The desktop app could not get an access token (${String(error)}).`, { cause: error });
     }
   };
@@ -43,6 +67,15 @@ export function createDesktopAuthClient({
   let cancelled = false;
   // Read through a function: the type checker cannot see Cancel set it during the await.
   const wasCancelled = () => cancelled;
+
+  const signInWith = async (cells: string[], locale: string) => {
+    if (wasCancelled()) {
+      // The same code the shell uses for a cancelled sign-in, a string.
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw 'cancelled';
+    }
+    await invoke('sign_in', { cells, locale });
+  };
 
   return {
     start: async () => {
@@ -58,19 +91,30 @@ export function createDesktopAuthClient({
     },
     getAccessToken,
     signOut: async () => {
+      remembered.forget();
       await invoke('sign_out');
       restart();
     },
     browserSignIn: {
       run: async (locale) => {
         cancelled = false;
-        const cells = await sharedCells(controlPlaneUrl, fetchFn);
-        if (wasCancelled()) {
-          // The same code the shell uses for a cancelled sign-in, a string.
-          // eslint-disable-next-line @typescript-eslint/only-throw-error
-          throw 'cancelled';
+        const cell = pending;
+        try {
+          const shared = await fetchSharedCells(controlPlaneUrl, fetchFn);
+          if (cell !== undefined && !shared.includes(cell)) remembered.remember(cell);
+          try {
+            await signInWith(signInCells(shared, remembered.list(), cell), locale);
+          } catch (error) {
+            // A remembered cell no longer exists: once more without the remembered cells, and forget them. The cell
+            // being authorized is left out too, as Keycloak does not say which scope it refused.
+            if (error !== 'invalid_scope') throw error;
+            remembered.forget();
+            await signInWith(shared, locale);
+          }
+        } finally {
+          if (cell !== undefined) attempted.add(cell);
+          if (pending === cell) pending = undefined;
         }
-        await invoke('sign_in', { cells, locale });
       },
       reopen: () => invoke('reopen_sign_in'),
       link: () => invoke<string | null>('sign_in_link'),
@@ -78,29 +122,14 @@ export function createDesktopAuthClient({
         cancelled = true;
         return invoke('cancel_sign_in');
       },
+      onCellSignIn: (listener) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
     },
   };
-}
-
-/**
- * The ids of the shared cells, whose scopes the sign-in requests. If the list cannot be read, the sign-in
- * goes ahead without them; a cell is then authorized when it is first needed.
- */
-async function sharedCells(controlPlaneUrl: string, fetchFn: typeof fetch): Promise<string[]> {
-  try {
-    const response = await fetchFn(`${controlPlaneUrl}/api/v1/cells/shared`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(SHARED_CELLS_TIMEOUT_MS),
-    });
-    if (!response.ok) return [];
-    const body = (await response.json()) as { cells?: { id?: unknown }[] };
-    return (body.cells ?? [])
-      .map((cell) => cell.id)
-      .filter((id): id is string => typeof id === 'string' && SHARED_CELL_ID.test(id))
-      .slice(0, MAX_SHARED_CELLS);
-  } catch {
-    return [];
-  }
 }
 
 /** The shell's commands; the Tauri API loads only in the desktop app, so the web bundle does not carry it. */

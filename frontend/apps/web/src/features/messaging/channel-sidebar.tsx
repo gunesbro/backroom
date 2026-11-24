@@ -7,6 +7,8 @@ export type ChannelsState = {
   channels: readonly Channel[];
   loading: boolean;
   failed: boolean;
+  /** The organization's server cannot be used with this sign-in (its scope is missing). */
+  unavailable: boolean;
   hasMore: boolean;
   loadingMore: boolean;
   reload: () => void;
@@ -50,7 +52,7 @@ export function ChannelSidebar({
         )}
         {state.failed && (
           <div className="bm-stack">
-            <Alert>{t('generic')}</Alert>
+            <Alert>{t(state.unavailable ? 'serverUnavailable' : 'generic')}</Alert>
             <Button onClick={state.reload}>{t('tryAgain')}</Button>
           </div>
         )}

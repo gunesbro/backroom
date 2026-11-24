@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SignInRequiredError } from './auth-client';
+import { CellSignInPendingError, CellUnavailableError } from './cell-tokens';
 import { createDesktopAuthClient, type Invoke } from './desktop-auth-client';
+
+const REMEMBERED_KEY = 'ph.auth.remembered-cells';
 
 const alice = { email: 'alice@example.test', name: 'Alice Example', givenName: 'Alice' };
 
@@ -24,6 +27,10 @@ function setup(
   });
   return { client, invoke, restart, fetch };
 }
+
+afterEach(() => {
+  localStorage.clear();
+});
 
 describe('createDesktopAuthClient', () => {
   it('Start_WithAStoredSession_ReturnsItsAccountWithoutTheNetwork', async () => {
@@ -120,7 +127,7 @@ describe('createDesktopAuthClient', () => {
   it('GetAccessToken_AsksTheShellForTheControlPlane', async () => {
     const { client, invoke } = setup({ access_token: () => 'access' });
 
-    await expect(client.getAccessToken()).resolves.toBe('access');
+    await expect(client.getAccessToken('control-plane')).resolves.toBe('access');
     expect(invoke).toHaveBeenCalledWith('access_token', { target: 'control-plane' });
   });
 
@@ -133,7 +140,7 @@ describe('createDesktopAuthClient', () => {
       },
     });
 
-    await expect(client.getAccessToken()).rejects.toThrow('signed_out');
+    await expect(client.getAccessToken('control-plane')).rejects.toThrow('signed_out');
     expect(restart).toHaveBeenCalledOnce();
   });
 
@@ -146,7 +153,7 @@ describe('createDesktopAuthClient', () => {
       },
     });
 
-    await expect(client.getAccessToken()).rejects.toThrow('network');
+    await expect(client.getAccessToken('control-plane')).rejects.toThrow('network');
     expect(restart).not.toHaveBeenCalled();
   });
 
@@ -157,5 +164,111 @@ describe('createDesktopAuthClient', () => {
 
     expect(invoke).toHaveBeenCalledWith('sign_out');
     expect(restart).toHaveBeenCalledOnce();
+  });
+
+  it('GetAccessToken_ForACell_AsksTheShellForThatCellOnly', async () => {
+    const { client, invoke } = setup({ access_token: (args) => `access-${String(args?.target)}` });
+
+    await expect(client.getAccessToken('cell:eu-1')).resolves.toBe('access-cell:eu-1');
+    expect(invoke).toHaveBeenCalledWith('access_token', { target: 'cell:eu-1' });
+  });
+
+  it('GetAccessToken_ForACellNotGranted_AsksForTheBrowserSignInOnceWithTheCell', async () => {
+    let granted = false;
+    const { client, invoke } = setup(
+      {
+        access_token: () => {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          if (!granted) throw 'scope_not_granted';
+          return 'access';
+        },
+        sign_in: () => {
+          granted = true;
+        },
+      },
+      { cells: [{ id: 'eu-1' }] },
+    );
+    const listener = vi.fn();
+    client.browserSignIn?.onCellSignIn(listener);
+
+    await expect(client.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellSignInPendingError);
+    await expect(client.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellSignInPendingError);
+    expect(listener).toHaveBeenCalledOnce();
+
+    await client.browserSignIn?.run('en');
+
+    expect(invoke).toHaveBeenCalledWith('sign_in', { cells: ['eu-1', 'own-1'], locale: 'en' });
+    expect(Object.keys(JSON.parse(localStorage.getItem(REMEMBERED_KEY) ?? '{}') as object)).toEqual([
+      'own-1',
+    ]);
+    await expect(client.getAccessToken('cell:own-1')).resolves.toBe('access');
+  });
+
+  it('GetAccessToken_ForACellStillMissingAfterTheBrowserSignIn_IsUnavailableWithoutAskingAgain', async () => {
+    const { client } = setup({
+      access_token: () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'scope_not_granted';
+      },
+      sign_in: () => undefined,
+    });
+    const listener = vi.fn();
+    client.browserSignIn?.onCellSignIn(listener);
+    await client.getAccessToken('cell:own-1').catch(() => undefined);
+
+    await client.browserSignIn?.run('en');
+
+    await expect(client.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellUnavailableError);
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('BrowserSignIn_CancelledWhileAuthorizingACell_ShowsItUnavailable', async () => {
+    const { client } = setup({
+      access_token: () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'scope_not_granted';
+      },
+      sign_in: () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'cancelled';
+      },
+    });
+    client.browserSignIn?.onCellSignIn(() => undefined);
+    await client.getAccessToken('cell:own-1').catch(() => undefined);
+
+    await expect(client.browserSignIn?.run('en')).rejects.toBe('cancelled');
+
+    await expect(client.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellUnavailableError);
+  });
+
+  it('BrowserSignIn_WhenAScopeIsUnknown_ForgetsTheRememberedCellsAndRetriesOnceWithoutThem', async () => {
+    localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ gone: Date.now() - 1_000 }));
+    const signIn = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'invalid_scope';
+      })
+      .mockImplementationOnce(() => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'invalid_scope';
+      });
+    const { client, invoke } = setup({ sign_in: signIn }, { cells: [{ id: 'eu-1' }] });
+
+    await expect(client.browserSignIn?.run('en')).rejects.toBe('invalid_scope');
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'sign_in', { cells: ['eu-1', 'gone'], locale: 'en' });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'sign_in', { cells: ['eu-1'], locale: 'en' });
+    expect(signIn).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(REMEMBERED_KEY)).toBeNull();
+  });
+
+  it('SignOut_ForgetsTheRememberedCells', async () => {
+    localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ 'own-1': Date.now() - 1_000 }));
+    const { client } = setup({ sign_out: () => undefined });
+
+    await client.signOut();
+
+    expect(localStorage.getItem(REMEMBERED_KEY)).toBeNull();
   });
 });

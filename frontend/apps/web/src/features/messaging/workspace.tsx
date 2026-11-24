@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Spinner, Status } from '@backroom/ui';
-import { useAuth } from '@/features/auth';
+import { CellUnavailableError, useAuth } from '@/features/auth';
 import { ApiError } from '@/shared/http';
 import { useLocale, useTranslate } from '@/shared/locale';
 import { useMessagingApiFactory, type Cell, type Channel, type MessagingApi } from './api';
@@ -99,6 +99,7 @@ function useChannels(api: MessagingApi, orgId: string): ChannelsState {
     channels,
     loading: query.isPending,
     failed: query.isError && !query.data,
+    unavailable: query.error instanceof CellUnavailableError,
     hasMore: query.hasNextPage,
     loadingMore: query.isFetchingNextPage,
     reload: useCallback(() => {

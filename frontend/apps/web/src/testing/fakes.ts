@@ -8,7 +8,10 @@ export function fakeAuthClient(overrides: Partial<AuthClient> = {}): AuthClient 
       Promise.resolve({ email: 'alice@example.test', name: 'Alice Example', givenName: 'Alice' }),
     ),
     signIn: vi.fn(() => Promise.resolve()),
-    getAccessToken: vi.fn(() => Promise.resolve('token')),
+    // One token per target, so a test can tell which one a request carried.
+    getAccessToken: vi.fn((target: string) =>
+      Promise.resolve(target === 'control-plane' ? 'token' : `token-${target}`),
+    ),
     signOut: vi.fn(() => Promise.resolve()),
     ...overrides,
   };

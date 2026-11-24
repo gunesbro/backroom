@@ -3,7 +3,10 @@ import type { AuthUser } from './auth-client';
 
 export type Auth = {
   user: AuthUser;
+  /** A token for the control plane only. */
   getAccessToken: () => Promise<string>;
+  /** A token for one cell only (audience `cell-{cellId}`); the control plane's token never goes to a cell. */
+  getCellToken: (cellId: string) => Promise<string>;
   signOut: () => Promise<void>;
 };
 

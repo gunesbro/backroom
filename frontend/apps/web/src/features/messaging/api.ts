@@ -87,7 +87,7 @@ export type MessagingApiFactory = (cell: Cell) => MessagingApi;
 /** A token for one cell (audience `cell-{id}`). Never the control plane's token: a cell must not receive it. */
 export type CellTokenSource = (cellId: string) => Promise<string>;
 
-/** Null while messaging is off (the feature flag, or no cell token source yet): then no cell is called. */
+/** Null without a cell token source: then no cell is called. */
 export const MessagingApiContext = createContext<MessagingApiFactory | null>(null);
 
 export function useMessagingEnabled(): boolean {

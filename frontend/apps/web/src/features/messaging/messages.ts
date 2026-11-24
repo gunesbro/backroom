@@ -19,6 +19,7 @@ type Key =
   | 'loading'
   | 'tryAgain'
   | 'generic'
+  | 'serverUnavailable'
   | 'yourOrganizations'
   | 'messagesLabel'
   | 'loadingEarlier'
@@ -56,6 +57,7 @@ export const messages: Messages<Key> = {
     loading: 'Loading…',
     tryAgain: 'Try again',
     generic: 'Something went wrong. Try again.',
+    serverUnavailable: "Your organization's server can't be reached right now.",
     yourOrganizations: 'Your organizations',
     messagesLabel: 'Messages in #{name}',
     loadingEarlier: 'Loading earlier messages…',
@@ -92,6 +94,7 @@ export const messages: Messages<Key> = {
     loading: 'Yükleniyor…',
     tryAgain: 'Tekrar dene',
     generic: 'Bir şeyler ters gitti. Tekrar dene.',
+    serverUnavailable: 'Organizasyonunun sunucusuna şu anda ulaşılamıyor.',
     yourOrganizations: 'Organizasyonların',
     messagesLabel: '#{name} kanalındaki mesajlar',
     loadingEarlier: 'Önceki mesajlar yükleniyor…',

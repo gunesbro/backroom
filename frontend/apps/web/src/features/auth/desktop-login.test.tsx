@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { fakeAuthClient } from '@/testing/fakes';
 import { SignInRequiredError, type BrowserSignIn } from './auth-client';
@@ -13,6 +13,7 @@ function desktopClient(browser: Partial<BrowserSignIn> = {}) {
     reopen: vi.fn(() => Promise.resolve()),
     link: vi.fn(() => Promise.resolve('https://id.example.test/auth?state=x')),
     cancel: vi.fn(() => Promise.resolve()),
+    onCellSignIn: vi.fn(() => () => undefined),
     ...browser,
   };
   const start = vi.fn<() => Promise<typeof alice>>().mockRejectedValue(new SignInRequiredError());
@@ -130,5 +131,36 @@ describe('AuthProvider in the desktop app', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in in your browser' })).toBeInTheDocument();
     expect(run).toHaveBeenCalledTimes(2);
     expect(client.signIn).not.toHaveBeenCalled();
+  });
+
+  it('CellSignIn_WhileSignedIn_WaitsForTheBrowserAndReturnsToTheAppWhenCancelled', async () => {
+    let needCell: () => void = () => undefined;
+    let cancelRun: (reason: unknown) => void = () => undefined;
+    const client = desktopClient({
+      run: vi.fn(
+        () =>
+          new Promise<void>((_, reject) => {
+            cancelRun = reject;
+          }),
+      ),
+      onCellSignIn: vi.fn((listener: () => void) => {
+        needCell = listener;
+        return () => undefined;
+      }),
+    });
+    vi.mocked(client.start).mockResolvedValue(alice);
+    renderProvider(client);
+    expect(await screen.findByText(`Signed in as ${alice.name}`)).toBeInTheDocument();
+
+    act(() => {
+      needCell();
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Sign in in your browser' })).toBeInTheDocument();
+    expect(client.browserSignIn?.run).toHaveBeenCalledOnce();
+    act(() => {
+      cancelRun('cancelled');
+    });
+    expect(await screen.findByText(`Signed in as ${alice.name}`)).toBeInTheDocument();
   });
 });
