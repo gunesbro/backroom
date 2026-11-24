@@ -110,12 +110,14 @@ function createAuthClient(): AuthClient {
 type Services = {
   /** Tokens for cells; the signed-in client's per-cell tokens by default (tests pass their own). */
   cellTokens?: CellTokenSource | undefined;
+  /** Overrides the messaging feature flag (tests). */
+  messagingEnabled?: boolean | undefined;
   authClient?: AuthClient | undefined;
   createApi?: ((getAccessToken: AccessTokenSource) => OrganizationsApi) | undefined;
 };
 
 // Application shell: language, server state, sign-in, then the organization. Tests pass fake services.
-export function App({ authClient, createApi, cellTokens }: Services = {}) {
+export function App({ authClient, createApi, cellTokens, messagingEnabled }: Services = {}) {
   const hash = useHash();
   const [auth] = useState(() => authClient ?? createAuthClient());
   const [queryClient] = useState(() => createQueryClient(auth.signIn));
@@ -132,14 +134,18 @@ export function App({ authClient, createApi, cellTokens }: Services = {}) {
     <LocaleProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider client={auth}>
-          <SignedIn createApi={createApi} cellTokens={cellTokens} />
+          <SignedIn createApi={createApi} cellTokens={cellTokens} messagingEnabled={messagingEnabled} />
         </AuthProvider>
       </QueryClientProvider>
     </LocaleProvider>
   );
 }
 
-function SignedIn({ createApi, cellTokens }: Pick<Services, 'createApi' | 'cellTokens'>) {
+function SignedIn({
+  createApi,
+  cellTokens,
+  messagingEnabled = config.messagingEnabled,
+}: Pick<Services, 'createApi' | 'cellTokens' | 'messagingEnabled'>) {
   const { getAccessToken, getCellToken } = useAuth();
   const api = useMemo(
     () => (createApi ?? ((tokens) => createOrganizationsApi(config.controlPlaneUrl, tokens)))(getAccessToken),
@@ -147,11 +153,11 @@ function SignedIn({ createApi, cellTokens }: Pick<Services, 'createApi' | 'cellT
   );
 
   // A cell gets only a token made for it (contract, "Audience per target"), never the control plane's: the signed-in
-  // client's cell token unless a test passes its own source.
+  // client's cell token unless a test passes its own source. With the flag off there is no factory and no cell is called.
   const cellTokenSource = cellTokens ?? getCellToken;
-  const messagingApi = useMemo<MessagingApiFactory>(
-    () => (cell) => createMessagingApi(cell.url, () => cellTokenSource(cell.id)),
-    [cellTokenSource],
+  const messagingApi = useMemo<MessagingApiFactory | null>(
+    () => (messagingEnabled ? (cell) => createMessagingApi(cell.url, () => cellTokenSource(cell.id)) : null),
+    [messagingEnabled, cellTokenSource],
   );
 
   const queryClient = useQueryClient();

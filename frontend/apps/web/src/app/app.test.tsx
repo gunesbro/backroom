@@ -36,8 +36,28 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
+/** Calls to the test cell's address. */
+function cellCalls(spy: { mock: { calls: Parameters<typeof fetch>[] } }) {
+  return spy.mock.calls.filter(([input]) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    return url.includes('a.example.test');
+  });
+}
+
 describe('App messaging', () => {
   const list = () => fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) });
+
+  it('Organization_WithTheFlagOff_ShowsOnlyTheNameAndNeverCallsACell', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const authClient = fakeAuthClient();
+    render(<App authClient={authClient} createApi={list} />);
+
+    expect(await screen.findByRole('heading', { name: 'Acme' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(cellCalls(fetchSpy)).toHaveLength(0);
+    expect(authClient.getAccessToken).not.toHaveBeenCalledWith('cell:a');
+    fetchSpy.mockRestore();
+  });
 
   it('Organization_WithACellTokenSource_CallsTheCellWithItsOwnToken', async () => {
     const authorizations: (string | null)[] = [];
@@ -48,7 +68,7 @@ describe('App messaging', () => {
       }),
     );
     const cellTokens = vi.fn(() => Promise.resolve('cell-a-token'));
-    render(<App authClient={fakeAuthClient()} createApi={list} cellTokens={cellTokens} />);
+    render(<App authClient={fakeAuthClient()} createApi={list} cellTokens={cellTokens} messagingEnabled />);
 
     expect(await screen.findByRole('navigation')).toBeInTheDocument();
     await waitFor(() => {
@@ -112,8 +132,15 @@ describe('App', () => {
         HttpResponse.json({ members: [], next: null }),
       ),
     );
-    const { authClient } = renderApp(
-      fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) }),
+    const authClient = fakeAuthClient();
+    render(
+      <App
+        authClient={authClient}
+        createApi={() =>
+          fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) })
+        }
+        messagingEnabled
+      />,
     );
 
     await waitFor(() => {

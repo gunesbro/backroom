@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# Build-time feature flags for development; no secrets.
+!/frontend/apps/web/.env.development
 *.pfx
 *.p12
 *.pem

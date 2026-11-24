@@ -76,6 +76,62 @@ describe('createTokenManager', () => {
     expect(keycloak.log.used).toEqual(['refresh-0', 'refresh-1']);
   });
 
+  it('Get_TwiceConcurrentlyForTheSameTarget_RefreshesOnce', async () => {
+    const keycloak = fakeKeycloak(['cell:a']);
+    const tokens = manager(keycloak, 'cell:a');
+
+    const [first, second] = await Promise.all([tokens.get('cell:a'), tokens.get('cell:a')]);
+
+    expect(second).toBe(first);
+    expect(keycloak.refresh).toHaveBeenCalledOnce();
+  });
+
+  it('Get_WhenTheRefreshTokenIsRefusedWhileOthersWait_RejectsThemAllWithoutAskingAgain', async () => {
+    const refresh = vi.fn<Refresh>(() => Promise.reject(new SessionEndedError()));
+    const tokens = createTokenManager({
+      refreshToken: 'used-up',
+      granted: targetsOf('control-plane cell:a cell:b'),
+      refresh,
+    });
+
+    const results = await Promise.allSettled([
+      tokens.get('control-plane'),
+      tokens.get('cell:a'),
+      tokens.get('cell:b'),
+    ]);
+
+    expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected', 'rejected']);
+    for (const result of results) {
+      expect(result.status === 'rejected' && result.reason).toBeInstanceOf(SessionEndedError);
+    }
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('Get_WhenTheAnswerNamesMoreThanOneTarget_RefusesItButKeepsTheRotatedRefreshToken', async () => {
+    const keycloak = fakeKeycloak(['control-plane', 'cell:a']);
+    keycloak.refresh.mockImplementationOnce((refreshToken) =>
+      Promise.resolve({
+        accessToken: 'two-audiences',
+        refreshToken: `${refreshToken}-next`,
+        expiresIn: 300,
+        scope: 'cell:a control-plane profile',
+      }),
+    );
+    const tokens = manager(keycloak, 'control-plane cell:a');
+
+    await expect(tokens.get('cell:a')).rejects.toThrow('more than one target');
+    keycloak.refresh.mockImplementationOnce((refreshToken) =>
+      Promise.resolve({
+        accessToken: 'one',
+        refreshToken: 'r',
+        expiresIn: 300,
+        scope: `cell:a ${refreshToken}`,
+      }),
+    );
+    await expect(tokens.get('cell:a')).resolves.toBe('one');
+    expect(keycloak.refresh).toHaveBeenLastCalledWith('refresh-0-next', 'cell:a');
+  });
+
   it('Get_ForATargetNotGrantedAtSignIn_RejectsWithoutAskingKeycloak', async () => {
     const keycloak = fakeKeycloak(['control-plane']);
     const tokens = manager(keycloak, 'openid control-plane');
@@ -180,6 +236,28 @@ describe('createRefresh', () => {
 
     await expect(refused).rejects.toBeInstanceOf(type);
     await expect(refused).rejects.not.toThrow(/r1/);
+  });
+
+  it('Refresh_WhenTheEndpointHangs_FailsAsANetworkErrorAfterTheTimeout', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(init.signal?.reason as Error);
+          });
+        }),
+    );
+    const refresh = createRefresh({
+      tokenEndpoint: () => Promise.resolve('https://id.example.test/token'),
+      clientId: 'web',
+      fetch,
+      timeoutMs: 20,
+    });
+
+    const refused = refresh('r1', 'control-plane');
+
+    await expect(refused).rejects.toBeInstanceOf(TypeError);
+    await expect(refused).rejects.toThrow('did not answer in time');
   });
 
   it('Refresh_WithAnIncompleteAnswer_TreatsTheSessionAsEnded', async () => {

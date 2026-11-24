@@ -22,6 +22,11 @@ export const config = {
     ),
     clientId: import.meta.env.VITE_AUTH_CLIENT_ID ?? 'web',
   },
+  /**
+   * Feature flag: channels and messages (Phase 1 step 7), unfinished until live updates land. On in development
+   * (.env.development), off in every other build unless VITE_MESSAGING_ENABLED=true.
+   */
+  messagingEnabled: import.meta.env.VITE_MESSAGING_ENABLED === 'true',
   /** The control plane's origin; empty means this origin (the development server proxies /api). */
   controlPlaneUrl: import.meta.env.VITE_CONTROL_PLANE_URL ?? '',
   /** Data regions offered for new organizations, comma-separated region ids. */

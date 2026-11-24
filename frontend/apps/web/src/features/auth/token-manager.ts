@@ -89,7 +89,10 @@ export function createTokenManager({
     refreshToken = answer.refreshToken;
 
     // Keycloak silently leaves out a scope it cannot grant.
-    if (!targetsOf(answer.scope).has(target)) throw new ScopeNotGrantedError(target, true);
+    const targets = targetsOf(answer.scope);
+    if (!targets.has(target)) throw new ScopeNotGrantedError(target, true);
+    // A token for more than one target could be replayed against the others; it is never used.
+    if (targets.size > 1) throw new Error('The token answer names more than one target.');
 
     if (cache.size >= MAX_CACHED_TARGETS) {
       for (const [key, entry] of cache) if (entry.validUntil <= now()) cache.delete(key);
@@ -118,32 +121,40 @@ export function createTokenManager({
 
 /** Largest token response accepted. */
 const MAX_TOKEN_RESPONSE_CHARS = 64_000;
+/** A hung token endpoint must not hold up the refresh queue. */
+const REFRESH_TIMEOUT_MS = 10_000;
 
 /** The refresh request of a public client (no secret), against Keycloak's token endpoint. */
 export function createRefresh({
   tokenEndpoint,
   clientId,
   fetch: fetchFn = fetch,
+  timeoutMs = REFRESH_TIMEOUT_MS,
 }: {
   tokenEndpoint: () => Promise<string>;
   clientId: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
 }): Refresh {
   return async (refreshToken, scope) => {
-    const response = await fetchFn(await tokenEndpoint(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: clientId,
-        refresh_token: refreshToken,
-        scope,
-      }),
-      credentials: 'omit',
-      referrerPolicy: 'no-referrer',
-      cache: 'no-store',
-    });
-    const text = await response.text();
+    const endpoint = await tokenEndpoint();
+    const { response, text } = await withTimeout(async (signal) => {
+      const answer = await fetchFn(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: clientId,
+          refresh_token: refreshToken,
+          scope,
+        }),
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+        cache: 'no-store',
+        signal,
+      });
+      return { response: answer, text: await answer.text() };
+    }, timeoutMs);
     let body: Record<string, unknown> = {};
     try {
       const parsed: unknown = text.length <= MAX_TOKEN_RESPONSE_CHARS ? JSON.parse(text) : undefined;
@@ -171,4 +182,16 @@ export function createRefresh({
       scope: typeof granted === 'string' ? granted : '',
     };
   };
+}
+
+/** Runs a request that must finish, body included, within `timeoutMs`; running out is a network failure. */
+async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
+  const signal = AbortSignal.timeout(timeoutMs);
+  try {
+    return await run(signal);
+  } catch (error) {
+    // The refresh token is kept and the request can be tried again.
+    if (signal.aborted) throw new TypeError('The token endpoint did not answer in time.', { cause: error });
+    throw error;
+  }
 }
