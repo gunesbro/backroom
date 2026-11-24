@@ -34,6 +34,10 @@ public static class CellManagementModule
         services.TryAddSingleton<ICellIdentityProvider>(provider => provider.GetRequiredService<KeycloakCellIdentityProvider>());
         services.TryAddSingleton<CellRegistrationService>();
         services.TryAddSingleton<CellProvisioningService>();
+        services.TryAddSingleton<Application.Listing.CellListService>();
+        services.TryAddSingleton<Application.Listing.OpsAudit>();
+        // The list needs Directory's organization counts: without them the control plane does not start.
+        services.AddHostedService<RequireCellListDependencies>();
         services.TryAddSingleton<ICellCatalog, CellCatalog>();
         services.TryAddScoped<ICellLinkOutbox, CellLinkOutbox>();
         services.TryAddScoped<IOutboundMessages, OutboundMessages>();

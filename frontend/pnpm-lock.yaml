@@ -205,9 +205,18 @@ importers:
 
   apps/ops:
     dependencies:
+      '@backroom/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@backroom/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@tanstack/react-query':
+        specifier: 5.107.1
+        version: 5.107.1(@types/react@19.3.0)(react@19.3.1)
+      oidc-client-ts:
+        specifier: 3.5.0
+        version: 3.5.0
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -236,9 +245,15 @@ importers:
       '@vitejs/plugin-react':
         specifier: 6.3.0
         version: 6.3.0(vite@8.3.8(@types/node@24.19.2))
+      axe-core:
+        specifier: 4.14.0
+        version: 4.14.0
       jsdom:
         specifier: 31.0.1
         version: 31.0.1
+      msw:
+        specifier: 3.0.6
+        version: 3.0.6(@types/node@24.19.2)(typescript@6.0.3)(vite@8.3.8(@types/node@24.19.2))
       typescript:
         specifier: 6.0.3
         version: 6.0.3

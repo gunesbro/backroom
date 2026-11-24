@@ -27,4 +27,10 @@ internal interface ICellRegistry
 
     /// <summary>Adds a pending cell and its registration key; returns <see langword="false"/> if the id is taken.</summary>
     Task<bool> AddCellAsync(NewCell cell, byte[] keyHash, DateTimeOffset expiresAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cells in id order after <paramref name="after"/>, at most <paramref name="limit"/>, with their pending
+    /// and rejected downstream message counts, in one query.
+    /// </summary>
+    Task<IReadOnlyList<Listing.CellRow>> ListCellsAsync(string? after, int limit, CancellationToken cancellationToken);
 }
