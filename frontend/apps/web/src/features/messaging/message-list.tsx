@@ -1,5 +1,14 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from 'react';
+import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
 import { Avatar, Icon, SoonButton, type IconName } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
@@ -20,6 +29,9 @@ const ESTIMATED_ROW_HEIGHT = 64;
 const FOLLOW_DISTANCE = 80;
 /** Earlier messages are asked for once the oldest drawn row is this close to the top of the list. */
 const LOAD_EARLIER_WITHIN = 3;
+/** The row's accessible name carries this many characters of the text. */
+const LABEL_EXCERPT = 80;
+const ROW_KEY_ATTRIBUTE = 'data-row-key';
 
 /**
  * The messages of a channel, oldest first, virtualized (TanStack Virtual): only the rows near the view are in the
@@ -66,6 +78,20 @@ export function MessageList({
   // The row at the top of the view after the last change, and where it was: rows added or dropped above it move it.
   const previous = useRef<{ rows: readonly Row[]; anchor?: { key: string; start: number } }>({ rows });
 
+  // Roving tabindex: the row that is the list's one tab stop, and the row that holds focus (kept drawn while it does).
+  const [activeKey, setActiveKey] = useState<string>();
+  const focusedKey = useRef<string>(undefined);
+  const pendingFocus = useRef<string>(undefined);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const rangeExtractor = useCallback((range: Range) => {
+    const indexes = defaultRangeExtractor(range);
+    const focused = focusedKey.current;
+    const at = focused === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === focused);
+    if (at < 0 || indexes.includes(at)) return indexes;
+    return [...indexes, at].sort((a, b) => a - b);
+  }, []);
+
   // The virtualizer is used only in this component and its functions are not passed to memoized children.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -74,6 +100,7 @@ export function MessageList({
     estimateSize: () => ESTIMATED_ROW_HEIGHT,
     getItemKey: (index) => rows[index]?.key ?? index,
     overscan: 8,
+    rangeExtractor,
   });
   const total = virtualizer.getTotalSize();
 
@@ -129,6 +156,55 @@ export function MessageList({
 
     return day;
   };
+  // Without a known (or drawn) active row, the last drawn one is the tab stop.
+  const lastDrawn = items.at(-1);
+  const tabStopKey =
+    activeKey !== undefined && items.some((item) => rows[item.index]?.key === activeKey)
+      ? activeKey
+      : lastDrawn && rows[lastDrawn.index]?.key;
+  const rowElement = (key: string) =>
+    scrollRef.current?.querySelector<HTMLElement>(`[${ROW_KEY_ATTRIBUTE}="${CSS.escape(key)}"]`);
+  // Moving by key scrolls the target row into the drawn range first; focus follows once it is in the page.
+  useLayoutEffect(() => {
+    const key = pendingFocus.current;
+    const element = key === undefined ? undefined : rowElement(key);
+    if (element) {
+      pendingFocus.current = undefined;
+      element.focus({ preventScroll: true });
+    }
+  }, [items]);
+  const onLogFocus = (event: FocusEvent<HTMLElement>) => {
+    const key = event.target.closest(`[${ROW_KEY_ATTRIBUTE}]`)?.getAttribute(ROW_KEY_ATTRIBUTE);
+    focusedKey.current = key ?? undefined;
+    if (key) setActiveKey(key);
+  };
+  const onLogBlur = () => {
+    focusedKey.current = undefined;
+  };
+  const onRowKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const key = (event.target as HTMLElement).getAttribute(ROW_KEY_ATTRIBUTE);
+    if (key === null || event.altKey || event.ctrlKey || event.metaKey) return;
+    const index = rows.findIndex((row) => row.key === key);
+    const next =
+      event.key === 'ArrowUp'
+        ? Math.max(index - 1, 0)
+        : event.key === 'ArrowDown'
+          ? Math.min(index + 1, rows.length - 1)
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? rows.length - 1
+              : undefined;
+    const nextKey = next === undefined ? undefined : rows[next]?.key;
+    if (next === undefined || nextKey === undefined) return;
+    event.preventDefault();
+    setActiveKey(nextKey);
+    virtualizer.scrollToIndex(next);
+    // Already drawn: focus now; otherwise the effect above does it after the scroll draws the row.
+    const element = rowElement(nextKey);
+    if (element) element.focus({ preventScroll: true });
+    else pendingFocus.current = nextKey;
+  };
   const firstIndex = items[0]?.index;
   const lastIndex = items.at(-1)?.index;
   useEffect(() => {
@@ -163,7 +239,9 @@ export function MessageList({
       aria-live="off"
       aria-label={t('messagesLabel', { name: channelName })}
       aria-busy={loadingEarlier || loadingNewer}
-      tabIndex={0}
+      onKeyDown={onRowKeyDown}
+      onFocus={onLogFocus}
+      onBlur={onLogBlur}
       onScroll={(event) => {
         const element = event.currentTarget;
         previous.current = { rows, ...anchorAt(element.scrollTop) };
@@ -196,6 +274,7 @@ export function MessageList({
               )}
               <MessageRow
                 row={row}
+                tabStop={row.key === tabStopKey}
                 authorName={authorName}
                 ownAccountId={ownAccountId}
                 ownName={ownName}
@@ -229,15 +308,16 @@ const MESSAGE_ACTIONS: readonly {
 ];
 
 /**
- * Shown over the message under the pointer; every action is for a later phase. Hidden from screen readers and out
- * of the tab order, so a long list does not add six inert stops per message.
+ * Shown over the message under the pointer, with focus inside or tapped; every action is for a later phase. It is
+ * built only for that one row, so a long list does not carry six buttons per message. Tab from the row reaches the
+ * buttons and Escape returns to the row.
  */
 function MessageActions() {
   const t = useTranslate(messages);
   return (
-    <div className="bm-actions" aria-hidden="true">
+    <div className="bm-actions">
       {MESSAGE_ACTIONS.map((action) => (
-        <SoonButton key={action.key} label={t(action.key)} soon={t('soon')} tabbable={false}>
+        <SoonButton key={action.key} label={t(action.key)} soon={t('soon')}>
           <Icon name={action.icon} size={16} />
         </SoonButton>
       ))}
@@ -247,6 +327,7 @@ function MessageActions() {
 
 const MessageRow = memo(function MessageRow({
   row,
+  tabStop,
   authorName,
   ownAccountId,
   ownName,
@@ -255,6 +336,8 @@ const MessageRow = memo(function MessageRow({
   onDiscard,
 }: {
   row: Row;
+  /** The list's one tab stop (roving tabindex); the other rows are reached by the arrow keys. */
+  tabStop: boolean;
   authorName: (accountId: string) => string;
   ownAccountId: string | undefined;
   ownName: string;
@@ -264,6 +347,9 @@ const MessageRow = memo(function MessageRow({
 }) {
   const now = new Date();
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [tapped, setTapped] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
   const t = useTranslate(messages);
   const pending = row.pending;
   const message = row.message;
@@ -273,18 +359,52 @@ const MessageRow = memo(function MessageRow({
   const name = mine ? ownName : authorName(authorId);
   const createdAt = pending?.createdAt ?? message?.createdAt ?? '';
   const text = pending?.text ?? message?.text ?? '';
+  const excerpt = text.replaceAll(/\s+/g, ' ').trim();
+  const label = t('messageLabel', {
+    name,
+    time: formatMessageTime(new Date(createdAt), locale, now),
+    text: excerpt.length > LABEL_EXCERPT ? `${excerpt.slice(0, LABEL_EXCERPT)}…` : excerpt,
+  });
   return (
     <div
+      ref={rowRef}
       className={pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message'}
-      // The action bar is built only for the message under the pointer, not for every row in the list.
+      role="group"
+      aria-label={label}
+      data-row-key={row.key}
+      tabIndex={tabStop ? 0 : -1}
+      // The action bar is built only for the row under the pointer, with focus inside, or tapped: not for every row.
       onMouseEnter={() => {
         setHovered(true);
       }}
       onMouseLeave={() => {
         setHovered(false);
       }}
+      onFocus={() => {
+        setFocused(true);
+      }}
+      onBlur={(event) => {
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+        setFocused(false);
+        setTapped(false);
+      }}
+      onPointerUp={(event) => {
+        // A tap on touch or pen has no hover: it shows the bar, and a second tap on the message hides it.
+        if (event.pointerType === 'mouse' || (event.target as HTMLElement).closest('.bm-actions, button'))
+          return;
+        setTapped((value) => !value);
+      }}
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Escape') return;
+        setTapped(false);
+        if (event.target !== event.currentTarget) {
+          // From a bar button back to the row.
+          event.stopPropagation();
+          rowRef.current?.focus({ preventScroll: true });
+        }
+      }}
     >
-      {hovered && !pending && <MessageActions />}
+      {(hovered || focused || tapped) && !pending && <MessageActions />}
       <Avatar name={name} toneKey={authorId} shape="square" size="lg" />
       <div className="bm-message__body">
         <p className="bm-message__head">

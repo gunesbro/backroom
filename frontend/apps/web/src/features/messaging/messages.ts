@@ -23,6 +23,7 @@ type Key =
   | 'serverUnavailable'
   | 'yourOrganizations'
   | 'messagesLabel'
+  | 'messageLabel'
   | 'loadingEarlier'
   | 'emptyChannel'
   | 'composerLabel'
@@ -109,6 +110,7 @@ export const messages: Messages<Key> = {
     serverUnavailable: "Your organization's server can't be reached right now.",
     yourOrganizations: 'Your organizations',
     messagesLabel: 'Messages in #{name}',
+    messageLabel: '{name}, {time}: {text}',
     loadingEarlier: 'Loading earlier messages…',
     emptyChannel: 'No messages yet. Write the first one.',
     composerLabel: 'Message #{name}',
@@ -194,6 +196,7 @@ export const messages: Messages<Key> = {
     serverUnavailable: 'Organizasyonunun sunucusuna şu anda ulaşılamıyor.',
     yourOrganizations: 'Organizasyonların',
     messagesLabel: '#{name} kanalındaki mesajlar',
+    messageLabel: '{name}, {time}: {text}',
     loadingEarlier: 'Önceki mesajlar yükleniyor…',
     emptyChannel: 'Henüz mesaj yok. İlk mesajı sen yaz.',
     composerLabel: '#{name} kanalına mesaj yaz',
