@@ -82,6 +82,28 @@ public sealed class WebOriginsCorsTests
         response.Headers.Contains("Access-Control-Allow-Credentials").Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("OPTIONS", "http://localhost:5173", true)]
+    [InlineData("OPTIONS", "http://localhost:5173", false)]
+    [InlineData("OPTIONS", "https://evil.example.test", true)]
+    [InlineData("OPTIONS", "https://evil.example.test", false)]
+    [InlineData("GET", "http://localhost:5173", true)]
+    [InlineData("GET", "http://localhost:5173", false)]
+    [InlineData("GET", "https://evil.example.test", true)]
+    [InlineData("GET", "https://evil.example.test", false)]
+    public async Task Response_PassingCors_HasExactlyOneVaryOriginAsync(string method, string origin, bool severalOrigins)
+    {
+        // With several configured origins the CORS middleware adds Vary: Origin itself; the host must not add a second one.
+        await using var app = severalOrigins ? await StartAsync(Allowed, "https://app.example.test") : await StartAsync(Allowed);
+        var preflight = method == "OPTIONS";
+
+        using var response = await SendAsync(
+            app, new HttpMethod(method), "/open", origin, preflightMethod: preflight ? "GET" : null, preflightHeaders: preflight ? "authorization" : null);
+
+        var tokens = response.Headers.GetValues("Vary").SelectMany(v => v.Split(',', StringSplitOptions.TrimEntries));
+        tokens.Count(t => string.Equals(t, "Origin", StringComparison.OrdinalIgnoreCase)).Should().Be(1);
+    }
+
     [Fact]
     public async Task Request_FromAllowedOriginWithoutToken_IsStillUnauthorizedAsync()
     {

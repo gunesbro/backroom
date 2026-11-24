@@ -64,7 +64,14 @@ public static class WebOriginsCorsExtensions
         {
             context.Response.OnStarting(static state =>
             {
-                ((HttpContext)state).Response.Headers.Append(HeaderNames.Vary, HeaderNames.Origin);
+                // The CORS middleware already adds Vary: Origin for allowed origins; add it only when missing, so there is one token.
+                var headers = ((HttpContext)state).Response.Headers;
+                var listed = headers.GetCommaSeparatedValues(HeaderNames.Vary);
+                if (!Array.Exists(listed, static v => string.Equals(v, HeaderNames.Origin, StringComparison.OrdinalIgnoreCase)))
+                {
+                    headers.Append(HeaderNames.Vary, HeaderNames.Origin);
+                }
+
                 return Task.CompletedTask;
             }, context);
             await next(context);
