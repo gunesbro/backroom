@@ -78,7 +78,7 @@ describe('status rules', () => {
   it('ReadCustomStatus_TextWithALineBreakOrBidiControl_IsRefused', () => {
     const now = new Date('2026-11-24T10:00:00Z');
     expect(readCustomStatus('', 'a\nb', null, now)).toEqual({ problem: 'textInvalid' });
-    expect(readCustomStatus('', 'a‮b', null, now)).toEqual({ problem: 'textInvalid' });
+    expect(readCustomStatus('', 'a\u202Eb', null, now)).toEqual({ problem: 'textInvalid' });
   });
 
   it('ReadCustomStatus_TurkishText_CountsCharactersNotUnits', () => {

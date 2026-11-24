@@ -21,7 +21,8 @@ export function isSingleEmoji(value: string): boolean {
 }
 
 // Control characters, line and paragraph separators, and bidirectional controls (they can disguise text).
-const FORBIDDEN_TEXT = /[\p{Cc}\p{Zl}\p{Zp}]|[‎‏‪-‮⁦-⁩]/u;
+// Written as escapes, so the source itself carries no bidirectional characters.
+const FORBIDDEN_TEXT = /[\p{Cc}\p{Zl}\p{Zp}]|[\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 
 export type CustomStatusProblem = 'statusEmpty' | 'emojiInvalid' | 'textInvalid' | 'expiryInvalid';
 
