@@ -70,6 +70,11 @@ type Key =
   | 'quote'
   | 'code'
   | 'codeBlock'
+  | 'linkAddress'
+  | 'linkApply'
+  | 'linkRemove'
+  | 'linkInvalid'
+  | 'formattingTooLarge'
   | 'addMenu'
   | 'toggleFormatting'
   | 'emoji'
@@ -156,6 +161,11 @@ export const messages: Messages<Key> = {
     quote: 'Quote',
     code: 'Code',
     codeBlock: 'Code block',
+    linkAddress: 'Link address',
+    linkApply: 'Apply',
+    linkRemove: 'Remove link',
+    linkInvalid: 'Enter a valid web or email address (http, https or mailto).',
+    formattingTooLarge: 'This message has too much formatting to send. Simplify it.',
     addMenu: 'Add',
     toggleFormatting: 'Show or hide formatting',
     emoji: 'Emoji',
@@ -241,6 +251,11 @@ export const messages: Messages<Key> = {
     quote: 'Alıntı',
     code: 'Kod',
     codeBlock: 'Kod bloğu',
+    linkAddress: 'Bağlantı adresi',
+    linkApply: 'Uygula',
+    linkRemove: 'Bağlantıyı kaldır',
+    linkInvalid: 'Geçerli bir web veya e-posta adresi gir (http, https veya mailto).',
+    formattingTooLarge: 'Bu mesajda çok fazla biçimlendirme var, gönderilemiyor. Sadeleştir.',
     addMenu: 'Ekle',
     toggleFormatting: 'Biçimlendirmeyi göster/gizle',
     emoji: 'Emoji',

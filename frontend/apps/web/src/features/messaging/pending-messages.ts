@@ -4,6 +4,7 @@ import { ApiError } from '@/shared/http';
 import { applyLiveMessage } from './live-cache';
 import { messagesKey } from './queries';
 import type { Message, MessagingApi } from './api';
+import type { Block } from './rich-text/blocks';
 
 /**
  * A message the person sent that is not in a fetched page yet. `confirmed` ones have the server's message and stay
@@ -13,6 +14,8 @@ export type PendingMessage = {
   /** Chosen once per message: a retry sends the same id, so the server never stores a message twice. */
   clientMessageId: string;
   text: string;
+  /** The rich text blocks, when the message was written in the rich text composer. */
+  blocks?: Block[] | undefined;
   createdAt: string;
   status: 'sending' | 'failed' | 'confirmed';
   /** The error code of a failed send. */
@@ -63,6 +66,7 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
         const message = await api.sendMessage(orgId, channelId, {
           clientMessageId: pending.clientMessageId,
           text: pending.text,
+          ...(pending.blocks ? { blocks: pending.blocks } : {}),
         });
         // A fetch that started before the answer could return a page without the message and overwrite it.
         await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channelId) });
@@ -81,12 +85,13 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
     [api, orgId, queryClient, update],
   );
 
-  /** `text` is already normalized. */
+  /** `text` is already normalized (the plain text derived from `blocks`, when there are blocks). */
   const send = useCallback(
-    (channelId: string, text: string) => {
+    (channelId: string, text: string, blocks?: Block[]) => {
       const pending: PendingMessage = {
         clientMessageId: crypto.randomUUID(),
         text,
+        blocks,
         createdAt: new Date().toISOString(),
         status: 'sending',
       };
