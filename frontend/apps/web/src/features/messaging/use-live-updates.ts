@@ -22,6 +22,9 @@ import type { Cell, MessagingApi } from './api';
  */
 export const MAX_CHANNEL_SUBSCRIPTIONS = 50;
 
+/** The channel list is refreshed after the tab was in the background at least this long. */
+const REFRESH_CHANNELS_AFTER_MS = 30_000;
+
 const NO_ACTIVITY: ReadonlySet<string> = new Set();
 
 /** The cell's live connection for as long as the workspace is open; null while live updates are off. */
@@ -66,6 +69,7 @@ export function useLiveUpdates({
   const client = useRealtimeClient(cell);
   const queryClient = useQueryClient();
   const { signOut } = useAuth();
+  const catchUpRef = useRef<(() => void) | undefined>(undefined);
   const [activity, setActivity] = useState<ReadonlySet<string>>(NO_ACTIVITY);
 
   const status = useSyncExternalStore<ConnectionStatus>(
@@ -123,24 +127,52 @@ export function useLiveUpdates({
 
   useEffect(() => {
     if (!client) return;
-    let catching = false;
-    const catchUp = () => {
-      const current = latest.current;
-      void queryClient.invalidateQueries({ queryKey: channelsKey(current.orgId) });
-      if (!current.selectedId || catching) return;
-      catching = true;
-      void catchUpChannel(current.api, queryClient, current.orgId, current.selectedId).finally(() => {
-        catching = false;
-      });
+    // One catch-up at a time; a trigger during a run supersedes it (the run stops) and starts another.
+    let running = false;
+    let rerun = false;
+    let disposed = false;
+    let controller: AbortController | undefined;
+    const shouldRerun = () => rerun && !disposed;
+    const run = async () => {
+      running = true;
+      do {
+        rerun = false;
+        controller = new AbortController();
+        const current = latest.current;
+        if (current.selectedId) {
+          await catchUpChannel(
+            current.api,
+            queryClient,
+            current.orgId,
+            current.selectedId,
+            controller.signal,
+          );
+        }
+      } while (shouldRerun());
+      running = false;
+    };
+    const catchUp = (refreshChannels: boolean) => {
+      if (refreshChannels)
+        void queryClient.invalidateQueries({ queryKey: channelsKey(latest.current.orgId) });
+      if (running) {
+        rerun = true;
+        controller?.abort();
+      } else {
+        void run();
+      }
+    };
+    catchUpRef.current = () => {
+      catchUp(false);
     };
 
+    let revoked = false;
     const offs = [
       client.on('MessagePosted', ({ orgId: eventOrg, channelId, message }) => {
         const current = latest.current;
         if (eventOrg !== current.orgId) return;
-        if (channelId === current.selectedId) {
-          applyLiveMessage(queryClient, eventOrg, channelId, message);
-        } else if (message.authorAccountId !== current.ownAccountId) {
+        // Every cached channel is kept current (nothing happens for one that is not cached).
+        applyLiveMessage(queryClient, eventOrg, channelId, message);
+        if (channelId !== current.selectedId && message.authorAccountId !== current.ownAccountId) {
           setActivity((previous) => (previous.has(channelId) ? previous : new Set(previous).add(channelId)));
         }
       }),
@@ -148,28 +180,39 @@ export function useLiveUpdates({
         if (eventOrg === latest.current.orgId) applyChannelCreated(queryClient, eventOrg, channel);
       }),
       client.on('SessionRevoked', () => {
+        if (revoked) return;
+        revoked = true;
         void latest.current.signOut();
       }),
       client.onStatus((next, reconnected) => {
-        if (next === 'connected' && reconnected) catchUp();
+        if (next === 'connected' && reconnected) catchUp(true);
       }),
     ];
 
-    let hidden = document.visibilityState === 'hidden';
+    let hiddenAt: number | undefined = document.visibilityState === 'hidden' ? Date.now() : undefined;
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        hidden = true;
-      } else if (hidden) {
-        hidden = false;
-        catchUp();
+        hiddenAt ??= Date.now();
+      } else if (hiddenAt !== undefined) {
+        const away = Date.now() - hiddenAt;
+        hiddenAt = undefined;
+        catchUp(away >= REFRESH_CHANNELS_AFTER_MS);
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
+      disposed = true;
+      controller?.abort();
+      catchUpRef.current = undefined;
       document.removeEventListener('visibilitychange', onVisibility);
       for (const off of offs) off();
     };
   }, [client, queryClient]);
+
+  // A cached channel may have missed events while it was not open: catch up when it is selected.
+  useEffect(() => {
+    if (selectedId) catchUpRef.current?.();
+  }, [selectedId, client]);
 
   const clearActivity = useCallback((channelId: string) => {
     setActivity((previous) => {

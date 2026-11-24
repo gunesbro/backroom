@@ -9,7 +9,7 @@ import { MessagingApiContext, type Message, type MessageCursor, type MessagingAp
 import { applyLiveMessage, catchUpChannel, MAX_CATCH_UP_PAGES } from './live-cache';
 import { messagesKey, type MessagePages } from './queries';
 import { RealtimeContext } from './realtime-context';
-import { forgetSeqs, lastSeenSeq } from './seq-memory';
+import { forgetSeqs, lastSeenSeq, rememberSeq } from './seq-memory';
 import { Workspace } from './workspace';
 
 const ORG = 'org-1';
@@ -201,7 +201,25 @@ describe('Live updates in the open channel', () => {
     await waitFor(() => {
       expect(texts(log)).toEqual(['message 1', 'message 2', 'message 3', 'message 4', 'message 5']);
     });
-    expect(lastSeenSeq(ORG, GENERAL.id)).toBe(5);
+    // Live events never move the catch-up position: only a read of the server does.
+    expect(lastSeenSeq(ORG, GENERAL.id)).toBe(3);
+  });
+
+  it('MessagePosted_AfterADroppedEvent_IsFilledInByTheNextCatchUp', async () => {
+    const live = fakeRealtime();
+    const { api, calls, grow } = fakeApi(3);
+    renderLive(api, live.client);
+    const log = await openLog();
+
+    // Seq 4 was dropped; 5 arrives.
+    grow(5);
+    live.emit('MessagePosted', { orgId: ORG, channelId: GENERAL.id, message: message(5) });
+    live.setStatus('connected', true);
+
+    await waitFor(() => {
+      expect(texts(log)).toEqual(['message 1', 'message 2', 'message 3', 'message 4', 'message 5']);
+    });
+    expect(calls).toContainEqual({ after: 3 });
   });
 
   it('MessagePosted_WithTheClientMessageIdOfAnOptimisticSend_ShowsTheMessageOnce', async () => {
@@ -304,6 +322,42 @@ describe('Live updates elsewhere', () => {
     expect(await screen.findByRole('button', { name: 'design' })).toBeInTheDocument();
   });
 
+  it('SessionRevoked_SentTwice_SignsOutOnce', async () => {
+    const live = fakeRealtime();
+    const { signOut } = renderLive(fakeApi(3).api, live.client);
+    await openLog();
+
+    live.emit('SessionRevoked', { reason: 'logout' });
+    live.emit('SessionRevoked', { reason: 'logout' });
+
+    await waitFor(() => {
+      expect(signOut).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('Select_ACachedChannel_ShowsWhatItMissedWhileNotOpen', async () => {
+    const live = fakeRealtime();
+    const { api, grow } = fakeApi(3);
+    renderLive(api, live.client);
+    await openLog();
+    const nav = screen.getByRole('navigation');
+    fireEvent.click(within(nav).getByRole('button', { name: 'random' }));
+    await screen.findByRole('log', { name: 'Messages in #random' });
+    await screen.findByText('message 3');
+    fireEvent.click(within(nav).getByRole('button', { name: 'general' }));
+    await screen.findByRole('log', { name: 'Messages in #general' });
+
+    // A live event reaches the cached channel; another one is dropped.
+    live.emit('MessagePosted', { orgId: ORG, channelId: RANDOM.id, message: message(4) });
+    grow(5);
+    fireEvent.click(within(nav).getByRole('button', { name: /random/ }));
+    const log = await screen.findByRole('log', { name: 'Messages in #random' });
+
+    await waitFor(() => {
+      expect(texts(log)).toEqual(['message 1', 'message 2', 'message 3', 'message 4', 'message 5']);
+    });
+  });
+
   it('SessionRevoked_SignsOut', async () => {
     const live = fakeRealtime();
     const { signOut } = renderLive(fakeApi(3).api, live.client);
@@ -360,7 +414,7 @@ describe('catchUpChannel', () => {
       pages: [{ messages, next: null }],
       pageParams: [undefined],
     });
-    applyLiveMessage(queryClient, ORG, GENERAL.id, message(newest));
+    rememberSeq(ORG, GENERAL.id, newest);
     return queryClient;
   };
 

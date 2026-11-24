@@ -12,7 +12,8 @@ export const MAX_CATCH_UP_PAGES = 10;
 /**
  * Puts a message into the newest page in `seq` order (newest first), unless the page already has it by id or by
  * `clientMessageId` (the person's own optimistic send). Does nothing when the channel is not in the cache or its
- * newest page is not loaded; returns whether the message is in the cache afterwards.
+ * newest page is not loaded; returns whether the message is in the cache afterwards. It never moves the position
+ * used for catch-up (`lastSeenSeq`): live events can be dropped, so only reads of the server do that.
  */
 export function applyLiveMessage(
   queryClient: QueryClient,
@@ -36,7 +37,6 @@ export function applyLiveMessage(
     messages.splice(at === -1 ? messages.length : at, 0, message);
     return { ...data, pages: [{ ...first, messages }, ...data.pages.slice(1)] };
   });
-  if (result.present) rememberSeq(orgId, channelId, message.seq);
   return result.present;
 }
 
@@ -81,12 +81,17 @@ export async function catchUpChannel(
     for (let page = 0; page < MAX_CATCH_UP_PAGES; page += 1) {
       const result = await api.listMessages(orgId, channelId, { after: cursor }, signal);
       // Pages are newest first; apply oldest first so each one lands at the head.
+      if (signal?.aborted) return false;
       for (const message of result.messages.toReversed())
         applyLiveMessage(queryClient, orgId, channelId, message);
+      // Only a read of the server moves the position: a live event may follow a dropped one.
+      const newest = result.messages[0];
+      if (newest) rememberSeq(orgId, channelId, newest.seq);
       if (result.next === null) return true;
       if (result.next <= cursor) break;
       cursor = result.next;
     }
+    if (signal?.aborted) return false;
     await queryClient.resetQueries({ queryKey });
     return true;
   } catch {

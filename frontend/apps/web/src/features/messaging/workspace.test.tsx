@@ -450,7 +450,8 @@ describe('Composer', () => {
     expect(posted[0]?.body.text).toBe('hello\nworld');
     expect(posted[0]?.body.clientMessageId).toMatch(/^[0-9a-f-]{36}$/);
     expect(posted[0]?.authorization).toBe('Bearer cell-token');
-    expect(lastSeenSeq(ORG, GENERAL.id)).toBe(4);
+    // Only reads of the list move the position (a confirmation is no proof that nothing before it was missed).
+    expect(lastSeenSeq(ORG, GENERAL.id)).toBe(3);
   });
 
   it('Send_OnFailure_OffersRetryWithTheSameClientMessageId', async () => {

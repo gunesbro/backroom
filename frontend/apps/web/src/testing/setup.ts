@@ -6,6 +6,5 @@ afterEach(() => {
   cleanup();
 });
 
-// The default 1 s wait fails on a starved CPU (parallel CI jobs, many test workers) although nothing is wrong; a
-// real failure still fails, only later.
-configure({ asyncUtilTimeout: 5000 });
+// On a shared CI machine the default 1 s wait can fail although nothing is wrong; a real failure still fails.
+if (import.meta.env.BACKROOM_TEST_CI) configure({ asyncUtilTimeout: 5000 });

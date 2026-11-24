@@ -68,6 +68,8 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
   let cancelRetry: (() => void) | undefined;
   let attempt = 0;
   let everConnected = false;
+  // The hub is started and the replay of the groups has begun: new joins go straight to it.
+  let ready = false;
   // The hub handles one invocation at a time per client, so they go one after the other.
   let queue: Promise<unknown> = Promise.resolve();
 
@@ -76,22 +78,37 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     for (const listener of [...statusListeners]) listener(next, reconnected);
   };
 
-  const invoke = (target: Hub, key: string, { method, args }: Join): void => {
+  /** Resolves when the hub answered (or refused); never rejects. */
+  const invoke = (target: Hub, key: string, { method, args }: Join): Promise<void> => {
     const run = queue.then(() => target.invoke(method, ...args));
     queue = run.catch(() => undefined);
-    run.catch((error: unknown) => {
-      // Refused for every reason the same way (not a member, unknown or non-public channel): do not ask again.
-      if (isHubError(error, 'realtime.not_found') && method.startsWith('Subscribe')) wanted.delete(key);
-    });
+    return run.then(
+      () => undefined,
+      (error: unknown) => {
+        // Refused for every reason the same way (not a member, unknown or non-public channel): do not ask again.
+        // A refused organization takes its channels with it, or every reconnect would run into the refusal limit.
+        if (
+          method.startsWith('Subscribe') &&
+          (isHubError(error, 'realtime.not_found') || isHubError(error, 'realtime.forbidden'))
+        ) {
+          wanted.delete(key);
+          if (method === 'SubscribeOrganization') {
+            for (const other of [...wanted.keys()]) {
+              if (other.startsWith(`channel:${args[0] ?? ''}/`)) wanted.delete(other);
+            }
+          }
+        }
+      },
+    );
   };
 
   const join = (key: string, method: string, args: string[]) => {
     wanted.set(key, { method, args });
-    if (status === 'connected' && hub) invoke(hub, key, { method, args });
+    if (ready && hub) void invoke(hub, key, { method, args });
   };
   const leave = (key: string, method: string, args: string[]) => {
     const had = wanted.delete(key);
-    if (had && status === 'connected' && hub) invoke(hub, key, { method, args });
+    if (had && ready && hub) void invoke(hub, key, { method, args });
   };
 
   const scheduleRetry = () => {
@@ -127,7 +144,8 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
       created.onClose(() => {
         if (created !== hub) return;
         hub = undefined;
-        if (!started) {
+        ready = false;
+        if (!isStarted()) {
           setStatus('stopped');
           return;
         }
@@ -150,8 +168,11 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     }
     attempt = 0;
     everConnected = true;
+    ready = true;
+    // Connected means in the groups: a catch-up that starts earlier could miss what is posted before the join.
+    await Promise.all([...wanted].map(([key, entry]) => invoke(current, key, entry)));
+    if (!isCurrent(current)) return;
     setStatus('connected', reconnected);
-    for (const [key, entry] of [...wanted]) invoke(current, key, entry);
   };
 
   return {
@@ -167,6 +188,7 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
       cancelRetry = undefined;
       const current = hub;
       hub = undefined;
+      ready = false;
       setStatus('stopped');
       if (current) await current.stop().catch(() => undefined);
     },

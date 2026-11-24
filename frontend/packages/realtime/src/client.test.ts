@@ -96,6 +96,76 @@ describe('RealtimeClient', () => {
     expect(seen).toEqual(['connecting', 'connected', 'reconnecting', 'connected+re']);
   });
 
+  it('Reconnect_ReportsConnectedOnlyAfterTheGroupsAreJoined', async () => {
+    const hubs: FakeHub[] = [];
+    const retries: (() => void)[] = [];
+    const gates: (() => void)[] = [];
+    const client = createRealtimeClient({
+      cellUrl: 'https://cell.example.test',
+      getAccessToken: () => Promise.resolve('t'),
+      hubFactory: () => {
+        const hub = new FakeHub();
+        if (hubs.length > 0) {
+          // After the first connection every join waits until the test lets it through.
+          hub.invoke.mockImplementation((method: string, ...args: unknown[]) => {
+            hub.invoked.push([method, ...args].join(' '));
+            return new Promise<undefined>((resolve) => {
+              gates.push(() => {
+                resolve(undefined);
+              });
+            });
+          });
+        }
+        hubs.push(hub);
+        return Promise.resolve(hub);
+      },
+      retryDelay: () => 0,
+      schedule: (callback) => {
+        retries.push(callback);
+        return () => undefined;
+      },
+    });
+    const reconnected: number[] = [];
+    client.onStatus((status, again) => {
+      if (status === 'connected' && again) reconnected.push(gates.length);
+    });
+    client.subscribeOrganization('o1');
+    client.subscribeChannel('o1', 'c1');
+    client.start();
+    await flush();
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    // Joined, not yet answered: not reported as connected, so no catch-up can start.
+    expect(hubs[1]?.invoked).toEqual(['SubscribeOrganization o1']);
+    expect(reconnected).toEqual([]);
+    gates.shift()?.();
+    await flush();
+    gates.shift()?.();
+    await flush();
+
+    expect(hubs[1]?.invoked).toEqual(['SubscribeOrganization o1', 'SubscribeChannel o1 c1']);
+    expect(reconnected).toHaveLength(1);
+    expect(client.status()).toBe('connected');
+  });
+
+  it('Subscribe_WhenTheOrganizationIsRefused_DropsItsChannelsFromTheReplay', async () => {
+    const { client, hubs, retries } = setup();
+    client.start();
+    await flush();
+    hubs[0]?.invoke.mockRejectedValueOnce(new Error('realtime.not_found'));
+    client.subscribeOrganization('o1');
+    client.subscribeChannel('o1', 'c1');
+    client.subscribeChannel('o2', 'c9');
+    await flush();
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    expect(hubs[1]?.invoked).toEqual(['SubscribeChannel o2 c9']);
+  });
+
   it('Unsubscribe_ThenReconnect_DoesNotJoinTheGroupAgain', async () => {
     const { client, hubs, retries } = setup();
     client.subscribeChannel('o1', 'c1');
