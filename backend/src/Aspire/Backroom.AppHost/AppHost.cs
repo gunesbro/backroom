@@ -106,5 +106,6 @@ foreach (var cell in (IResourceBuilder<ProjectResource>[])[cellApp, cellWorker])
 
 databases.Add("cell_a", cellMigrate, cellApp, cellWorker);
 databases.AddRelay("cell_a", cellWorker);
+databases.AddMaintenance("cell_a", cellWorker);
 
 await builder.Build().RunAsync();

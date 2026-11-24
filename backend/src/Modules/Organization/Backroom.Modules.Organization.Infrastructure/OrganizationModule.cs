@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Backroom.BuildingBlocks.Application.Organizations;
+using Backroom.BuildingBlocks.Infrastructure.Maintenance;
 using Backroom.BuildingBlocks.Infrastructure.Messaging;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.Organization.Application.Invitations;
@@ -71,29 +72,17 @@ public static class OrganizationModule
     }
 
     /// <summary>
-    /// The scheduled invitation jobs (expiry and email retention), for the worker role. The returned builder binds
-    /// <see cref="InvitationJobsOptions"/>, which are checked at startup. The jobs read every organization, so they
-    /// connect as the relay role (<c>OutboxRelay:ConnectionString</c>), as the outbox relay does.
+    /// The scheduled invitation jobs (expiry and email retention) as maintenance jobs (docs/adr/0010), for the worker
+    /// role. They run in the host's <c>AddMaintenanceJobRunner</c> as the maintenance role, which reads every
+    /// organization but only the columns this module's migration grants it.
     /// </summary>
-    public static OptionsBuilder<InvitationJobsOptions> AddOrganizationInvitationJobs(this IServiceCollection services)
+    public static IServiceCollection AddOrganizationInvitationJobs(this IServiceCollection services)
     {
+        ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<InvitationJobsOptions>, InvitationJobsOptionsValidator>());
-        services.AddKeyedSingleton(InvitationJobs.DataSourceKey, (provider, _) =>
-            new NpgsqlDataSourceBuilder(new NpgsqlConnectionStringBuilder(provider.GetRequiredService<IOptions<InvitationJobsOptions>>().Value.RelayConnectionString)
-            {
-                // One statement at a time.
-                MaxPoolSize = 2,
-                IncludeErrorDetail = false,
-                ApplicationName = "backroom-invitation-jobs",
-            }.ConnectionString)
-                .UseLoggerFactory(provider.GetRequiredService<ILoggerFactory>())
-                .Build());
-        services.TryAddSingleton<InvitationJobs>();
-        services.AddHostedService<InvitationJobsWorker>();
-        return services.AddOptions<InvitationJobsOptions>()
-            .Configure<IConfiguration>((jobOptions, configuration) => jobOptions.RelayConnectionString = configuration["OutboxRelay:ConnectionString"] ?? string.Empty)
-            .ValidateOnStart();
+        services.AddMaintenanceJob<InvitationExpiryJob>();
+        services.AddMaintenanceJob<InvitationRetentionJob>();
+        return services;
     }
 
     /// <summary>

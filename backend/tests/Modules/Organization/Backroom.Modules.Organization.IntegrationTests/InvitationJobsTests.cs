@@ -3,7 +3,8 @@ using System.Security.Cryptography;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+using Backroom.BuildingBlocks.Infrastructure.Maintenance;
+using Backroom.Modules.Organization.Infrastructure.Migrations;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 using Backroom.Modules.Organization.Infrastructure.Invitations;
@@ -14,7 +15,7 @@ namespace Backroom.Modules.Organization.IntegrationTests;
 
 /// <summary>
 /// The cell's scheduled invitation jobs (docs/contracts/phase-1.md, flow 3, step 8, and "Privacy and retention")
-/// against real PostgreSQL, run as the relay role like the worker. The clock is a fake one in 2001: the jobs only
+/// against real PostgreSQL, run as the maintenance role like the worker (docs/adr/0010). The clock is a fake one in 2001: the jobs only
 /// reach rows with timestamps of that year, which only this class writes, so other classes' invitations are never
 /// touched and counts are exact. Each test deletes its organization's rows afterwards.
 /// </summary>
@@ -54,7 +55,7 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
         var hourAgo = await AddAsync("pending", expiresAt: s_now.AddHours(-1));
         var almost = await AddAsync("pending", expiresAt: s_now.AddHours(-24).AddSeconds(1));
 
-        var expired = await Jobs().ExpireAsync(CancellationToken);
+        var expired = await RunAsync(Expiry(), CancellationToken);
 
         expired.Should().Be(0);
         foreach (var invitation in new[] { justExpired, hourAgo, almost })
@@ -72,7 +73,7 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
         var accepted = await AddAsync("accepted", expiresAt: s_now.AddDays(-10));
         var revoked = await AddAsync("revoked", expiresAt: s_now.AddDays(-10), revokedAt: s_now.AddDays(-9));
 
-        var expired = await Jobs().ExpireAsync(CancellationToken);
+        var expired = await RunAsync(Expiry(), CancellationToken);
 
         expired.Should().Be(2);
         var row = await RowAsync(due);
@@ -83,16 +84,16 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
         (await RowAsync(notDue)).Status.Should().Be("pending");
         (await RowAsync(accepted)).Should().Match<(string Status, DateTimeOffset? ExpiredAt, string? Email)>(r => r.Status == "accepted" && r.ExpiredAt == null && r.Email != null, "accepted invitations are untouched");
         (await RowAsync(revoked)).Status.Should().Be("revoked");
-        (await Jobs().ExpireAsync(CancellationToken)).Should().Be(0, "a second run finds nothing more");
+        (await RunAsync(Expiry(), CancellationToken)).Should().Be(0, "a second run finds nothing more");
     }
 
     [Fact]
     public async Task Expire_PublishesNoEventAndLogsIdsOnlyAsync()
     {
         var invitation = await AddAsync("pending", expiresAt: s_now.AddDays(-2));
-        var logger = new CapturingLogger<InvitationJobs>();
+        var logger = new CapturingLogger<InvitationExpiryJob>();
 
-        await Jobs(logger: logger).ExpireAsync(CancellationToken);
+        await RunAsync(Expiry(logger), CancellationToken);
 
         (await ScalarAsync<long>("SELECT count(*) FROM organization.outbox")).Should().Be(0, "the contract names no event for the cell's expiry");
         logger.Messages.Should().Contain(message => message.Contains(invitation.ToString(), StringComparison.Ordinal) && message.Contains(_organization.ToString(), StringComparison.Ordinal));
@@ -108,7 +109,7 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
             invitations.Add(await AddAsync("pending", expiresAt: s_now.AddDays(-10).AddHours(index)));
         }
 
-        var first = await Jobs().ExpireAsync(batchSize: 3, maxBatches: 2, CancellationToken);
+        var first = await RunAsync(Expiry(batchSize: 3), CancellationToken, maxBatches: 2);
 
         first.Should().Be(6);
         foreach (var invitation in invitations[..6])
@@ -117,7 +118,7 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
         }
 
         (await RowAsync(invitations[6])).Status.Should().Be("pending", "the newest expiry waits for the next run");
-        (await Jobs().ExpireAsync(batchSize: 3, maxBatches: 2, CancellationToken)).Should().Be(1);
+        (await RunAsync(Expiry(batchSize: 3), CancellationToken, maxBatches: 2)).Should().Be(1);
     }
 
     [Fact]
@@ -136,13 +137,13 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        var expired = await Jobs().ExpireAsync(timeout.Token);
+        var expired = await RunAsync(Expiry(), timeout.Token);
         await transaction.RollbackAsync(CancellationToken);
 
         expired.Should().Be(1, "the batch skipped the row another transaction holds");
         (await RowAsync(other)).Status.Should().Be("expired");
         (await RowAsync(locked)).Status.Should().Be("pending", "the next run picks it up");
-        (await Jobs().ExpireAsync(CancellationToken)).Should().Be(1);
+        (await RunAsync(Expiry(), CancellationToken)).Should().Be(1);
     }
 
     [Fact]
@@ -156,8 +157,8 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
 
         // Small batches, so the runs interleave.
         var runs = await Task.WhenAll(
-            Jobs().ExpireAsync(batchSize: 5, maxBatches: 20, CancellationToken),
-            Jobs().ExpireAsync(batchSize: 5, maxBatches: 20, CancellationToken));
+            RunAsync(Expiry(batchSize: 5), CancellationToken, maxBatches: 20),
+            RunAsync(Expiry(batchSize: 5), CancellationToken, maxBatches: 20));
 
         runs.Sum().Should().Be(Count, "no invitation is processed twice and none is missed");
         (await ScalarAsync<long>("SELECT count(*) FROM organization.invitations WHERE org_id = $1 AND status = 'expired'", _organization)).Should().Be(Count);
@@ -173,9 +174,11 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
         var acceptedOld = await AddAsync("accepted", expiresAt: s_now.AddDays(-90));
         var pendingOld = await AddAsync("pending", expiresAt: s_now.AddDays(-90));
 
-        var cleared = await Jobs().ApplyRetentionAsync(CancellationToken);
+        var cleared = await RunAsync(Retention(), CancellationToken);
 
         cleared.Should().Be(2);
+
+
         (await RowAsync(expiredOld)).Should().Match<(string Status, DateTimeOffset? ExpiredAt, string? Email)>(r => r.Status == "expired" && r.Email == null);
         (await RowAsync(revokedOld)).Status.Should().Be("revoked");
         (await RowAsync(revokedOld)).Email.Should().BeNull();
@@ -183,10 +186,10 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
         (await RowAsync(revokedYoung)).Email.Should().NotBeNull("30 days have not passed");
         (await RowAsync(acceptedOld)).Email.Should().NotBeNull("accepted invitations are untouched");
         (await RowAsync(pendingOld)).Email.Should().NotBeNull("a pending invitation needs its email until it is marked expired");
-        (await Jobs().ApplyRetentionAsync(CancellationToken)).Should().Be(0);
+        (await RunAsync(Retention(), CancellationToken)).Should().Be(0);
 
         _time.Advance(TimeSpan.FromSeconds(2));
-        (await Jobs().ApplyRetentionAsync(CancellationToken)).Should().Be(1, "the young expired one is now 30 days old");
+        (await RunAsync(Retention(), CancellationToken)).Should().Be(1, "the young expired one is now 30 days old");
         (await RowAsync(expiredYoung)).Email.Should().BeNull();
     }
 
@@ -198,8 +201,8 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
             await AddAsync("expired", expiresAt: s_now.AddDays(-60), expiredAt: s_now.AddDays(-40).AddHours(index));
         }
 
-        (await Jobs().ApplyRetentionAsync(batchSize: 2, maxBatches: 2, CancellationToken)).Should().Be(4);
-        (await Jobs().ApplyRetentionAsync(batchSize: 2, maxBatches: 2, CancellationToken)).Should().Be(1);
+        (await RunAsync(Retention(batchSize: 2), CancellationToken, maxBatches: 2)).Should().Be(4);
+        (await RunAsync(Retention(batchSize: 2), CancellationToken, maxBatches: 2)).Should().Be(1);
     }
 
     [Fact]
@@ -209,77 +212,160 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
         var due = await AddAsync("pending", expiresAt: s_now.AddDays(-2), email: "ISIK@example.test");
         var old = await AddAsync("revoked", expiresAt: s_now.AddDays(-60), revokedAt: s_now.AddDays(-40), email: "IIIK@example.test");
 
-        (await Jobs().ExpireAsync(CancellationToken)).Should().Be(1);
-        (await Jobs().ApplyRetentionAsync(CancellationToken)).Should().Be(1);
+        (await RunAsync(Expiry(), CancellationToken)).Should().Be(1);
+        (await RunAsync(Retention(), CancellationToken)).Should().Be(1);
 
         (await RowAsync(due)).Status.Should().Be("expired");
         (await RowAsync(old)).Email.Should().BeNull();
     }
 
     [Fact]
-    public async Task RelayRole_CannotReadTheCodeHashOrSaltAsync()
+    public async Task ApplyRetention_SetsTheErasedMarkerAndASecondRunDoesNothingAsync()
+    {
+        var expired = await AddAsync("expired", expiresAt: s_now.AddDays(-50), expiredAt: s_now.AddDays(-31));
+        var revoked = await AddAsync("revoked", expiresAt: s_now.AddDays(-5), revokedAt: s_now.AddDays(-31));
+        var young = await AddAsync("expired", expiresAt: s_now.AddDays(-50), expiredAt: s_now.AddDays(-29));
+
+        (await RunAsync(Retention(), CancellationToken)).Should().Be(2);
+
+        (await ErasedAtAsync(expired)).Should().Be(s_now);
+        (await ErasedAtAsync(revoked)).Should().Be(s_now);
+        (await ErasedAtAsync(young)).Should().BeNull("the retention has not ended");
+        _time.Advance(TimeSpan.FromHours(1));
+        (await RunAsync(Retention(), CancellationToken)).Should().Be(0, "erased rows are not visited again");
+        (await ErasedAtAsync(expired)).Should().Be(s_now, "the marker keeps the time of the erasure");
+    }
+
+    [Fact]
+    public async Task MeasureBacklog_CountsDueRowsAndReportsWhenTheOldestBecameDueAsync()
+    {
+        await AddAsync("pending", expiresAt: s_now.AddDays(-5));
+        await AddAsync("pending", expiresAt: s_now.AddDays(-3));
+        await AddAsync("pending", expiresAt: s_now.AddHours(-1));
+        await AddAsync("expired", expiresAt: s_now.AddDays(-60), expiredAt: s_now.AddDays(-40));
+        await AddAsync("revoked", expiresAt: s_now.AddDays(-60), revokedAt: s_now.AddDays(-35));
+        await AddAsync("expired", expiresAt: s_now.AddDays(-60), expiredAt: s_now.AddDays(-40), erasedAt: s_now.AddDays(-10));
+        await using var connection = await OpenMaintenanceAsync();
+
+        var expiry = await Expiry().MeasureBacklogAsync(connection, CancellationToken);
+        var retention = await Retention().MeasureBacklogAsync(connection, CancellationToken);
+
+        expiry.Count.Should().Be(2);
+        expiry.OldestDue.Should().Be(s_now.AddDays(-5) + InvitationExpiryJob.ExpiryGrace);
+        retention.Count.Should().Be(2, "an erased row is not due");
+        retention.OldestDue.Should().Be(s_now.AddDays(-40) + InvitationRetentionJob.Retention);
+    }
+
+    [Fact]
+    public async Task Backfill_MarksRowsWhoseEmailWasAlreadyErasedAsync()
+    {
+        var expired = await AddAsync("expired", expiresAt: s_now.AddDays(-60), expiredAt: s_now.AddDays(-40), noEmail: true);
+        var revoked = await AddAsync("revoked", expiresAt: s_now.AddDays(-60), revokedAt: s_now.AddDays(-35), noEmail: true);
+        var kept = await AddAsync("expired", expiresAt: s_now.AddDays(-60), expiredAt: s_now.AddDays(-10));
+
+        await ExecuteAsync(EraseInvitationEmailsByMarker.BackfillSql);
+
+        (await ErasedAtAsync(expired)).Should().Be(s_now.AddDays(-40));
+        (await ErasedAtAsync(revoked)).Should().Be(s_now.AddDays(-35));
+        (await ErasedAtAsync(kept)).Should().BeNull("it still holds its email");
+        (await RunAsync(Retention(), CancellationToken)).Should().Be(0, "the backfilled rows are not visited");
+    }
+
+    [Fact]
+    public async Task RelayRole_CannotReadOrChangeInvitationsAsync()
     {
         var invitation = await AddAsync("pending", expiresAt: s_now);
         await using var dataSource = NpgsqlDataSource.Create(database.RelayConnectionString);
 
-        await using var command = dataSource.CreateCommand("SELECT code_hash FROM organization.invitations WHERE id = $1");
-        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = invitation });
-        var read = async () => await command.ExecuteScalarAsync(CancellationToken);
-
-        (await read.Should().ThrowAsync<PostgresException>()).Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege);
-    }
-
-    [Theory]
-    [InlineData(0, 250, 40)]
-    [InlineData(5, 250, 40)]
-    [InlineData(300, 0, 40)]
-    [InlineData(300, 1001, 40)]
-    [InlineData(300, 250, 0)]
-    [InlineData(300, 250, 201)]
-    [InlineData(7200, 250, 40)]
-    public void Validate_WithValuesOutsideTheLimits_FailsAtStartup(int intervalSeconds, int batchSize, int maxBatches)
-    {
-        var options = new InvitationJobsOptions
+        foreach (var sql in new[]
         {
-            Interval = TimeSpan.FromSeconds(intervalSeconds),
-            BatchSize = batchSize,
-            MaxBatchesPerRun = maxBatches,
-            RelayConnectionString = "Host=db",
-        };
+            "SELECT id FROM organization.invitations WHERE id = $1",
+            "SELECT status FROM organization.invitations WHERE id = $1",
+            "SELECT email FROM organization.invitations WHERE id = $1",
+            "SELECT code_hash FROM organization.invitations WHERE id = $1",
+            "UPDATE organization.invitations SET status = 'expired' WHERE id = $1",
+            "UPDATE organization.invitations SET email = NULL WHERE id = $1",
+        })
+        {
+            await using var command = dataSource.CreateCommand(sql);
+            command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = invitation });
+            var run = async () => await command.ExecuteScalarAsync(CancellationToken);
 
-        new InvitationJobsOptionsValidator().Validate(null, options).Failed.Should().BeTrue();
+            (await run.Should().ThrowAsync<PostgresException>(sql)).Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege, sql);
+        }
     }
 
     [Fact]
-    public void Validate_WithDefaultsAndTheRelayConnection_Succeeds()
+    [SuppressMessage("Security", "CA2100", Justification = "Test SQL; the column names are constants of this test.")]
+    public async Task MaintenanceRole_CannotReadTheEmailCodeHashOrSaltAsync()
     {
-        new InvitationJobsOptionsValidator().Validate(null, new InvitationJobsOptions { RelayConnectionString = "Host=db" }).Succeeded.Should().BeTrue();
+        var invitation = await AddAsync("pending", expiresAt: s_now);
+        await using var connection = await OpenMaintenanceAsync();
+
+        foreach (var column in new[] { "email", "code_hash", "salt", "*" })
+        {
+            await using var command = new NpgsqlCommand($"SELECT {column} FROM organization.invitations WHERE id = $1", connection);
+            command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = invitation });
+            var run = async () => await command.ExecuteScalarAsync(CancellationToken);
+
+            (await run.Should().ThrowAsync<PostgresException>(column)).Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege, column);
+        }
+
+        await using var filter = new NpgsqlCommand("SELECT id FROM organization.invitations WHERE email IS NOT NULL", connection);
+        var filtered = async () => await filter.ExecuteScalarAsync(CancellationToken);
+        (await filtered.Should().ThrowAsync<PostgresException>()).Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege, "filtering on email needs SELECT too");
     }
 
-    [Fact]
-    public void Validate_WithoutTheRelayConnection_Fails()
-    {
-        new InvitationJobsOptionsValidator().Validate(null, new InvitationJobsOptions()).Failed.Should().BeTrue();
-    }
+    private InvitationExpiryJob Expiry(ILogger<InvitationExpiryJob>? logger = null, int batchSize = InvitationExpiryJob.DefaultBatchSize) =>
+        new(_time, logger ?? NullLogger<InvitationExpiryJob>.Instance, batchSize);
 
-    private InvitationJobs Jobs(ILogger<InvitationJobs>? logger = null)
+    private InvitationRetentionJob Retention(int batchSize = InvitationRetentionJob.DefaultBatchSize) =>
+        new(_time, NullLogger<InvitationRetentionJob>.Instance, batchSize);
+
+    private async Task<NpgsqlConnection> OpenMaintenanceAsync()
     {
-        var dataSource = NpgsqlDataSource.Create(database.RelayConnectionString);
+        var dataSource = NpgsqlDataSource.Create(database.MaintenanceConnectionString);
         _dataSources.Add(dataSource);
-        return new InvitationJobs(dataSource, Options.Create(new InvitationJobsOptions { RelayConnectionString = "unused" }), _time, logger ?? NullLogger<InvitationJobs>.Instance);
+        return await dataSource.OpenConnectionAsync(CancellationToken);
     }
 
-    private async Task<Guid> AddAsync(string status, DateTimeOffset expiresAt, DateTimeOffset? expiredAt = null, DateTimeOffset? revokedAt = null, string? email = null)
+    // What the runner does for one run: batches, each in its own transaction, until one is short or the limit is reached.
+    private async Task<int> RunAsync(IMaintenanceJob job, CancellationToken cancellationToken, int maxBatches = 20)
+    {
+        await using var connection = await OpenMaintenanceAsync();
+        var total = 0;
+        for (var batch = 0; batch < maxBatches; batch++)
+        {
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            var handled = await job.RunBatchAsync(connection, transaction, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            total += handled;
+            if (handled < job.BatchSize)
+            {
+                break;
+            }
+        }
+
+        return total;
+    }
+
+    private async Task<DateTimeOffset?> ErasedAtAsync(Guid invitation)
+    {
+        var value = await ScalarAsync<object>("SELECT email_erased_at FROM organization.invitations WHERE id = $1", invitation);
+        return value is DateTime moment ? new DateTimeOffset(moment.ToUniversalTime()) : null;
+    }
+
+    private async Task<Guid> AddAsync(string status, DateTimeOffset expiresAt, DateTimeOffset? expiredAt = null, DateTimeOffset? revokedAt = null, string? email = null, DateTimeOffset? erasedAt = null, bool noEmail = false)
     {
         var invitation = Guid.CreateVersion7();
         await ExecuteAsync(
             """
             INSERT INTO organization.invitations
-                (id, org_id, email, role, salt, key_version, code_version, code_hash, status, created_by, created_at, expires_at, expired_at, revoked_at)
-            VALUES ($1, $2, $3, 'member', $4, 1, 1, $5, $6, $7, $8, $9, $10, $11)
+                (id, org_id, email, role, salt, key_version, code_version, code_hash, status, created_by, created_at, expires_at, expired_at, revoked_at, email_erased_at)
+            VALUES ($1, $2, $3, 'member', $4, 1, 1, $5, $6, $7, $8, $9, $10, $11, $12)
             """,
-            invitation, _organization, email ?? $"{status}-{invitation:N}@example.test", RandomNumberGenerator.GetBytes(16), RandomNumberGenerator.GetBytes(32), status,
-            Guid.CreateVersion7(), expiresAt.AddDays(-7), expiresAt, (object?)expiredAt ?? DBNull.Value, (object?)revokedAt ?? DBNull.Value);
+            invitation, _organization, noEmail ? DBNull.Value : email ?? $"{status}-{invitation:N}@example.test", RandomNumberGenerator.GetBytes(16), RandomNumberGenerator.GetBytes(32), status,
+            Guid.CreateVersion7(), expiresAt.AddDays(-7), expiresAt, (object?)expiredAt ?? DBNull.Value, (object?)revokedAt ?? DBNull.Value, (object?)erasedAt ?? DBNull.Value);
         return invitation;
     }
 
