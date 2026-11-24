@@ -8,8 +8,16 @@ const CLIENT_ID = 'desktop';
 
 const b64url = (buffer) => buffer.toString('base64url');
 
+const HTML_ENTITIES = new Map([
+  ['&amp;', '&'],
+  ['&quot;', '"'],
+  ['&#x3d;', '='],
+  ['&#39;', "'"],
+]);
+
+// One pass over the text, so a decoded '&' is never decoded again (no double unescaping).
 function decodeHtml(text) {
-  return text.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#x3D;/gi, '=').replace(/&#39;/g, "'");
+  return text.replace(/&(?:amp|quot|#x3d|#39);/gi, (entity) => HTML_ENTITIES.get(entity.toLowerCase()) ?? entity);
 }
 
 class CookieJar {
