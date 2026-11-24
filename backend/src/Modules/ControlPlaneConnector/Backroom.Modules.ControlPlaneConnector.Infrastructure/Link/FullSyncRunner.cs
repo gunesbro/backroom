@@ -89,7 +89,7 @@ internal sealed partial class FullSyncRunner(ISessionRevocation revocation, IAcc
             using var deadline = new CancellationTokenSource(CallTimeout, timeProvider);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
             var response = await client.SyncAccountStatusesAsync(
-                new AccountStatusSyncRequest { AfterAccountId = after }, new Metadata { { "Authorization", "Bearer " + token } }, cancellationToken: linked.Token);
+                new SyncAccountStatusesRequest { AfterAccountId = after }, new Metadata { { "Authorization", "Bearer " + token } }, cancellationToken: linked.Token);
             foreach (var message in response.Statuses.Take(MaxStatusesPerPage))
             {
                 try

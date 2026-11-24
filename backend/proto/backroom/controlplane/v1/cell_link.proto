@@ -27,7 +27,7 @@ service CellLinkService {
 
   // The account statuses of the cell's members, one bounded page per call (docs/contracts/phase-2.md), so drift repair of statuses
   // never makes FullSync too large. Called after FullSync, page by page until next_after_account_id is empty.
-  rpc SyncAccountStatuses(AccountStatusSyncRequest) returns (AccountStatusSyncResponse);
+  rpc SyncAccountStatuses(SyncAccountStatusesRequest) returns (SyncAccountStatusesResponse);
 }
 
 // Upstream: cell → control plane.
@@ -245,11 +245,11 @@ message FullSyncResponse {
 }
 
 // A page of account statuses: after_account_id is the cursor from the previous answer (empty for the first page).
-message AccountStatusSyncRequest {
+message SyncAccountStatusesRequest {
   string after_account_id = 1;
 }
 
-message AccountStatusSyncResponse {
+message SyncAccountStatusesResponse {
   // Statuses of members of the cell with something in force (do not disturb, a custom status or a time zone); expired parts are
   // left out. At most 1,000 per page.
   repeated AccountStatusChanged statuses = 1;

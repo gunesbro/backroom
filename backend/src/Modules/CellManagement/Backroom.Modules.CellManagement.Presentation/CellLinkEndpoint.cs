@@ -306,7 +306,7 @@ internal sealed partial class CellLinkEndpoint(
 
     // One page of the account statuses of the cell's members (docs/contracts/phase-2.md, "Cell ↔ control plane link"), so a cell that
     // lost its copies (Valkey restarted empty) or missed a message has them again. The cell comes from the token, never from the request.
-    public override async Task<AccountStatusSyncResponse> SyncAccountStatuses(AccountStatusSyncRequest request, ServerCallContext context)
+    public override async Task<SyncAccountStatusesResponse> SyncAccountStatuses(SyncAccountStatusesRequest request, ServerCallContext context)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(context);
@@ -328,7 +328,7 @@ internal sealed partial class CellLinkEndpoint(
         }
 
         var (page, next) = await statuses.ListPageForCellAsync(cellId, after, context.CancellationToken);
-        var response = new AccountStatusSyncResponse { NextAfterAccountId = next?.ToString("D") ?? string.Empty };
+        var response = new SyncAccountStatusesResponse { NextAfterAccountId = next?.ToString("D") ?? string.Empty };
         foreach (var status in page)
         {
             response.Statuses.Add(ToMessage(status));
