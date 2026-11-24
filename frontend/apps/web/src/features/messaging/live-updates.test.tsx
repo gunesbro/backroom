@@ -1,7 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import type { ConnectionStatus, RealtimeClient, RealtimeEventName, RealtimeEvents } from '@backroom/realtime';
+import {
+  createRealtimeClient,
+  type ConnectionStatus,
+  type Hub,
+  type RealtimeClient,
+  type RealtimeEventName,
+  type RealtimeEvents,
+} from '@backroom/realtime';
 import { AuthProvider } from '@/features/auth';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { fakeAuthClient } from '@/testing/fakes';
@@ -465,5 +473,68 @@ describe('catchUpChannel', () => {
     expect(
       queryClient.getQueryData<MessagePages>(messagesKey(ORG, GENERAL.id))?.pages[0]?.messages,
     ).toHaveLength(2);
+  });
+});
+
+describe('Live connection lifecycle', () => {
+  it('Workspace_InStrictMode_OpensOneHubConnectionAndStopsItOnUnmount', async () => {
+    forgetSeqs();
+    const hubs: { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[] = [];
+    const factory = (cell: { id: string; url: string }) =>
+      createRealtimeClient({
+        cellUrl: cell.url,
+        getAccessToken: () => Promise.resolve('token'),
+        // The real factory loads the library first, so the hub arrives a tick later.
+        hubFactory: () =>
+          new Promise<Hub>((resolve) => {
+            setTimeout(() => {
+              const hub = {
+                start: vi.fn(() => Promise.resolve()),
+                stop: vi.fn(() => Promise.resolve()),
+                invoke: vi.fn(() => Promise.resolve(undefined)),
+                on: vi.fn(),
+                onClose: vi.fn(),
+              };
+              hubs.push(hub);
+              resolve(hub);
+            }, 0);
+          }),
+      });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <StrictMode>
+        <LocaleProvider locale="en">
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider client={fakeAuthClient()}>
+              <MessagingApiContext.Provider value={() => fakeApi(3).api}>
+                <RealtimeContext.Provider value={factory}>
+                  <Workspace
+                    organization={{
+                      id: ORG,
+                      name: 'Acme',
+                      cell: { id: 'a', url: 'https://cell.example.test' },
+                    }}
+                  />
+                </RealtimeContext.Provider>
+              </MessagingApiContext.Provider>
+            </AuthProvider>
+          </QueryClientProvider>
+        </LocaleProvider>
+      </StrictMode>,
+    );
+    await openLog();
+    await waitFor(() => {
+      expect(hubs.length).toBeGreaterThan(0);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // A hub that was built but never started opens no socket.
+    const connected = hubs.filter((hub) => hub.start.mock.calls.length > 0);
+    expect(connected).toHaveLength(1);
+
+    view.unmount();
+    await waitFor(() => {
+      expect(connected[0]?.stop).toHaveBeenCalled();
+    });
   });
 });
