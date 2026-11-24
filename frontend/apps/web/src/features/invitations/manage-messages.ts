@@ -44,6 +44,9 @@ type Key =
   | 'expired'
   | 'revoke'
   | 'resend'
+  | 'sendAsMember'
+  | 'confirmRevoke'
+  | 'keep'
   | 'resent'
   | 'revoked'
   | 'notPending'
@@ -92,6 +95,9 @@ export const messages: Messages<Key> = {
     expired: 'Expired {date}',
     revoke: 'Revoke',
     resend: 'Resend',
+    sendAsMember: 'Send as Member instead',
+    confirmRevoke: 'Revoke the invitation for {email}? The link will stop working.',
+    keep: 'Keep',
     resent: 'Invitation sent again.',
     revoked: 'Invitation revoked.',
     notPending: 'This invitation was already accepted, revoked or has expired.',
@@ -139,6 +145,9 @@ export const messages: Messages<Key> = {
     expired: 'Bitti: {date}',
     revoke: 'İptal et',
     resend: 'Tekrar gönder',
+    sendAsMember: 'Üye olarak gönder',
+    confirmRevoke: '{email} için daveti iptal et? Bağlantı çalışmayacak.',
+    keep: 'Vazgeç',
     resent: 'Davet tekrar gönderildi.',
     revoked: 'Davet iptal edildi.',
     notPending: 'Bu davet zaten kabul edilmiş, iptal edilmiş veya süresi dolmuş.',

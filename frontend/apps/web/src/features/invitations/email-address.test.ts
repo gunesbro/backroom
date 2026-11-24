@@ -18,17 +18,28 @@ describe('normalizeEmail', () => {
     expect(normalizeEmail('INFO@ISTANBUL.EXAMPLE')).not.toContain('ı');
   });
 
-  it.each(['İlker@acme.com', 'ılker@acme.com', 'ali@ıstanbul.example'.replace('ali', 'ıli')])(
-    'Normalize_NonAsciiLocalPart_%s_IsRefused',
-    (input) => {
-      expect(normalizeEmail(input)).toBeUndefined();
-    },
-  );
+  it.each(['ılker@acme.com', 'ıli@ıstanbul.example'])('Normalize_NonAsciiLocalPart_%s_IsRefused', (input) => {
+    expect(normalizeEmail(input)).toBeUndefined();
+  });
 
-  it('Normalize_TurkishCapitalIInDomain_IsConvertedToPunycodeNotToAsciiI', () => {
-    const result = normalizeEmail('a@İSTANBUL.example');
-    expect(result).toBeDefined();
-    expect(result).not.toBe('a@istanbul.example');
+  it('Normalize_TurkishCapitalIInLocalPart_FoldsToAsciiIBeforeTheAsciiCheck', () => {
+    expect(normalizeEmail('İlker@acme.com')).toBe('ilker@acme.com');
+  });
+
+  it('Normalize_TurkishCapitalIInDomain_FoldsToAsciiIAsTheServerDoes', () => {
+    // .NET's ToLowerInvariant maps İ to a plain i; the client must not leave a combining dot behind.
+    expect(normalizeEmail('a@İSTANBUL.example')).toBe('a@istanbul.example');
+    expect(normalizeEmail('a@ISTANBUL.EXAMPLE')).toBe('a@istanbul.example');
+  });
+
+  it('Normalize_DotlessIInDomain_StaysDotlessAndIsConvertedToPunycode', () => {
+    expect(normalizeEmail('a@ıstanbul.example')).toBe('a@xn--stanbul-qfb.example');
+  });
+
+  it('Normalize_ServerParity_InvalidPunycodeIsRefusedAndAHexLikeLastLabelIsAccepted', () => {
+    expect(normalizeEmail('x@xn--abc.com')).toBeUndefined();
+    expect(normalizeEmail('x@foo.0x10')).toBe('x@foo.0x10');
+    expect(normalizeEmail('x@xn--bcher-kva.example')).toBe('x@xn--bcher-kva.example');
   });
 
   it.each([

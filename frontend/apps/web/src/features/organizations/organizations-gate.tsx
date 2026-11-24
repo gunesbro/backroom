@@ -225,12 +225,15 @@ function OrganizationHome({
           }
         />
         {inviting && invitationsEnabled && (
-          <OrganizationInvite
-            organization={organization}
-            onClose={() => {
-              setInviting(false);
-            }}
-          />
+          // Its own boundary: the first load must not replace the workspace (and the focus in it) with a spinner.
+          <Suspense fallback={null}>
+            <OrganizationInvite
+              organization={organization}
+              onClose={() => {
+                setInviting(false);
+              }}
+            />
+          </Suspense>
         )}
       </Suspense>
     </SignedInPage>

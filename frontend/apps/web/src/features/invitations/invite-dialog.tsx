@@ -33,8 +33,17 @@ const PER_ADDRESS_CODES = new Set([
   'organization.invitation_pending',
 ]);
 
-type Outcome = { email: string; sent: true } | { email: string; sent: false; reason: string };
-type Run = { outcomes: Outcome[]; stop?: string; skipped: number };
+/** `email` is what was typed (and sent: the server normalizes it); `shown` is the address the server stored. */
+type Outcome = { email: string; sent: true; shown: string } | { email: string; sent: false; reason: string };
+type Run = {
+  outcomes: Outcome[];
+  stop?: string;
+  skipped: number;
+  /** The limit was hit: the addresses not tried wait for it to pass. */
+  rateLimited?: boolean;
+  /** The Admin role was refused: the rest can still go as Member. */
+  roleRefused?: boolean;
+};
 
 /**
  * docs/design: Dialogs, "davet et" (the email tab; invitation links are not part of Phase 1). Invites one address
@@ -81,12 +90,16 @@ export function InviteDialog({
     const next = [...current];
     const tokens = text.split(/[\s,;]+/u).filter(Boolean);
     for (const [index, token] of tokens.entries()) {
+      // The check and the comparison use the normalized form; what is kept and sent is the typed text.
       const email = normalizeEmail(token);
       const rest = tokens.slice(index).join(' ');
       if (email === undefined) return { next, rest, error: t('emailInvalid', { email: token }) };
-      if (next.includes(email)) return { next, rest, error: t('emailRepeated', { email }) };
+      if (next.some((other) => normalizeEmail(other) === email)) {
+        return { next, rest, error: t('emailRepeated', { email: token }) };
+      }
+
       if (next.length >= MAX_ADDRESSES) return { next, rest, error: t('tooMany', { count: MAX_ADDRESSES }) };
-      next.push(email);
+      next.push(token);
     }
 
     return { next, rest: '' };
@@ -101,12 +114,12 @@ export function InviteDialog({
   };
 
   const mutation = useMutation({
-    mutationFn: async (list: string[]): Promise<Run> => {
+    mutationFn: async ({ list, as }: { list: string[]; as: Role }): Promise<Run> => {
       const outcomes: Outcome[] = [];
       for (const [index, email] of list.entries()) {
         try {
-          await api.create(orgId, role === 'admin' ? { email, role } : { email });
-          outcomes.push({ email, sent: true });
+          const created = await api.create(orgId, as === 'admin' ? { email, role: as } : { email });
+          outcomes.push({ email, sent: true, shown: created.email });
         } catch (error) {
           if (error instanceof ApiError && PER_ADDRESS_CODES.has(error.code)) {
             outcomes.push({ email, sent: false, reason: invitationErrorText(error, t, locale, { email }) });
@@ -114,13 +127,16 @@ export function InviteDialog({
           }
 
           // Over a limit, forbidden, a missing organization or a network problem: the rest would fail the same way.
-          const stop =
-            error instanceof ApiError && error.status === 429
-              ? rateLimitText(error, t, locale)
-              : error instanceof ApiError && error.code === 'permissions.forbidden' && role === 'admin'
-                ? t('roleForbidden')
-                : invitationErrorText(error, t, locale);
-          return { outcomes, stop, skipped: list.length - index };
+          const skipped = list.length - index;
+          if (error instanceof ApiError && error.status === 429) {
+            return { outcomes, stop: rateLimitText(error, t, locale), skipped, rateLimited: true };
+          }
+
+          if (error instanceof ApiError && error.code === 'permissions.forbidden' && as === 'admin') {
+            return { outcomes, stop: t('roleForbidden'), skipped, roleRefused: true };
+          }
+
+          return { outcomes, stop: invitationErrorText(error, t, locale), skipped };
         }
       }
 
@@ -145,7 +161,7 @@ export function InviteDialog({
     }
 
     setRun(undefined);
-    mutation.mutate(list);
+    mutation.mutate({ list, as: role });
   };
 
   const keyDown = (event: KeyboardEvent) => {
@@ -286,17 +302,29 @@ export function InviteDialog({
           {run && (
             <div className="bi-results" role="status">
               {sent.map((outcome) => (
-                <p key={outcome.email}>{t('sent', { email: outcome.email })}</p>
+                <p key={outcome.email}>{'shown' in outcome && t('sent', { email: outcome.shown })}</p>
               ))}
               {failed.map((outcome) => (
                 <p key={outcome.email} className="bi-results__failed">
                   {'reason' in outcome && t('notSent', { email: outcome.email, reason: outcome.reason })}
                 </p>
               ))}
-              {run.skipped > 0 && <p>{t('notAttempted', { count: run.skipped })}</p>}
+              {run.rateLimited && run.skipped > 0 && <p>{t('notAttempted', { count: run.skipped })}</p>}
             </div>
           )}
           {run?.stop && <Alert>{run.stop}</Alert>}
+          {run?.roleRefused && (
+            <Button
+              disabled={mutation.isPending}
+              onClick={() => {
+                setRole('member');
+                setRun(undefined);
+                mutation.mutate({ list: addresses, as: 'member' });
+              }}
+            >
+              {t('sendAsMember')}
+            </Button>
+          )}
           {mutation.isError && <Alert>{t('generic')}</Alert>}
           <div className="bi-dialog__actions">
             <Button onClick={onClose}>{run && addresses.length === 0 ? t('done') : t('cancel')}</Button>

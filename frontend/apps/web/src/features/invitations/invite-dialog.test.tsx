@@ -68,7 +68,9 @@ function serve({
     http.post(BASE, async ({ request }) => {
       await record(request);
       const email = (JSON.parse(seen.at(-1)?.body ?? '{}') as { email: string }).email;
-      return (answers[email] ?? (() => HttpResponse.json(invitation('new', email), { status: 201 })))();
+      return (
+        answers[email] ?? (() => HttpResponse.json(invitation('new', email.toLowerCase()), { status: 201 }))
+      )();
     }),
   );
 }
@@ -128,7 +130,7 @@ describe('InviteDialog', () => {
     expect(await screen.findByText('Invitation sent to deniz@acme.com.')).toBeInTheDocument();
     expect(screen.getByText('Invitation sent to emre@acme.com.')).toBeInTheDocument();
     expect(posts().map((request) => JSON.parse(request.body) as unknown)).toEqual([
-      { email: 'deniz@acme.com' },
+      { email: 'Deniz@Acme.com' },
       { email: 'emre@acme.com' },
     ]);
     expect(posts().every((request) => request.authorization === 'Bearer cell-token')).toBe(true);
@@ -150,8 +152,12 @@ describe('InviteDialog', () => {
     expect(JSON.parse(posts()[0]?.body ?? '{}')).toEqual({ email: 'deniz@acme.com', role: 'admin' });
   });
 
-  it('Send_WithoutAChoosingRight_ShowsWhyAndStops', async () => {
-    serve({ answers: { 'deniz@acme.com': () => problem(403, 'permissions.forbidden') } });
+  it('Send_WithoutAChoosingRight_OffersToSendAsMemberAndSendsTheRest', async () => {
+    serve({
+      answers: {
+        'deniz@acme.com': () => problem(403, 'permissions.forbidden'),
+      },
+    });
     const user = userEvent.setup();
     renderDialog();
 
@@ -160,6 +166,21 @@ describe('InviteDialog', () => {
 
     expect(await screen.findByText("You don't have permission to choose a role.")).toBeInTheDocument();
     expect(posts()).toHaveLength(1);
+    expect(screen.queryByText(/Not sent yet/)).not.toBeInTheDocument();
+
+    server.use(
+      http.post(BASE, async ({ request }) => {
+        await record(request);
+        return HttpResponse.json(invitation('new', 'x'), { status: 201 });
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Send as Member instead' }));
+
+    expect(await screen.findAllByText('Invitation sent to x.')).toHaveLength(2);
+    const retried = posts()
+      .slice(1)
+      .map((request) => JSON.parse(request.body) as unknown);
+    expect(retried).toEqual([{ email: 'deniz@acme.com' }, { email: 'emre@acme.com' }]);
   });
 
   it.each([
@@ -221,9 +242,9 @@ describe('InviteDialog', () => {
     const user = userEvent.setup();
     renderDialog();
 
-    await user.type(screen.getByLabelText(/email addresses/i), 'İlker@acme.com{Enter}');
+    await user.type(screen.getByLabelText(/email addresses/i), 'ılker@acme.com{Enter}');
 
-    expect(screen.getByRole('alert')).toHaveTextContent('"İlker@acme.com" is not a valid email address.');
+    expect(screen.getByRole('alert')).toHaveTextContent('"ılker@acme.com" is not a valid email address.');
     await user.click(screen.getByRole('button', { name: 'Send invitations' }));
     expect(posts()).toHaveLength(0);
   });
@@ -237,7 +258,7 @@ describe('InviteDialog', () => {
     expect(screen.getAllByRole('button', { name: /^Remove / })).toHaveLength(3);
 
     fireEvent.paste(field, { clipboardData: { getData: () => 'A@ACME.COM d@acme.com' } });
-    expect(screen.getByRole('alert')).toHaveTextContent('"a@acme.com" is already in the list.');
+    expect(screen.getByRole('alert')).toHaveTextContent('"A@ACME.COM" is already in the list.');
   });
 
   it('Send_NoAddress_AsksForOne', async () => {
@@ -304,6 +325,10 @@ describe('InviteDialog', () => {
     renderDialog();
 
     await user.click(await screen.findByRole('button', { name: 'Revoke: ali@acme.com' }));
+    // Nothing is deleted until it is confirmed.
+    expect(screen.getByText(/Revoke the invitation for ali@acme.com?/)).toBeInTheDocument();
+    expect(seen).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Revoke: ali@acme.com' }));
 
     await waitFor(() => {
       expect(screen.queryByText('ali@acme.com')).not.toBeInTheDocument();
@@ -330,8 +355,39 @@ describe('InviteDialog', () => {
     renderDialog();
 
     await user.click(await screen.findByRole('button', { name: 'Revoke: ali@acme.com' }));
+    await user.click(screen.getByRole('button', { name: 'Revoke: ali@acme.com' }));
 
     expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+
+  it('Revoke_Kept_DeletesNothingAndShowsTheActionsAgain', async () => {
+    server.use(
+      http.get(BASE, () =>
+        HttpResponse.json({ invitations: [invitation('i1', 'ali@acme.com')], next: null }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.click(await screen.findByRole('button', { name: 'Revoke: ali@acme.com' }));
+    await user.click(screen.getByRole('button', { name: 'Keep' }));
+
+    expect(screen.getByRole('button', { name: 'Resend: ali@acme.com' })).toBeInTheDocument();
+    expect(seen).toHaveLength(0);
+  });
+
+  it('Close_ReturnsFocusToWhatOpenedTheDialog', () => {
+    serve();
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    opener.focus();
+    const { unmount } = renderDialog();
+    expect(opener).not.toHaveFocus();
+
+    unmount();
+
+    expect(opener).toHaveFocus();
+    opener.remove();
   });
 
   it('Resend_APendingInvitation_PostsAndConfirms', async () => {

@@ -79,6 +79,46 @@ describe('App messaging', () => {
 });
 
 describe('App', () => {
+  it('InvitePeople_FirstOpen_KeepsTheWorkspaceOnScreenAndReturnsFocusOnClose', async () => {
+    server.use(
+      http.get('https://a.example.test/api/v1/orgs/:org/channels', () =>
+        HttpResponse.json({ channels: [], next: null }),
+      ),
+      http.get('https://a.example.test/api/v1/orgs/:org/members', () =>
+        HttpResponse.json({ members: [], next: null }),
+      ),
+      http.get('https://a.example.test/api/v1/orgs/:org/invitations', () =>
+        HttpResponse.json({ invitations: [], next: null }),
+      ),
+    );
+    render(
+      <App
+        authClient={fakeAuthClient()}
+        createApi={() =>
+          fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) })
+        }
+        messagingEnabled
+        invitationsUiEnabled
+      />,
+    );
+    const opener = await screen.findByRole('button', { name: /Invite people/ });
+    opener.focus();
+
+    fireEvent.click(opener);
+
+    // The dialog's code loads lazily; until it has, the workspace must stay where it is.
+    expect(screen.getByRole('heading', { name: 'Channels' })).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    expect(screen.getByRole('heading', { name: 'Channels' })).toBeInTheDocument();
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(opener).toHaveFocus();
+  });
+
   it('Start_WhileSigningIn_ShowsProgress', () => {
     renderApp(undefined, fakeAuthClient({ start: () => new Promise(() => undefined) }));
 

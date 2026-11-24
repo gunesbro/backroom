@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDateTime } from '@backroom/i18n';
 import { Alert, Button, LinkButton, Spinner, Status } from '@backroom/ui';
@@ -78,11 +78,15 @@ function InvitationRow({
   const t = useTranslate(messages);
   const locale = useLocale();
   const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const revokeRef = useRef<HTMLButtonElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
   const [note, setNote] = useState<string | undefined>();
   const refresh = () => queryClient.invalidateQueries({ queryKey: invitationsKey(orgId) });
   const revoke = useMutation({
     mutationFn: () => api.revoke(orgId, invitation.id),
     onSuccess: () => {
+      setConfirming(false);
       setNote(t('revoked'));
     },
     onSettled: refresh,
@@ -110,6 +114,9 @@ function InvitationRow({
           {invitation.role === 'admin' ? t('roleAdmin') : t('roleMember')} ·{' '}
           {t(expired ? 'expired' : 'expires', { date })}
         </span>
+        {confirming && !revoke.isSuccess && (
+          <span className="ph-muted">{t('confirmRevoke', { email: invitation.email })}</span>
+        )}
         {error && (
           <span role="alert" className="bi-row__error">
             {invitationErrorText(error, t, locale)}
@@ -122,28 +129,60 @@ function InvitationRow({
         )}
       </div>
       <div className="bi-row__actions">
-        <LinkButton
-          disabled={busy}
-          onClick={() => {
-            setNote(undefined);
-            resend.reset();
-            revoke.mutate();
-          }}
-          aria-label={`${t('revoke')}: ${invitation.email}`}
-        >
-          {t('revoke')}
-        </LinkButton>
-        <LinkButton
-          disabled={busy || expired}
-          onClick={() => {
-            setNote(undefined);
-            revoke.reset();
-            resend.mutate();
-          }}
-          aria-label={`${t('resend')}: ${invitation.email}`}
-        >
-          {t('resend')}
-        </LinkButton>
+        {confirming ? (
+          <>
+            <LinkButton
+              disabled={busy}
+              onClick={() => {
+                setNote(undefined);
+                resend.reset();
+                revoke.mutate();
+              }}
+              aria-label={`${t('revoke')}: ${invitation.email}`}
+            >
+              {t('revoke')}
+            </LinkButton>
+            <button
+              type="button"
+              className="ph-link"
+              ref={keepRef}
+              onClick={() => {
+                setConfirming(false);
+                revokeRef.current?.focus();
+              }}
+            >
+              {t('keep')}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="ph-link"
+              ref={revokeRef}
+              disabled={busy}
+              onClick={() => {
+                setConfirming(true);
+                // The confirmation replaces this button; keep focus on the safe choice.
+                setTimeout(() => keepRef.current?.focus(), 0);
+              }}
+              aria-label={`${t('revoke')}: ${invitation.email}`}
+            >
+              {t('revoke')}
+            </button>
+            <LinkButton
+              disabled={busy || expired}
+              onClick={() => {
+                setNote(undefined);
+                revoke.reset();
+                resend.mutate();
+              }}
+              aria-label={`${t('resend')}: ${invitation.email}`}
+            >
+              {t('resend')}
+            </LinkButton>
+          </>
+        )}
       </div>
     </li>
   );
