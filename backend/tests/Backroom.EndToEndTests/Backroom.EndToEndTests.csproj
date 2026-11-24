@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    End-to-end tests (docs/requirements.md, "Test stratejisi"): the real AppHost, control plane and two cells, started
+    with Aspire testing in an isolated run (fresh containers, random ports). They run only with BACKROOM_E2E=true and need
+    Docker; the short set runs on pull requests, the whole set nightly (README, "Tests").
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Testing" />
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Aspire\Backroom.AppHost\Backroom.AppHost.csproj" />
+    <!-- The live event payloads, read as the cells send them (MessagePack). -->
+    <ProjectReference Include="..\..\src\Modules\Realtime\Backroom.Modules.Realtime.Contracts\Backroom.Modules.Realtime.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

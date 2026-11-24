@@ -2,8 +2,10 @@ using Backroom.AppHost;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
+var run = DevelopmentRun.FromConfiguration(builder.Configuration);
+run.WarnIfIsolated(builder);
 var cells = DevelopmentCells.Selected(builder.Configuration);
-var services = builder.AddDevelopmentServices();
+var services = builder.AddDevelopmentServices(run);
 var keycloak = services.Keycloak;
 var databases = new DevelopmentDatabases(builder, services.Postgres);
 
@@ -45,14 +47,12 @@ var controlPlane = builder.AddProject<Projects.Backroom_ControlPlane_Host>("cont
     .WaitFor(keycloak)
     .WithHttpHealthCheck("/health");
 
-// The shared development cells, seeded as pending cells; the public URL is the cell's app endpoint, which the web app
-// learns from /api/v1/cells/shared and the organization data.
+// The shared development cells, seeded as pending cells; each one's public URL is set with its app below.
 for (var i = 0; i < cells.Count; i++)
 {
     controlPlane
         .WithEnvironment($"CellManagement__DevelopmentCells__{i}__Id", cells[i].Id)
         .WithEnvironment($"CellManagement__DevelopmentCells__{i}__Name", cells[i].Name)
-        .WithEnvironment($"CellManagement__DevelopmentCells__{i}__PublicUrl", cells[i].PublicUrl.ToString())
         .WithEnvironment($"CellManagement__DevelopmentCells__{i}__RegistrationKey", cellSecrets[cells[i].Id].RegistrationKey);
 }
 
@@ -77,12 +77,14 @@ var virtualHosts = builder.AddRabbitMqVirtualHosts(services.RabbitMq, cells);
 var previousMigrate = controlPlaneMigrate;
 
 // Each cell's key and registration marker live in a directory of this AppHost (the hash its volumes carry), so a
-// worktree or second checkout never takes another environment's "registered" marker for its own.
+// worktree or second checkout never takes another environment's "registered" marker for its own. An isolated run keeps
+// them under the root its caller gives (and removes), because it starts with a fresh control plane every time.
 var appHostId = DevelopmentKeyDirectories.AppHostIdFromVolumeName(VolumeNameGenerator.Generate(services.Postgres, "data"), "postgres-data");
-var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+var keyDirectoryRoot = run.KeyDirectoryRoot ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
-foreach (var cell in cells)
+for (var i = 0; i < cells.Count; i++)
 {
+    var cell = cells[i];
     var secrets = cellSecrets[cell.Id];
 
     // The same binary runs as the "migrate", "app" and "worker" role.
@@ -107,6 +109,10 @@ foreach (var cell in cells)
         .WaitFor(services.Valkey)
         .WithHttpHealthCheck("/health");
 
+    // The cell's public URL is its app endpoint (the launch profile's port, or a random one in an isolated run), which the
+    // web app learns from /api/v1/cells/shared and the organization data.
+    controlPlane.WithEnvironment($"CellManagement__DevelopmentCells__{i}__PublicUrl", cellApp.GetEndpoint("http"));
+
     // The worker registers the cell with the control plane on its first start, then keeps its link
     // (gRPC over HTTP/2, so it uses the https endpoint). It also relays the modules' outboxes to RabbitMQ and
     // runs their event consumers; the app role only writes outboxes, so only the worker gets RabbitMQ.
@@ -116,7 +122,7 @@ foreach (var cell in cells)
         .WithEnvironment("Authentication__Authority", authority)
         .WithEnvironment("ControlPlaneConnector__ControlPlaneUrl", controlPlane.GetEndpoint("https"))
         .WithEnvironment("ControlPlaneConnector__RegistrationKey", secrets.RegistrationKey)
-        .WithEnvironment("ControlPlaneConnector__KeyDirectory", DevelopmentKeyDirectories.For(appData, appHostId, cell.Id))
+        .WithEnvironment("ControlPlaneConnector__KeyDirectory", DevelopmentKeyDirectories.For(keyDirectoryRoot, appHostId, cell.Id))
         .WithEnvironment("RabbitMq__ConnectionString", ReferenceExpression.Create($"{services.RabbitMq.Resource.ConnectionStringExpression}/{cell.VirtualHost}"))
         .WithEnvironment("RabbitMq__ClientName", $"cell-{cell.Id}-worker")
         // Only the worker sends email, and only to Mailpit (docs/adr/0008); the app role gets no SMTP endpoint.

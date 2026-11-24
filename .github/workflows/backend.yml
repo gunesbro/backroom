@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -131,6 +131,35 @@ jobs:
           LC_ALL: tr_TR.UTF-8
           BACKROOM_EXPECTED_CULTURE: tr-TR
         run: dotnet test --solution backend/Backroom.slnx --no-build --configuration Release
+
+      # The worker reaches the control plane over HTTPS (gRPC) with the development certificate. On Linux, .NET trusts it
+      # through OpenSSL's SSL_CERT_DIR, which dotnet dev-certs reads while it runs (so it is set on this step) and the
+      # later steps need too (so it is exported).
+      - name: Trust the development certificate
+        env:
+          SSL_CERT_DIR: /home/runner/.aspnet/dev-certs/trust:/usr/lib/ssl/certs
+        run: |
+          # Exit code 4 means partial trust: OpenSSL trusts it, but the browsers' NSS stores could not be updated, which
+          # the tests do not use. Every other non-zero code fails the step.
+          status=0
+          dotnet dev-certs https --trust || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 4 ]; then
+            exit "$status"
+          fi
+          # Check that OpenSSL (and so .NET) now validates the certificate from the trusted folder; TLS validation stays on.
+          cert_dir="$(mktemp -d)"
+          dotnet dev-certs https --export-path "$cert_dir/dev-cert.pem" --format PEM --no-password
+          openssl verify -CApath /home/runner/.aspnet/dev-certs/trust "$cert_dir/dev-cert.pem"
+          rm -rf "$cert_dir"
+          echo "SSL_CERT_DIR=$SSL_CERT_DIR" >> "$GITHUB_ENV"
+
+      # The short end-to-end set (control plane and two cells in an isolated AppHost run, about a minute and a half
+      # once the images are pulled); the whole set runs nightly (end-to-end-nightly.yml).
+      - name: End-to-end tests (short set)
+        env:
+          BACKROOM_E2E: "true"
+        timeout-minutes: 15
+        run: dotnet test --project backend/tests/Backroom.EndToEndTests --no-build --configuration Release --filter-trait "Category=Short"
 
       - name: Save NuGet packages
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.nuget-cache.outputs.cache-hit != 'true' }}
