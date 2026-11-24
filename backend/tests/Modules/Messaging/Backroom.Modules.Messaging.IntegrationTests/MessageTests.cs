@@ -37,7 +37,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         id.Version.Should().Be(7);
 
         var row = await QuerySingleAsync(
-            "SELECT org_id, channel_id, text, jsonb_array_length(blocks), blocks->0->>'type', blocks->0->'children'->0->>'type', blocks->0->'children'->0->>'text', jsonb_typeof(blocks) FROM messaging.messages WHERE id = $1", id);
+            "SELECT org_id, conversation_id, text, jsonb_array_length(blocks), blocks->0->>'type', blocks->0->'children'->0->>'type', blocks->0->'children'->0->>'text', jsonb_typeof(blocks) FROM messaging.messages WHERE id = $1", id);
         row.Should().Equal(organizationId, channelId, Stored, 1, "paragraph", "text", Stored, "array");
     }
 
@@ -55,8 +55,8 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var firstBody = await ReadJsonAsync(first);
         var repeatBody = await ReadJsonAsync(repeat);
         repeatBody.ToJsonString().Should().Be(firstBody.ToJsonString(), "a repeat gets the stored message, not a new one");
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE channel_id = $1", channelId))[0].Should().Be(1L);
-        (await OutboxAsync(organizationId)).Should().ContainSingle("the repeat publishes nothing");
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", channelId))[0].Should().Be(1L);
+        (await PostedEventsAsync(organizationId)).Should().ContainSingle("the repeat publishes nothing");
         Publisher.Messages.Should().ContainSingle("the repeat announces nothing");
     }
 
@@ -75,8 +75,8 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         responses.Count(response => response.StatusCode == HttpStatusCode.Created).Should().Be(1);
         responses.Count(response => response.StatusCode == HttpStatusCode.OK).Should().Be(5);
         responses.Select(response => response.Id).Distinct().Should().ContainSingle();
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE channel_id = $1", channelId))[0].Should().Be(1L);
-        (await OutboxAsync(organizationId)).Should().ContainSingle();
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", channelId))[0].Should().Be(1L);
+        (await PostedEventsAsync(organizationId)).Should().ContainSingle();
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         var message = await SendMessageAsync(organizationId, channelId, Alice, "text that must stay out of events");
 
-        var events = await OutboxAsync(organizationId);
+        var events = await PostedEventsAsync(organizationId);
         var published = events.Should().ContainSingle().Subject;
         published.Type.Should().Be("messaging.message-posted.v1");
         var payload = published.Payload.AsObject();
@@ -119,7 +119,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var (organizationId, channelId) = await ChannelAsync();
         long? storedWhenPublished = null;
         Publisher.OnPublish = async () =>
-            storedWhenPublished = (long)(await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE channel_id = $1", channelId))[0]!;
+            storedWhenPublished = (long)(await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", channelId))[0]!;
         var clientMessageId = Guid.NewGuid();
 
         var message = await SendMessageAsync(organizationId, channelId, Alice, "hello <all>", clientMessageId);
@@ -145,8 +145,8 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
             MessagesPath(organizationId, channelId), Alice, new { clientMessageId = Guid.NewGuid(), text = "FAILING-PUBLISH-TEXT" });
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE channel_id = $1", channelId))[0].Should().Be(1L);
-        (await OutboxAsync(organizationId)).Should().ContainSingle();
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", channelId))[0].Should().Be(1L);
+        (await PostedEventsAsync(organizationId)).Should().ContainSingle();
         Logs.Entries.Should().Contain(entry => entry.Contains("Publishing the live event MessagePosted failed", StringComparison.Ordinal));
         Logs.Entries.Should().NotContain(entry => entry.Contains("FAILING-PUBLISH-TEXT", StringComparison.Ordinal));
     }
@@ -208,7 +208,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
     {
         var (organizationId, channelId) = await ChannelAsync();
         var archived = await CreateChannelAsync(organizationId, Alice, "Old");
-        await ExecuteAsync("UPDATE messaging.channels SET archived_at = now() WHERE id = $1", archived);
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", archived);
 
         using var unknown = await PostAsync(MessagesPath(organizationId, Guid.CreateVersion7()), Alice, new { clientMessageId = Guid.NewGuid(), text = "hi" });
         using var closed = await PostAsync(MessagesPath(organizationId, archived), Alice, new { clientMessageId = Guid.NewGuid(), text = "hi" });
@@ -230,7 +230,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.channel_not_found");
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE channel_id = $1", foreignChannel))[0].Should().Be(0L);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", foreignChannel))[0].Should().Be(0L);
     }
 
     [Fact]
@@ -325,7 +325,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var (organizationId, channelId) = await ChannelAsync();
         await ExecuteAsync(
             """
-            INSERT INTO messaging.messages (id, org_id, channel_id, seq, author_account_id, client_message_id, text, blocks, created_at)
+            INSERT INTO messaging.messages (id, org_id, conversation_id, seq, author_account_id, client_message_id, text, blocks, created_at)
             SELECT uuidv7(), $1, $2, n, $3, uuidv7(), 'm', '[]'::jsonb, now() FROM generate_series(1, 120) AS n
             """,
             organizationId, channelId, await AccountAsync(Alice));
@@ -449,8 +449,8 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         firstBody.ToJsonString().Should().Contain("in the first organization").And.NotContain("second organization");
         secondBody.ToJsonString().Should().Contain("in the second organization").And.NotContain("first organization");
-        (await OutboxAsync(first)).Should().ContainSingle();
-        (await OutboxAsync(second)).Should().ContainSingle();
+        (await PostedEventsAsync(first)).Should().ContainSingle();
+        (await PostedEventsAsync(second)).Should().ContainSingle();
     }
 
     [Fact]
@@ -484,7 +484,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
     }
 
     private async Task<Guid> ChannelOwnerOrganizationAsync(Guid channelId) =>
-        (Guid)(await QuerySingleAsync("SELECT org_id FROM messaging.channels WHERE id = $1", channelId))[0]!;
+        (Guid)(await QuerySingleAsync("SELECT org_id FROM messaging.conversations WHERE id = $1", channelId))[0]!;
 
     private async Task<List<Guid>> SendManyAsync(Guid organizationId, Guid channelId, int count)
     {
@@ -497,10 +497,14 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         return ids;
     }
 
+    // Creating a channel also writes its conversation and membership events; these tests are about the message.
+    private async Task<List<(string Type, JsonNode Payload)>> PostedEventsAsync(Guid organizationId) =>
+        [.. (await OutboxAsync(organizationId)).Where(entry => entry.Type == "messaging.message-posted.v1")];
+
     private async Task ShouldHaveStoredNothingAsync(Guid organizationId, Guid channelId)
     {
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE channel_id = $1", channelId))[0].Should().Be(0L);
-        (await OutboxAsync(organizationId)).Should().BeEmpty();
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", channelId))[0].Should().Be(0L);
+        (await PostedEventsAsync(organizationId)).Should().BeEmpty();
         Publisher.Messages.Should().BeEmpty();
     }
 

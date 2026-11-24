@@ -9,8 +9,8 @@ using Backroom.Testing.Valkey;
 namespace Backroom.Modules.Realtime.IntegrationTests;
 
 /// <summary>
-/// What a client may subscribe to: an active member of the organization, and for a channel one that exists, is public and
-/// is not archived. Every refusal about existence or membership is the same code, so nothing leaks.
+/// What a client may subscribe to: an active member of the organization, and for a channel read access to it (an open
+/// public channel, or an open conversation the account is a member of). Every refusal about existence or membership is the same code, so nothing leaks.
 /// </summary>
 [Collection(CellCollection.Name)]
 [Trait("Category", "Privacy")]
@@ -88,10 +88,34 @@ public sealed class SubscriptionTests(PostgresDatabase database, KeycloakRealm k
     {
         var organizationId = await ProvisionForAsync(Alice);
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "old");
-        await ExecuteAsync("UPDATE messaging.channels SET archived_at = now() WHERE id = $1", channelId);
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", channelId);
         var alice = await ConnectAsync(NodeA, Alice);
 
         var failure = await Assert.ThrowsAsync<HubException>(() => alice.SubscribeChannelAsync(organizationId, channelId));
+
+        failure.Message.Should().EndWith(NotFound);
+    }
+
+    [Fact]
+    public async Task SubscribeChannel_WithAPrivateChannel_IsAllowedOnlyForItsMembersAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var bobAccount = await AccountAsync(Bob);
+        var privateId = Guid.CreateVersion7();
+        // Inserted directly until private channels have their routes (Phase 2 step 7).
+        await ExecuteAsync(
+            "INSERT INTO messaging.conversations (id, org_id, kind, name, name_key, created_by, created_at, member_count) VALUES ($1, $2, 'private_channel', 'Secret', 'secret', $3, now(), 1)",
+            privateId, organizationId, bobAccount);
+        await ExecuteAsync(
+            "INSERT INTO messaging.conversation_members (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by) VALUES ($1, $2, $3, 'owner', now(), 0, $3)",
+            organizationId, privateId, bobAccount);
+        var alice = await ConnectAsync(NodeA, Alice);
+        var bob = await ConnectAsync(NodeA, Bob);
+
+        // Alice holds the Owner role, which gives no access to a conversation she is not in.
+        var failure = await Assert.ThrowsAsync<HubException>(() => alice.SubscribeChannelAsync(organizationId, privateId));
+        await bob.SubscribeChannelAsync(organizationId, privateId);
 
         failure.Message.Should().EndWith(NotFound);
     }
