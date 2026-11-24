@@ -113,18 +113,19 @@ function serveCell({
         next: null,
       }),
     ),
-    http.get(`${CELL}/api/v1/orgs/${ORG}/channels`, ({ request }) => {
+    http.get(`${CELL}/api/v1/orgs/${ORG}/conversations`, ({ request }) => {
       requested.push(request.url);
       const after = new URL(request.url).searchParams.get('after');
       if (channelPages) {
         return after
-          ? HttpResponse.json({ channels: channels.slice(1), next: null })
-          : HttpResponse.json({ channels: channels.slice(0, 1), next: channels[0]?.id });
+          ? HttpResponse.json({ items: channels.slice(1), next: null })
+          : HttpResponse.json({ items: channels.slice(0, 1), next: channels[0]?.id });
       }
 
-      return HttpResponse.json({ channels, next: null });
+      return HttpResponse.json({ items: channels, next: null });
     }),
-    http.get(`${CELL}/api/v1/orgs/${ORG}/channels/:channelId/messages`, ({ request, params }) => {
+    http.get(`${CELL}/api/v1/orgs/${ORG}/channels`, () => HttpResponse.json({ channels, next: null })),
+    http.get(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, ({ request, params }) => {
       requested.push(request.url);
       const count = counts[String(params.channelId)] ?? 0;
       const before = new URL(request.url).searchParams.get('before');
@@ -133,7 +134,7 @@ function serveCell({
       for (let seq = first; seq >= 1 && seqs.length < 50; seq -= 1) seqs.push(seq);
       const last = seqs.at(-1) ?? 1;
       return HttpResponse.json({
-        messages: seqs.map((seq) => message(seq, texts[seq])),
+        items: seqs.map((seq) => message(seq, texts[seq])),
         next: last > 1 ? last : null,
       });
     }),
@@ -142,7 +143,7 @@ function serveCell({
 
 function servePost(handler: (body: Posted['body']) => Response | Promise<Response>) {
   server.use(
-    http.post(`${CELL}/api/v1/orgs/${ORG}/channels/:channelId/messages`, async ({ request }) => {
+    http.post(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, async ({ request }) => {
       const body = (await request.json()) as Posted['body'];
       posted.push({ url: request.url, body, authorization: request.headers.get('Authorization') });
       return handler(body);
@@ -225,6 +226,31 @@ describe('Channels', () => {
 
     expect(await screen.findByRole('feed', { name: 'Messages in #random' })).toBeInTheDocument();
     expect(await screen.findByText('random two')).toBeInTheDocument();
+  });
+
+  it('BrowseChannels_JoiningAChannel_AddsItToTheSidebarAndOpensIt', async () => {
+    serveCell({ channels: [GENERAL], counts: { [RANDOM.id]: 2 } });
+    let joinedPath = '';
+    server.use(
+      http.get(`${CELL}/api/v1/orgs/${ORG}/channels`, () =>
+        HttpResponse.json({ channels: [GENERAL, RANDOM], next: null }),
+      ),
+      http.post(`${CELL}/api/v1/orgs/${ORG}/conversations/:id/join`, ({ request }) => {
+        joinedPath = new URL(request.url).pathname;
+        serveCell({ channels: [GENERAL, RANDOM], counts: { [RANDOM.id]: 2 } });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderWorkspace();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Browse channels' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Browse channels' });
+    expect(await within(dialog).findByText('Joined')).toBeInTheDocument();
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Join random' }));
+
+    expect(await screen.findByRole('feed', { name: 'Messages in #random' })).toBeInTheDocument();
+    expect(joinedPath).toBe(`/api/v1/orgs/${ORG}/conversations/${RANDOM.id}/join`);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('CreateChannel_WithAName_PostsItAndOpensTheNewChannel', async () => {
@@ -554,7 +580,7 @@ describe('Composer', () => {
 });
 
 describe('Races and isolation', () => {
-  const messagesUrl = `${CELL}/api/v1/orgs/${ORG}/channels/:channelId/messages`;
+  const messagesUrl = `${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`;
 
   it('Send_WhileARefetchIsInFlight_KeepsTheConfirmedMessage', async () => {
     serveCell();
@@ -572,7 +598,7 @@ describe('Races and isolation', () => {
     server.use(
       http.get(messagesUrl, async () => {
         await delay(300);
-        return HttpResponse.json({ messages: [message(3), message(2), message(1)], next: null });
+        return HttpResponse.json({ items: [message(3), message(2), message(1)], next: null });
       }),
     );
     void queryClient.invalidateQueries({ queryKey: messagesKey(ORG, GENERAL.id) });
@@ -595,7 +621,7 @@ describe('Races and isolation', () => {
     server.use(
       http.get(messagesUrl, async () => {
         await delay(200);
-        return HttpResponse.json({ messages: [message(3), message(2), message(1)], next: null });
+        return HttpResponse.json({ items: [message(3), message(2), message(1)], next: null });
       }),
     );
     servePost((body) =>
@@ -643,20 +669,20 @@ describe('Races and isolation', () => {
   it('OrganizationSwitch_IgnoresRequestsOfTheOrganizationLeft', async () => {
     const ORG_B = '9d3f3c6e-6a49-4c1e-9d0a-3f1f0c2b7a22';
     server.use(
-      http.get(`${CELL}/api/v1/orgs/${ORG}/channels`, () =>
-        HttpResponse.json({ channels: [GENERAL], next: null }),
+      http.get(`${CELL}/api/v1/orgs/${ORG}/conversations`, () =>
+        HttpResponse.json({ items: [GENERAL], next: null }),
       ),
       http.get(`${CELL}/api/v1/orgs/${ORG}/members`, () => HttpResponse.json({ members: [], next: null })),
       http.get(messagesUrl, async () => {
         await delay(250);
-        return HttpResponse.json({ messages: [message(1, 'organization A message')], next: null });
+        return HttpResponse.json({ items: [message(1, 'organization A message')], next: null });
       }),
-      http.get(`${CELL}/api/v1/orgs/${ORG_B}/channels`, () =>
-        HttpResponse.json({ channels: [{ ...GENERAL, id: 'b-general', name: 'bgeneral' }], next: null }),
+      http.get(`${CELL}/api/v1/orgs/${ORG_B}/conversations`, () =>
+        HttpResponse.json({ items: [{ ...GENERAL, id: 'b-general', name: 'bgeneral' }], next: null }),
       ),
       http.get(`${CELL}/api/v1/orgs/${ORG_B}/members`, () => HttpResponse.json({ members: [], next: null })),
-      http.get(`${CELL}/api/v1/orgs/${ORG_B}/channels/b-general/messages`, () =>
-        HttpResponse.json({ messages: [message(1, 'organization B message')], next: null }),
+      http.get(`${CELL}/api/v1/orgs/${ORG_B}/conversations/b-general/messages`, () =>
+        HttpResponse.json({ items: [message(1, 'organization B message')], next: null }),
       ),
     );
     const { switchTo } = renderWorkspace();

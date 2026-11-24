@@ -5,6 +5,10 @@ import type { Messages } from '@backroom/i18n';
 type Key =
   | 'channels'
   | 'addChannel'
+  | 'browseChannels'
+  | 'join'
+  | 'joinChannel'
+  | 'joined'
   | 'invitePeople'
   | 'createChannelTitle'
   | 'channelName'
@@ -91,6 +95,10 @@ export const messages: Messages<Key> = {
   en: {
     channels: 'Channels',
     addChannel: 'Add channel',
+    browseChannels: 'Browse channels',
+    join: 'Join',
+    joinChannel: 'Join {name}',
+    joined: 'Joined',
     invitePeople: 'Invite people',
     createChannelTitle: 'Create channel',
     channelName: 'Channel name',
@@ -176,6 +184,10 @@ export const messages: Messages<Key> = {
   tr: {
     channels: 'Kanallar',
     addChannel: 'Kanal ekle',
+    browseChannels: 'Kanallara göz at',
+    join: 'Katıl',
+    joinChannel: '{name} kanalına katıl',
+    joined: 'Katıldın',
     invitePeople: 'Kişileri davet et',
     createChannelTitle: 'Kanal oluştur',
     channelName: 'Kanal adı',

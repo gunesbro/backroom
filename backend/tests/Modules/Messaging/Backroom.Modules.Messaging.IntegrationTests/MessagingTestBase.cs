@@ -134,7 +134,7 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
     protected async Task<JsonNode> SendMessageAsync(Guid organizationId, Guid channelId, string username, string text, Guid? clientMessageId = null)
     {
         using var response = await PostAsync(
-            $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", username, new { clientMessageId = clientMessageId ?? Guid.NewGuid(), text });
+            $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", username, new { clientMessageId = clientMessageId ?? Guid.NewGuid(), text });
         response.EnsureSuccessStatusCode();
         return await ReadJsonAsync(response);
     }

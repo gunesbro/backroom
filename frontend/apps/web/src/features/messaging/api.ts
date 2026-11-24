@@ -2,7 +2,10 @@ import { createContext, useContext } from 'react';
 import { requestJson, type AccessTokenSource } from '@/shared/http';
 
 export type Channel = { id: string; name: string; createdAt: string };
+/** One page of public channels to browse (not only the ones the person is in). */
 export type ChannelPage = { channels: Channel[]; next: string | null };
+/** One page of the person's own conversations (their open memberships). */
+export type ConversationPage = { conversations: Channel[]; next: string | null };
 export type Message = {
   id: string;
   /** The channel's sequence number: messages are ordered and paged by it, never by id or time. */
@@ -22,21 +25,32 @@ export type MemberPage = { members: Member[]; next: string | null };
 /** Page size asked for; the server allows 1 to 100. */
 export const PAGE_SIZE = 50;
 
-/** A cell's channel and message endpoints (docs/contracts/phase-1.md, "HTTP APIs", Cell). */
+/** A cell's conversation, channel and message endpoints (docs/contracts/phase-2.md, "HTTP APIs", Messaging). */
 export interface MessagingApi {
-  listChannels: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<ChannelPage>;
+  /** The person's own conversations: what the sidebar lists. Private conversations appear only to their members. */
+  listConversations: (
+    orgId: string,
+    after: string | undefined,
+    signal?: AbortSignal,
+  ) => Promise<ConversationPage>;
+  /** Public channels of the organization, joined or not: the browse list. */
+  browseChannels: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<ChannelPage>;
   createChannel: (orgId: string, name: string) => Promise<Channel>;
+  /** Joins a public channel; joining one the person is in succeeds. */
+  joinConversation: (orgId: string, conversationId: string) => Promise<void>;
+  /** Leaves a conversation (not a DM); leaving one the person is not in succeeds. */
+  leaveConversation: (orgId: string, conversationId: string) => Promise<void>;
   /** Always newest first: `before` pages back (the `next` of the previous page), `after` pages forward. */
   listMessages: (
     orgId: string,
-    channelId: string,
+    conversationId: string,
     cursor: MessageCursor,
     signal?: AbortSignal,
   ) => Promise<MessagePage>;
   /** Idempotent by `clientMessageId`: a repeat answers with the stored message. */
   sendMessage: (
     orgId: string,
-    channelId: string,
+    conversationId: string,
     input: { clientMessageId: string; text: string },
   ) => Promise<Message>;
   /** One page of members, to put names to authors. */
@@ -79,25 +93,40 @@ export function createMessagingApi(
   // Every request asks for its token first, so a refused address never receives one.
   const getAccessToken: AccessTokenSource = origin ? cellToken : () => Promise.reject(new CellAddressError());
   const org = (orgId: string) => `${origin ?? 'about:blank'}/api/v1/orgs/${encodeURIComponent(orgId)}`;
-  const channel = (orgId: string, channelId: string) =>
-    `${org(orgId)}/channels/${encodeURIComponent(channelId)}`;
+  const conversation = (orgId: string, conversationId: string) =>
+    `${org(orgId)}/conversations/${encodeURIComponent(conversationId)}`;
   return {
-    listChannels: (orgId, after, signal) => {
+    listConversations: async (orgId, after, signal) => {
+      const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (after) query.set('after', after);
+      const page = await requestJson<{ items: Channel[]; next: string | null }>(
+        `${org(orgId)}/conversations?${query.toString()}`,
+        getAccessToken,
+        { signal },
+      );
+      return { conversations: page.items, next: page.next };
+    },
+    browseChannels: (orgId, after, signal) => {
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (after) query.set('after', after);
       return requestJson(`${org(orgId)}/channels?${query.toString()}`, getAccessToken, { signal });
     },
     createChannel: (orgId, name) =>
       requestJson(`${org(orgId)}/channels`, getAccessToken, { method: 'POST', body: { name } }),
-    listMessages: async (orgId, channelId, cursor, signal) => {
+    joinConversation: (orgId, conversationId) =>
+      requestJson(`${conversation(orgId, conversationId)}/join`, getAccessToken, { method: 'POST' }),
+    leaveConversation: (orgId, conversationId) =>
+      requestJson(`${conversation(orgId, conversationId)}/leave`, getAccessToken, { method: 'POST' }),
+    listMessages: async (orgId, conversationId, cursor, signal) => {
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (cursor && 'before' in cursor) query.set('before', String(cursor.before));
       if (cursor && 'after' in cursor) query.set('after', String(cursor.after));
-      const page = await requestJson<MessagePage>(
-        `${channel(orgId, channelId)}/messages?${query.toString()}`,
+      const raw = await requestJson<{ items: Message[]; next: number | null }>(
+        `${conversation(orgId, conversationId)}/messages?${query.toString()}`,
         getAccessToken,
         { signal },
       );
+      const page: MessagePage = { messages: raw.items, next: raw.next };
       if (!(cursor && 'after' in cursor)) return page;
       // `after` answers oldest first and its `next` points forward. Pages are kept newest first and a refetch rebuilds
       // the pages below the first one with `before={next}`, so `next` is made the cursor of the page below this one:
@@ -105,8 +134,11 @@ export function createMessagingApi(
       const newestFirst = page.messages.toReversed();
       return { messages: newestFirst, next: newestFirst.at(-1)?.seq ?? null };
     },
-    sendMessage: (orgId, channelId, input) =>
-      requestJson(`${channel(orgId, channelId)}/messages`, getAccessToken, { method: 'POST', body: input }),
+    sendMessage: (orgId, conversationId, input) =>
+      requestJson(`${conversation(orgId, conversationId)}/messages`, getAccessToken, {
+        method: 'POST',
+        body: input,
+      }),
     listMembers: (orgId, after, signal) =>
       requestJson(
         `${org(orgId)}/members?limit=100${after ? `&after=${encodeURIComponent(after)}` : ''}`,

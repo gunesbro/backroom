@@ -464,7 +464,7 @@ const MessageRow = memo(function MessageRow({
           <p className="bm-message__state bm-message__error">
             {pending.code === 'messaging.message_invalid'
               ? t('messageInvalid')
-              : pending.code === 'messaging.channel_not_found'
+              : pending.code === 'messaging.conversation_not_found'
                 ? t('channelGone')
                 : t('sendFailed')}{' '}
             {pending.code !== 'messaging.message_invalid' && (

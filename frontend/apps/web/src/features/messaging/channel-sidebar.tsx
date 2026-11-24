@@ -38,6 +38,7 @@ export function ChannelSidebar({
   selectedId,
   onSelect,
   onAdd,
+  onBrowse,
   activity,
   connection,
 }: {
@@ -46,6 +47,7 @@ export function ChannelSidebar({
   selectedId: string | undefined;
   onSelect: (channel: Channel) => void;
   onAdd: () => void;
+  onBrowse: () => void;
   /** Channels with new messages since they were last open. */
   activity: ReadonlySet<string>;
   connection: ConnectionStatus;
@@ -150,6 +152,14 @@ export function ChannelSidebar({
             <LinkButton disabled={state.loadingMore} onClick={state.loadMore}>
               {t('showMoreChannels')}
             </LinkButton>
+          )}
+          {!collapsed && (
+            <button type="button" className="bm-item bm-item--muted" onClick={onBrowse}>
+              <span className="bm-item__icon">
+                <Icon name="more" size={16} />
+              </span>
+              <span className="bm-item__text">{t('browseChannels')}</span>
+            </button>
           )}
           {!collapsed && (
             <button type="button" className="bm-item bm-item--muted" onClick={onAdd}>

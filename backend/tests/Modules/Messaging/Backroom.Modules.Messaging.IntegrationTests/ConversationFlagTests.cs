@@ -22,6 +22,6 @@ public sealed class ConversationFlagTests(PostgresDatabase database, KeycloakRea
 
         join.StatusCode.Should().Be(HttpStatusCode.NotFound);
         leave.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await GetAsync($"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", Alice)).StatusCode.Should().Be(HttpStatusCode.OK, "Phase 1 routes stay");
+        (await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", Alice)).StatusCode.Should().Be(HttpStatusCode.OK, "Phase 1 routes stay");
     }
 }

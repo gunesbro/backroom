@@ -17,8 +17,9 @@ namespace Backroom.Modules.Messaging.Presentation;
 public static class MessagingEndpoints
 {
     /// <summary>
-    /// The Phase 2 conversations flag (docs/contracts/phase-2.md, decision 27): the conversation routes (join and leave
-    /// so far). Off by default; the AppHost turns it on in development.
+    /// The Phase 2 conversations flag (docs/contracts/phase-2.md, decision 27): the conversation routes that are new in Phase 2 (join and leave
+    /// so far; listing conversations and their messages replace the Phase 1 channel routes and are always on). Off by
+    /// default; the AppHost turns it on in development.
     /// </summary>
     public const string ConversationsFlag = "Features:Conversations";
 
@@ -38,8 +39,9 @@ public static class MessagingEndpoints
             .InOrganization()
             .RequirePermission(SystemRoles.ChannelsCreatePublic)
             .WithMetadata(new RequestSizeLimitAttribute(MaxCreateChannelRequestBytes));
-        endpoints.MapGet("/api/v1/orgs/{orgId:guid}/channels/{channelId:guid}/messages", ListMessagesAsync).InOrganization();
-        endpoints.MapPost("/api/v1/orgs/{orgId:guid}/channels/{channelId:guid}/messages", SendMessageAsync)
+        endpoints.MapGet("/api/v1/orgs/{orgId:guid}/conversations", ListConversationsAsync).InOrganization();
+        endpoints.MapGet("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/messages", ListMessagesAsync).InOrganization();
+        endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/messages", SendMessageAsync)
             .PublishLiveEventsAfterCommit()
             .InOrganization()
             .WithMetadata(new RequestSizeLimitAttribute(MaxSendMessageRequestBytes));
@@ -65,16 +67,23 @@ public static class MessagingEndpoints
         return result.ToHttpResult(channel => TypedResults.Created((string?)null, ToResponse(channel)));
     }
 
-    private static async Task<IResult> ListMessagesAsync(
-        Guid channelId, long? before, long? after, int? limit, ICurrentAccount account, MessageService messages, CancellationToken cancellationToken)
+    private static async Task<IResult> ListConversationsAsync(Guid? after, int? limit, ICurrentAccount account, ConversationService conversations, CancellationToken cancellationToken)
     {
-        var result = await messages.ListAsync(account.AccountId, channelId, before, after, limit, cancellationToken);
+        var result = await conversations.ListAsync(account.AccountId, after, limit, cancellationToken);
+        return result.ToHttpResult(page => TypedResults.Ok(new ConversationsResponse(
+            [.. page.Items.Select(item => new ConversationResponse(item.Id, item.Kind, item.Name, item.CreatedAt))], page.Next)));
+    }
+
+    private static async Task<IResult> ListMessagesAsync(
+        Guid conversationId, long? before, long? after, int? limit, ICurrentAccount account, MessageService messages, CancellationToken cancellationToken)
+    {
+        var result = await messages.ListAsync(account.AccountId, conversationId, before, after, limit, cancellationToken);
         return result.ToHttpResult(page => TypedResults.Ok(new MessagesResponse([.. page.Messages.Select(ToResponse)], page.Next)));
     }
 
-    private static async Task<IResult> SendMessageAsync(Guid channelId, SendMessageRequest request, ICurrentAccount account, MessageService messages, CancellationToken cancellationToken)
+    private static async Task<IResult> SendMessageAsync(Guid conversationId, SendMessageRequest request, ICurrentAccount account, MessageService messages, CancellationToken cancellationToken)
     {
-        var result = await messages.SendAsync(account.AccountId, channelId, request.ClientMessageId, request.Text, cancellationToken);
+        var result = await messages.SendAsync(account.AccountId, conversationId, request.ClientMessageId, request.Text, cancellationToken);
         return result.ToHttpResult(sent => sent.Created
             ? TypedResults.Created((string?)null, ToResponse(sent.Message))
             : TypedResults.Ok(ToResponse(sent.Message)));

@@ -57,6 +57,17 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         WHERE c.org_id = $1 AND c.id = closed.conversation_id
         """;
 
+    // Served by conversation_members_account_idx, in id order.
+    private const string ListForAccountSql = """
+        SELECT c.id, c.kind, c.name, c.created_at
+        FROM messaging.conversation_members m
+        JOIN messaging.conversations c ON c.org_id = m.org_id AND c.id = m.conversation_id
+        WHERE m.org_id = $1 AND m.account_id = $2 AND m.left_at IS NULL AND m.conversation_id > $3
+            AND c.archived_at IS NULL AND c.kind <> 'thread'
+        ORDER BY m.conversation_id
+        LIMIT $4
+        """;
+
     public async Task<ConversationAccess?> FindAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(FindSql, session.Connection, session.Transaction);
@@ -99,5 +110,24 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = leftAt });
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    public async Task<IReadOnlyList<ConversationEntry>> ListForAccountAsync(
+        Guid organizationId, Guid accountId, Guid after, int count, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(ListForAccountSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = after });
+        command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = count });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var found = new List<ConversationEntry>(Math.Min(count, 101));
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            found.Add(new ConversationEntry(
+                reader.GetGuid(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetFieldValue<DateTimeOffset>(3)));
+        }
+
+        return found;
     }
 }
