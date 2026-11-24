@@ -75,6 +75,7 @@ public static class RealtimeModule
         services.TryAddSingleton<IRevocationStore, ValkeyRevocationStore>();
         services.TryAddSingleton<RevocationChecker>();
         services.TryAddSingleton<SessionRevocationBroadcast>();
+        services.TryAddSingleton<DelayedAbort>();
         services.TryAddSingleton<ISessionRevocation, SessionRevocationService>();
 
         // Only MessagePack: the live events are binary and the JSON protocol is refused at the handshake (it stays

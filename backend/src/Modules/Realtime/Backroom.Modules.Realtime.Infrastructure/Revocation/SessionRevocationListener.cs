@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -24,6 +23,7 @@ internal sealed partial class SessionRevocationListener(
     ConnectionRegistry registry,
     RevocationChecker checker,
     IHubContext<RealtimeHub> hub,
+    DelayedAbort aborts,
     IOptions<RealtimeOptions> options,
     TimeProvider timeProvider,
     ILogger<SessionRevocationListener> logger) : BackgroundService
@@ -112,59 +112,10 @@ internal sealed partial class SessionRevocationListener(
                 LogNoticeFailed(logger, exception.GetType().Name, revocation.AccountId);
             }
 
-            ScheduleAbort(state);
+            aborts.Schedule(state.Abort);
         }
 
         LogClosed(logger, revocation.AccountId, matching.Count);
-    }
-
-    /// <summary>The most aborts waiting for their grace at once (bounded by the node's connections anyway); beyond it a connection is closed at once.</summary>
-    internal const int MaxPendingAborts = 10_000;
-
-    private readonly ConcurrentDictionary<ITimer, byte> _pendingAborts = new();
-
-    /// <summary>Aborts waiting for their grace; for tests.</summary>
-    internal int PendingAborts => _pendingAborts.Count;
-
-    private void ScheduleAbort(ConnectionState state)
-    {
-        var grace = options.Value.RevocationCloseGrace;
-        if (grace <= TimeSpan.Zero || _pendingAborts.Count >= MaxPendingAborts)
-        {
-            Abort(state);
-            return;
-        }
-
-        ITimer? timer = null;
-        timer = timeProvider.CreateTimer(
-            _ =>
-            {
-                _ = _pendingAborts.TryRemove(timer!, out var _);
-                timer!.Dispose();
-                Abort(state);
-            },
-            null,
-            grace,
-            Timeout.InfiniteTimeSpan);
-        _pendingAborts[timer] = 0;
-    }
-
-    private static void Abort(ConnectionState state)
-    {
-        state.Abort();
-        RealtimeTelemetry.RevokedConnections.Add(1);
-    }
-
-    public override Task StopAsync(CancellationToken cancellationToken)
-    {
-        // Connections end with the node; the timers must not outlive it.
-        foreach (var timer in _pendingAborts.Keys)
-        {
-            timer.Dispose();
-        }
-
-        _pendingAborts.Clear();
-        return base.StopAsync(cancellationToken);
     }
 
     private static bool Matches(ConnectionState state, SessionRevocation revocation) =>

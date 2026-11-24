@@ -138,7 +138,7 @@ public sealed class SessionRevocationTests(PostgresDatabase database, KeycloakRe
             await client.DisposeAsync();
         }
 
-        await WaitUntilAsync(() => Task.FromResult(listener.PendingAborts == 0));
+        await WaitUntilAsync(() => Task.FromResult(NodeA.Services.GetRequiredService<DelayedAbort>().Pending == 0));
     }
 
     [Fact]

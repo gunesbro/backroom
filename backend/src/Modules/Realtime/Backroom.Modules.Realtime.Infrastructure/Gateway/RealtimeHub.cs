@@ -21,6 +21,7 @@ namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 internal sealed partial class RealtimeHub(
     ConnectionRegistry registry,
     RevocationChecker revocations,
+    DelayedAbort aborts,
     TimeProvider timeProvider,
     IOrganizationMembershipCheck membership,
     IChannelReadAccess channels,
@@ -62,17 +63,20 @@ internal sealed partial class RealtimeHub(
             if (await revocations.CheckAsync(identity.SessionId, identity.AccountId, identity.IssuedAt, Context.ConnectionAborted) == RevocationVerdict.Revoked)
             {
                 // The client finished its handshake before the node registered the connection, so the broadcast did not find it: tell it
-                // here, as the broadcast would have, before closing (the connection is closed even if the notice cannot be sent).
+                // here, as the broadcast would have, and close it after the grace (on a timer, so this call does not wait), so the notice
+                // can leave first. Whatever happens to the notice, the connection is closed.
                 try
                 {
                     await Clients.Caller.SendAsync(Contracts.LiveEventNames.SessionRevoked, new Contracts.SessionRevokedPayload(Contracts.SessionRevokedPayload.SessionEnded), Context.ConnectionAborted);
                 }
-                catch (OperationCanceledException)
+#pragma warning disable CA1031 // Any failure to send the notice (the client is gone, the pipe is closed) still ends in closing the connection.
+                catch (Exception exception)
+#pragma warning restore CA1031
                 {
-                    // The client is already gone.
+                    LogNoticeFailed(logger, exception.GetType().Name);
                 }
 
-                Context.Abort();
+                aborts.Schedule(Context.Abort);
             }
         }
     }
@@ -256,6 +260,9 @@ internal sealed partial class RealtimeHub(
 
     [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "A hub connection of account {AccountId} was refused: too many connections.")]
     private static partial void LogConnectionRefused(ILogger logger, Guid accountId);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Telling a connection that its session was revoked failed ({ExceptionType}); it is closed anyway.")]
+    private static partial void LogNoticeFailed(ILogger logger, string exceptionType);
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "The subscription check failed ({ExceptionType}) in organization {OrganizationId}.")]
     private static partial void LogCheckFailed(ILogger logger, string exceptionType, Guid organizationId);
