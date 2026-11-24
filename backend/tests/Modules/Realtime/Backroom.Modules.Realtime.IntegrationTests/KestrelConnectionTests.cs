@@ -49,6 +49,24 @@ public sealed class KestrelConnectionTests(PostgresDatabase database, KeycloakRe
         socket.HttpStatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    [Fact]
+    public async Task Connect_OnKestrelToAnotherPathWithAValidQueryToken_IsRefusedWith401Async()
+    {
+        // A real upgrade, now marked before authentication, still may not bring the token in the URL outside the hub path.
+        var organizationId = await ProvisionForAsync(Alice);
+        await using var node = await StartKestrelNodeAsync();
+        using var socket = NewSocket();
+        var uri = new UriBuilder(new Uri(node.BaseAddress, $"/api/v1/orgs/{organizationId}/channels"))
+        {
+            Scheme = "ws",
+            Query = $"access_token={Uri.EscapeDataString(await TokenAsync(Alice))}",
+        }.Uri;
+
+        await Assert.ThrowsAsync<WebSocketException>(() => socket.ConnectAsync(uri, CancellationToken));
+
+        socket.HttpStatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     private Task<CellNode> StartKestrelNodeAsync() =>
         CellNode.StartAsync(Database, Keycloak.Url, CellId, Valkey.ConnectionString, kestrel: true, cancellationToken: CancellationToken);
 

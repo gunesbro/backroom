@@ -29,6 +29,7 @@ namespace Backroom.Modules.Realtime.IntegrationTests;
 internal sealed class CellNode : IAsyncDisposable
 {
     private readonly WebApplication _app;
+    private readonly TestServer? _server;
 
     private CellNode(WebApplication app, CapturingLoggerProvider logs, bool kestrel)
     {
@@ -38,13 +39,12 @@ internal sealed class CellNode : IAsyncDisposable
         {
             BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.GetRequiredFeature<IServerAddressesFeature>().Addresses.Single());
             Client = new HttpClient { BaseAddress = BaseAddress };
-            Server = null!;
         }
         else
         {
             Client = app.GetTestClient();
-            Server = app.GetTestServer();
-            BaseAddress = Server.BaseAddress;
+            _server = app.GetTestServer();
+            BaseAddress = _server.BaseAddress;
         }
     }
 
@@ -52,8 +52,9 @@ internal sealed class CellNode : IAsyncDisposable
 
     public HttpClient Client { get; }
 
-    /// <summary>The test server; not set on a Kestrel node.</summary>
-    public TestServer Server { get; }
+    /// <summary>The test server; a Kestrel node has none (use <see cref="BaseAddress"/>).</summary>
+    public TestServer Server => _server
+        ?? throw new InvalidOperationException("This node runs on Kestrel and has no test server; connect to BaseAddress instead.");
 
     public Uri BaseAddress { get; }
 
