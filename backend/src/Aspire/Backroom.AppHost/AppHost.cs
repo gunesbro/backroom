@@ -75,6 +75,11 @@ var virtualHosts = builder.AddRabbitMqVirtualHosts(services.RabbitMq, cells);
 // ("tuple concurrently updated"), so the runs go one after another: each cell's waits for the previous one.
 var previousMigrate = controlPlaneMigrate;
 
+// Each cell's key and registration marker live in a directory of this AppHost (the hash its volumes carry), so a
+// worktree or second checkout never takes another environment's "registered" marker for its own.
+var appHostId = DevelopmentKeyDirectories.AppHostIdFromVolumeName(VolumeNameGenerator.Generate(services.Postgres, "data"), "postgres-data");
+var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
 foreach (var cell in cells)
 {
     var secrets = cellSecrets[cell.Id];
@@ -109,6 +114,7 @@ foreach (var cell in cells)
         .WithEnvironment("Authentication__Authority", authority)
         .WithEnvironment("ControlPlaneConnector__ControlPlaneUrl", controlPlane.GetEndpoint("https"))
         .WithEnvironment("ControlPlaneConnector__RegistrationKey", secrets.RegistrationKey)
+        .WithEnvironment("ControlPlaneConnector__KeyDirectory", DevelopmentKeyDirectories.For(appData, appHostId, cell.Id))
         .WithEnvironment("RabbitMq__ConnectionString", ReferenceExpression.Create($"{services.RabbitMq.Resource.ConnectionStringExpression}/{cell.VirtualHost}"))
         .WithEnvironment("RabbitMq__ClientName", $"cell-{cell.Id}-worker")
         // Only the worker sends email, and only to Mailpit (docs/adr/0008); the app role gets no SMTP endpoint.

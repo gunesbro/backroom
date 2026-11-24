@@ -4,12 +4,16 @@ using Grpc.Net.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Time.Testing;
 using Backroom.ControlPlane.Contracts.V1;
 using Backroom.Modules.CellManagement.Application.Link;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Health;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Link;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Registration;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
+using Npgsql;
 
 namespace Backroom.Modules.CellManagement.IntegrationTests;
 
@@ -139,6 +143,79 @@ public sealed class CellLinkWorkerTests(PostgresDatabase database, KeycloakRealm
         var delays = Enumerable.Range(1, 20).Select(CellLinkWorker.Backoff).ToList();
 
         delays.Should().AllSatisfy(delay => delay.Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(1)).And.BeLessThanOrEqualTo(TimeSpan.FromSeconds(60)));
+    }
+
+    [Fact]
+    public async Task Worker_WhenRegisteredOnlyLocallyAndKeycloakRefusesItsCredentials_ReportsUnhealthyWithoutRegisteringAsync()
+    {
+        // A marker from another environment: the control plane has the cell pending and Keycloak holds no key for it.
+        var (cellId, key) = await TestCell.ProvisionAsync(_controlPlane, CancellationToken);
+        await using var cell = TestCell.Create(_controlPlane, keycloak, cellId, key, database);
+        await cell.Services.GetRequiredService<CellKeyStore>().MarkRegisteredAsync(cellId, CancellationToken);
+
+        await cell.Link.StartAsync(CancellationToken);
+        try
+        {
+            await WaitUntilAsync(() => cell.Status.Rejection is not null);
+
+            cell.Status.Rejection.Should().Be(CellLinkWorker.CredentialsRejectedReason);
+            (await HealthAsync(cell)).Should().Be(HealthStatus.Unhealthy);
+            cell.Link.IsConnected.Should().BeFalse();
+            (await CellStatusAsync(cellId)).Should().Be("pending", "the cell must not register itself again");
+        }
+        finally
+        {
+            await cell.Link.StopAsync(CancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Worker_WhenTheControlPlaneNoLongerHasTheCellRegistered_ReportsUnhealthyUntilItIsRepairedAsync()
+    {
+        await using var cell = await TestCell.RegisterAsync(_controlPlane, keycloak, CancellationToken, database);
+        await SetCellStatusAsync(cell.CellId, "pending");
+
+        await cell.Link.StartAsync(CancellationToken);
+        try
+        {
+            await WaitUntilAsync(() => cell.Status.Rejection is not null);
+
+            cell.Status.Rejection.Should().Be(CellLinkWorker.LinkRejectedReason);
+            (await HealthAsync(cell)).Should().Be(HealthStatus.Unhealthy);
+            cell.Link.IsConnected.Should().BeFalse();
+
+            // An operator's repair takes effect without a restart.
+            await SetCellStatusAsync(cell.CellId, "registered");
+            await WaitUntilAsync(() => cell.Link.IsConnected);
+            cell.Status.Rejection.Should().BeNull();
+            (await HealthAsync(cell)).Should().Be(HealthStatus.Healthy);
+        }
+        finally
+        {
+            await cell.Link.StopAsync(CancellationToken);
+        }
+    }
+
+    private static async Task<HealthStatus> HealthAsync(TestCell cell) =>
+        (await new CellLinkHealthCheck(cell.Status).CheckHealthAsync(new HealthCheckContext(), CancellationToken)).Status;
+
+    private async Task<string?> CellStatusAsync(string cellId)
+    {
+        await using var connection = new NpgsqlConnection(database.SuperuserConnectionString);
+        await connection.OpenAsync(CancellationToken);
+        await using var command = new NpgsqlCommand("SELECT status FROM cell_management.cells WHERE id = $1", connection);
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cellId });
+        return (string?)await command.ExecuteScalarAsync(CancellationToken);
+    }
+
+    private async Task SetCellStatusAsync(string cellId, string status)
+    {
+        await using var connection = new NpgsqlConnection(database.SuperuserConnectionString);
+        await connection.OpenAsync(CancellationToken);
+        await using var command = new NpgsqlCommand("UPDATE cell_management.cells SET status = $2 WHERE id = $1", connection);
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cellId });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = status });
+        (await command.ExecuteNonQueryAsync(CancellationToken)).Should().Be(1);
     }
 
     private CellLinkSessions Sessions => _controlPlane.Services.GetRequiredService<CellLinkSessions>();

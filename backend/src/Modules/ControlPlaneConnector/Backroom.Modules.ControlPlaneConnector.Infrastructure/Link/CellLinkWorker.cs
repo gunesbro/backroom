@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Backroom.ControlPlane.Contracts.V1;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Health;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Registration;
 
 namespace Backroom.Modules.ControlPlaneConnector.Infrastructure.Link;
@@ -31,6 +32,7 @@ internal sealed partial class CellLinkWorker(
     UpstreamOutcomes outcomes,
     DownstreamReceiver downstream,
     FullSyncRunner fullSync,
+    CellLinkStatus status,
     [FromKeyedServices(LinkLease.DataSourceKey)] NpgsqlDataSource leaseDataSource,
     IHttpClientFactory httpClientFactory,
     IOptions<ControlPlaneConnectorOptions> options,
@@ -56,6 +58,12 @@ internal sealed partial class CellLinkWorker(
 
     /// <summary>Upstream messages sent and not yet answered, per stream.</summary>
     internal const int MaxInFlight = 100;
+
+    internal const string LinkRejectedReason =
+        "The control plane refused the cell's link (permission denied): the cell is registered locally but not on the control plane, or its token is not a cell token.";
+
+    internal const string CredentialsRejectedReason =
+        "Keycloak refused the cell's credentials: the cell is registered locally but Keycloak does not hold its client or key.";
 
     private const int MaxMessageBytes = 4 * 1024 * 1024;
     private static readonly TimeSpan s_registrationPoll = TimeSpan.FromSeconds(5);
@@ -98,9 +106,21 @@ internal sealed partial class CellLinkWorker(
             {
                 return;
             }
+            catch (RpcException exception) when (exception.StatusCode == StatusCode.PermissionDenied)
+            {
+                // The control plane does not accept this cell (for example "not registered" although the local marker
+                // says so). Retrying cannot fix it, and re-registering is not allowed: report it and keep backing off.
+                status.Reject(LinkRejectedReason);
+                LogLinkRejected(logger, options.Value.CellId, exception.StatusCode);
+            }
             catch (RpcException exception)
             {
                 LogStreamEnded(logger, exception.StatusCode);
+            }
+            catch (CellCredentialsRejectedException exception)
+            {
+                status.Reject(CredentialsRejectedReason);
+                LogCredentialsRejected(logger, options.Value.CellId, exception.Status);
             }
             catch (Exception exception)
             {
@@ -195,6 +215,7 @@ internal sealed partial class CellLinkWorker(
             await writer.WriteAsync(new ConnectRequest { Hello = new Hello { CellId = settings.CellId, Version = s_version } }, stream.Token);
             var fullSyncInterval = await ReadWelcomeAsync(call.ResponseStream, stream.Token);
             _connected = true;
+            status.Clear();
             welcomedAt = timeProvider.GetUtcNow();
             Interlocked.Increment(ref _connections);
             LogConnected(logger, settings.CellId);
@@ -426,6 +447,12 @@ internal sealed partial class CellLinkWorker(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The link to the control plane ended with {Status}; reconnecting.")]
     private static partial void LogStreamEnded(ILogger logger, StatusCode status);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Security: the control plane refused the link of cell {CellId} with {Status}; the local registration does not match the control plane. Retrying with backoff; the cell does not re-register on its own.")]
+    private static partial void LogLinkRejected(ILogger logger, string cellId, StatusCode status);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Security: Keycloak refused the credentials of cell {CellId} with status {Status}; the local registration does not match Keycloak. Retrying with backoff; the cell does not re-register on its own.")]
+    private static partial void LogCredentialsRejected(ILogger logger, string cellId, int status);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The link to the control plane failed; reconnecting.")]
     private static partial void LogLinkFailed(ILogger logger, Exception exception);

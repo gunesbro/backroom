@@ -3,8 +3,12 @@
   <!-- Technical module (no Domain or Presentation): the cell's link to the control plane. -->
 
   <ItemGroup>
+    <!-- The link's health check (IHealthCheck, AddHealthChecks); the worker host is an ASP.NET Core app. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Grpc.Net.Client" />
-    <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
   </ItemGroup>
 
