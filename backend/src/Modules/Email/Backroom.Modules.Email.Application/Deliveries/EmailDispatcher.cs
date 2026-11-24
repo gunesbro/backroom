@@ -32,7 +32,7 @@ internal sealed partial class EmailDispatcher(
 
     /// <summary>
     /// Sends at most once per template name and <paramref name="reference"/>: <see langword="null"/>, and nothing is
-    /// sent, if a delivery for it is already pending (its outcome is unknown, so it is never resent blindly) or sent.
+    /// sent, if a delivery for it is already pending or unknown (its outcome is unknown, so it is never resent blindly) or sent.
     /// After a failed delivery a later call sends again.
     /// </summary>
     public Task<EmailDeliveryOutcome?> SendOnceAsync(
@@ -118,6 +118,6 @@ internal sealed partial class EmailDispatcher(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Email {DeliveryId} for organization {OrganizationId} failed ({Template} v{TemplateVersion}): {Failure}.")]
     private static partial void LogFailed(ILogger logger, Guid deliveryId, Guid organizationId, string template, int templateVersion, EmailSendFailure failure);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Email for organization {OrganizationId} not sent ({Template} v{TemplateVersion}): a delivery for the same reference is already pending or sent.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Email for organization {OrganizationId} not sent ({Template} v{TemplateVersion}): a delivery for the same reference is already pending, unknown or sent.")]
     private static partial void LogDuplicate(ILogger logger, Guid organizationId, string template, int templateVersion);
 }

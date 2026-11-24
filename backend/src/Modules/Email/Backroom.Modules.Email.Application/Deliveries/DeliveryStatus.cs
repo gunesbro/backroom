@@ -10,4 +10,10 @@ internal static class DeliveryStatus
     public const string Sent = "sent";
 
     public const string Failed = "failed";
+
+    /// <summary>
+    /// A <c>pending</c> row the stale-pending job closed: the outcome was never recorded, so the message may have
+    /// arrived. Like <c>pending</c> and <c>sent</c> it blocks a new delivery for the same reference; only <c>failed</c> does not.
+    /// </summary>
+    public const string Unknown = "unknown";
 }

@@ -9,7 +9,7 @@ internal interface IDeliveryLog
 {
     /// <summary>
     /// Records a pending delivery; <see langword="false"/> (nothing recorded) if <paramref name="reference"/> is given
-    /// and a delivery of the same template name for it is already pending or sent. A failed one does not count.
+    /// and a delivery of the same template name for it is already pending, unknown or sent. A failed one does not count.
     /// </summary>
     Task<bool> AddPendingAsync(
         Guid deliveryId,
@@ -20,6 +20,6 @@ internal interface IDeliveryLog
         DateTimeOffset now,
         CancellationToken cancellationToken);
 
-    /// <summary>Moves a pending delivery to <see cref="DeliveryStatus.Sent"/> or <see cref="DeliveryStatus.Failed"/>.</summary>
+    /// <summary>Moves a pending (or stale, closed as unknown) delivery to <see cref="DeliveryStatus.Sent"/> or <see cref="DeliveryStatus.Failed"/>.</summary>
     Task CompleteAsync(Guid deliveryId, string status, string? providerMessageId, DateTimeOffset now, CancellationToken cancellationToken);
 }

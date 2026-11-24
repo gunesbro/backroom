@@ -2,12 +2,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Backroom.BuildingBlocks.Infrastructure.Maintenance;
 using Backroom.BuildingBlocks.Infrastructure.Messaging;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.Email.Application.Deliveries;
 using Backroom.Modules.Email.Application.Invitations;
 using Backroom.Modules.Email.Application.Sending;
 using Backroom.Modules.Email.Infrastructure.Deliveries;
+using Backroom.Modules.Email.Infrastructure.Maintenance;
 using Backroom.Modules.Email.Infrastructure.Sending;
 using Backroom.Modules.Organization.Contracts;
 
@@ -38,6 +40,10 @@ public static class EmailModule
         services.TryAddScoped<IDeliveryLog, DeliveryLog>();
         services.TryAddSingleton<EmailDispatcher>();
         services.AddHostedService<EmailStartupReport>();
+
+        // Cross-organization jobs as the maintenance role (docs/adr/0010); run by the host's AddMaintenanceJobRunner.
+        services.AddMaintenanceJob<StaleDeliveryJob>();
+        services.AddMaintenanceJob<DeliveryRetentionJob>();
 
         // The invitation email; needs Organization's IInvitationLinks with the web origin (AddOrganizationInvitationLinks).
         services.AddIntegrationEventHandler<InvitationReady, InvitationReadyConsumer>(EmailDbContext.Schema);

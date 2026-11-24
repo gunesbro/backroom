@@ -8,7 +8,7 @@ namespace Backroom.Modules.Email.Infrastructure.Deliveries;
 /// <summary>The delivery log with hand-written SQL in the caller's unit of work (row-level security applies).</summary>
 internal sealed class DeliveryLog(DatabaseSession session) : IDeliveryLog
 {
-    // The conflict target is the partial unique index deliveries_reference_once_idx: a pending or sent delivery of the
+    // The conflict target is the partial unique index deliveries_reference_once_idx: a pending, unknown or sent delivery of the
     // same template name for the same reference wins, and nothing is recorded (a concurrent insert waits for it).
     private const string AddSql = """
         INSERT INTO email.deliveries
@@ -20,7 +20,7 @@ internal sealed class DeliveryLog(DatabaseSession session) : IDeliveryLog
 
     private const string CompleteSql = """
         UPDATE email.deliveries SET status = $2, provider_message_id = $3, updated_at = $4
-        WHERE id = $1 AND status = 'pending'
+        WHERE id = $1 AND status IN ('pending', 'unknown')
         """;
 
     public async Task<bool> AddPendingAsync(
