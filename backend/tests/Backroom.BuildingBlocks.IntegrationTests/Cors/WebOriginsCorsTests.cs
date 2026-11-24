@@ -28,7 +28,8 @@ public sealed class WebOriginsCorsTests
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         response.Headers.GetValues("Access-Control-Allow-Origin").Should().ContainSingle().Which.Should().Be(Allowed);
-        response.Headers.GetValues("Access-Control-Allow-Methods").Single().Should().Contain("GET").And.Contain("DELETE");
+        response.Headers.GetValues("Access-Control-Allow-Methods").Single().Should().Contain("GET").And.Contain("DELETE").And.NotContain("PUT").And.NotContain("PATCH");
+        response.Headers.GetValues("Vary").Should().Contain("Origin");
         response.Headers.GetValues("Access-Control-Allow-Headers").Single().Should().ContainEquivalentOf("authorization");
         response.Headers.GetValues("Access-Control-Max-Age").Should().ContainSingle().Which.Should().Be("600");
         response.Headers.Contains("Access-Control-Allow-Credentials").Should().BeFalse();
@@ -41,6 +42,8 @@ public sealed class WebOriginsCorsTests
 
         using var response = await SendAsync(app, HttpMethod.Options, "/me", "https://evil.example.test", preflightMethod: "GET", preflightHeaders: "authorization");
 
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.Headers.GetValues("Vary").Should().Contain("Origin");
         response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
         response.Headers.Contains("Access-Control-Allow-Methods").Should().BeFalse();
     }
@@ -74,7 +77,8 @@ public sealed class WebOriginsCorsTests
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         response.Headers.GetValues("Access-Control-Allow-Origin").Should().ContainSingle().Which.Should().Be(Allowed);
-        response.Headers.GetValues("Access-Control-Expose-Headers").Single().Should().Contain("Retry-After");
+        response.Headers.GetValues("Access-Control-Expose-Headers").Single().Should().Be("Retry-After");
+        response.Headers.GetValues("Vary").Should().Contain("Origin");
         response.Headers.Contains("Access-Control-Allow-Credentials").Should().BeFalse();
     }
 
@@ -88,6 +92,26 @@ public sealed class WebOriginsCorsTests
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    [Fact]
+    public async Task Request_WithNullOrigin_GetsNoCorsHeadersAsync()
+    {
+        await using var app = await StartAsync(Allowed);
+
+        using var response = await SendAsync(app, HttpMethod.Get, "/open", "null");
+
+        response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Request_FromTheDesktopReleaseOrigin_IsAllowedInProductionAsync()
+    {
+        await using var app = await StartInAsync(Environments.Production, "http://tauri.localhost", "https://app.example.test");
+
+        using var response = await SendAsync(app, HttpMethod.Get, "/open", "http://tauri.localhost");
+
+        response.Headers.GetValues("Access-Control-Allow-Origin").Should().ContainSingle().Which.Should().Be("http://tauri.localhost");
+    }
+
     [Theory]
     [InlineData("*")]
     [InlineData("https://*.example.test")]
@@ -97,9 +121,17 @@ public sealed class WebOriginsCorsTests
     [InlineData("http://app.example.test")]
     [InlineData("ftp://app.example.test")]
     [InlineData("app.example.test")]
-    public async Task Startup_WithInvalidOrigin_FailsAsync(string origin)
+    [InlineData("https://x:443")]
+    [InlineData("HTTPS://App.Example.test")]
+    [InlineData("https://App.example.test")]
+    [InlineData("https://bücher.example")]
+    [InlineData("null")]
+    [InlineData("http://foo.localhost")]
+    [InlineData("http://localhost:5173", "Production")]
+    [InlineData("http://127.0.0.1:5173", "Production")]
+    public async Task Startup_WithInvalidOrigin_FailsAsync(string origin, string environment = "Development")
     {
-        var start = async () => await StartAsync(origin);
+        var start = async () => await StartInAsync(environment, origin);
 
         await start.Should().ThrowAsync<OptionsValidationException>();
     }
@@ -110,6 +142,7 @@ public sealed class WebOriginsCorsTests
     [InlineData("http://localhost:5173")]
     [InlineData("http://127.0.0.1:5173")]
     [InlineData("http://tauri.localhost")]
+    [InlineData("https://xn--bcher-kva.example")]
     [InlineData("tauri://localhost")]
     public async Task Startup_WithExactOrigin_SucceedsAsync(string origin)
     {
@@ -118,9 +151,11 @@ public sealed class WebOriginsCorsTests
         app.Should().NotBeNull();
     }
 
-    private static async Task<WebApplication> StartAsync(params string[] origins)
+    private static Task<WebApplication> StartAsync(params string[] origins) => StartInAsync(Environments.Development, origins);
+
+    private static async Task<WebApplication> StartInAsync(string environment, params string[] origins)
     {
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = Environments.Production });
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = environment });
         builder.WebHost.UseTestServer();
         builder.Configuration[$"{AccessTokenOptions.SectionName}:Authority"] = "https://id.example.test/realms/backroom";
         for (var i = 0; i < origins.Length; i++)

@@ -25,6 +25,21 @@ public sealed class CorsConfigurationTests
     }
 
     [Theory]
+    [InlineData("Backroom.Cell.Host")]
+    [InlineData("Backroom.ControlPlane.Host")]
+    public void Host_WhenBuildingThePipeline_AnswersCorsBeforeAuthentication(string host)
+    {
+        // A preflight carries no token; if authentication ran first it would be answered 401.
+        var program = File.ReadAllText(Path.Combine(RepositoryPaths.SourceDirectory, "Hosts", host, "Program.cs"));
+
+        var cors = program.IndexOf("app.UseWebOriginsCors()", StringComparison.Ordinal);
+        var authentication = program.IndexOf("app.UseAuthentication()", StringComparison.Ordinal);
+
+        cors.Should().BeGreaterThan(0);
+        authentication.Should().BeGreaterThan(cors);
+    }
+
+    [Theory]
     [InlineData("""{ "Cors": { "AllowedOrigins": [ "*" ] } }""", true)]
     [InlineData("""{ "Cors": { "AllowedOrigins": [ "https://*.example.test" ] } }""", true)]
     [InlineData("""{ "Cors": { "AllowedOrigins": [ "https://app.example.test" ] } }""", false)]
