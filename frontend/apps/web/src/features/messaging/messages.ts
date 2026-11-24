@@ -73,6 +73,7 @@ type Key =
   | 'addMenu'
   | 'toggleFormatting'
   | 'emoji'
+  | 'messageTools'
   | 'mention'
   | 'attachFile'
   | 'composerPlaceholder'
@@ -158,6 +159,7 @@ export const messages: Messages<Key> = {
     addMenu: 'Add',
     toggleFormatting: 'Show or hide formatting',
     emoji: 'Emoji',
+    messageTools: 'Message tools',
     mention: 'Mention someone',
     attachFile: 'Attach file',
     composerPlaceholder: 'Message #{name}',
@@ -242,6 +244,7 @@ export const messages: Messages<Key> = {
     addMenu: 'Ekle',
     toggleFormatting: 'Biçimlendirmeyi göster/gizle',
     emoji: 'Emoji',
+    messageTools: 'Mesaj araçları',
     mention: 'Kişi an',
     attachFile: 'Dosya ekle',
     composerPlaceholder: '#{name} kanalına mesaj yaz…',

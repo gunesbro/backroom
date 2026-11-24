@@ -740,6 +740,46 @@ describe('Shell', () => {
     expect(buttons[0]?.tabIndex).toBe(-1);
   });
 
+  it('SoonButton_OnHover_ShowsItsTooltip', async () => {
+    serveCell();
+    renderWorkspace();
+    const toolbar = await screen.findByRole('toolbar', { name: 'Formatting' });
+    const bold = within(toolbar).getByRole('button', { name: 'Bold' });
+    const tooltip = document
+      .getElementById(bold.getAttribute('aria-describedby') ?? '')
+      ?.closest('[role="tooltip"]');
+
+    expect(tooltip).toHaveAttribute('hidden');
+    fireEvent.mouseEnter(bold);
+    expect(tooltip).not.toHaveAttribute('hidden');
+    expect(tooltip).toHaveTextContent('Bold · Coming soon');
+    fireEvent.mouseLeave(bold);
+    expect(tooltip).toHaveAttribute('hidden');
+  });
+
+  it('Composer_PassiveTools_ShareOneTabStop', async () => {
+    serveCell();
+    renderWorkspace();
+    const tools = await screen.findByRole('toolbar', { name: 'Message tools' });
+
+    expect(
+      within(tools)
+        .getAllByRole('button')
+        .map((button) => button.tabIndex),
+    ).toEqual([0, -1, -1, -1, -1]);
+  });
+
+  it('Dialog_ShiftTabFromTheDialogItself_WrapsToTheLastControl', async () => {
+    serveCell();
+    renderWorkspace();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add channel' }));
+    const dialog = screen.getByRole('dialog');
+    dialog.focus();
+
+    expect(fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true })).toBe(false);
+    expect(screen.getByRole('button', { name: 'Create' })).toHaveFocus();
+  });
+
   it('Shell_InTurkish_UsesTheDesignTexts', async () => {
     serveCell();
     renderWorkspace('tr');

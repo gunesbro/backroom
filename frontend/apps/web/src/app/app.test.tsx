@@ -113,7 +113,9 @@ describe('App workspace shell', () => {
   it('AccountMenu_SignOut_SignsOut', async () => {
     const { authClient } = renderShell();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Alice Example: status and profile menu' }));
+    const button = await screen.findByRole('button', { name: 'Status and profile menu' });
+    expect(button).toHaveAccessibleDescription('Alice Example');
+    fireEvent.click(button);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
 
     expect(authClient.signOut).toHaveBeenCalledOnce();
@@ -122,7 +124,7 @@ describe('App workspace shell', () => {
   it('AccountMenu_LaterPhaseItem_IsDisabledAndDoesNothing', async () => {
     const { authClient } = renderShell();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Alice Example: status and profile menu' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Status and profile menu' }));
     const profile = screen.getByRole('menuitem', { name: 'Profile and account settings' });
     fireEvent.click(profile);
 
@@ -135,18 +137,22 @@ describe('App workspace shell', () => {
   it('OrganizationMenu_ChoosingAnother_OpensIt', async () => {
     renderShell();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Acme: switch organization' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch organization' }));
     expect(screen.getByRole('menuitemradio', { name: 'Acme' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'Globex' }));
 
-    expect(await screen.findByRole('button', { name: 'Globex: switch organization' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Switch organization' })).toHaveAccessibleDescription(
+        'Globex',
+      );
+    });
     expect(localStorage.getItem('ph.organizations.last')).toBe('2');
   });
 
   it('OrganizationMenu_Invite_OpensTheInviteDialog', async () => {
     renderShell();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Acme: switch organization' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch organization' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Invite people to Acme' }));
 
     expect(await screen.findByRole('dialog', { name: 'Invite people to Acme' })).toBeInTheDocument();
@@ -155,7 +161,7 @@ describe('App workspace shell', () => {
   it('OrganizationMenu_Create_OpensTheSetUpScreen', async () => {
     renderShell();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Acme: switch organization' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch organization' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Create organization' }));
 
     expect(await screen.findByRole('heading', { name: 'Welcome, Alice' })).toBeInTheDocument();
@@ -163,7 +169,7 @@ describe('App workspace shell', () => {
 
   it('OrganizationMenu_Keyboard_OpensMovesAndClosesWithEscape', async () => {
     renderShell();
-    const button = await screen.findByRole('button', { name: 'Acme: switch organization' });
+    const button = await screen.findByRole('button', { name: 'Switch organization' });
 
     fireEvent.keyDown(button, { key: 'ArrowDown' });
     const menu = screen.getByRole('menu');
@@ -200,7 +206,7 @@ describe('App workspace shell', () => {
 
   it('Shell_WithTheAccountMenuOpen_HasNoAxeViolations', async () => {
     renderShell();
-    fireEvent.click(await screen.findByRole('button', { name: 'Alice Example: status and profile menu' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Status and profile menu' }));
 
     const results = await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } });
 
@@ -214,7 +220,7 @@ describe('App workspace shell', () => {
 
   it('Shell_WithTheOrganizationMenuOpen_HasNoAxeViolations', async () => {
     renderShell();
-    fireEvent.click(await screen.findByRole('button', { name: 'Acme: switch organization' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch organization' }));
 
     const results = await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } });
 
@@ -251,7 +257,7 @@ describe('App', () => {
       />,
     );
     // The invite entry is in the organization menu, which returns focus to its button when an item is chosen.
-    const opener = await screen.findByRole('button', { name: 'Acme: switch organization' });
+    const opener = await screen.findByRole('button', { name: 'Switch organization' });
     opener.focus();
     fireEvent.click(opener);
 

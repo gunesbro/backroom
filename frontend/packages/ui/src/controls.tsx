@@ -6,10 +6,12 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './icons';
 
 function classes(...names: (string | false | undefined)[]): string {
@@ -18,10 +20,26 @@ function classes(...names: (string | false | undefined)[]): string {
 
 export type TipPlacement = 'top' | 'bottom' | 'bottom-end' | 'top-start';
 
+/** Where a tooltip goes for its control's box, in viewport coordinates (it is drawn with position: fixed). */
+function tipPosition(rect: DOMRect, placement: TipPlacement): CSSProperties {
+  const gap = 6;
+  switch (placement) {
+    case 'top':
+      return { left: rect.left + rect.width / 2, top: rect.top - gap, transform: 'translate(-50%, -100%)' };
+    case 'top-start':
+      return { left: rect.left, top: rect.top - gap, transform: 'translateY(-100%)' };
+    case 'bottom':
+      return { left: rect.left + rect.width / 2, top: rect.bottom + gap, transform: 'translateX(-50%)' };
+    case 'bottom-end':
+      return { left: rect.right, top: rect.bottom + gap, transform: 'translateX(-100%)' };
+  }
+}
+
 /**
  * A control the design shows for a later phase: visible and focusable, so people can find it, but marked disabled
- * (aria-disabled) and inert. A tooltip on hover and focus says it is coming; screen readers get that as its
- * description. It never runs an action.
+ * (aria-disabled) and inert. A tooltip (role="tooltip") on hover and keyboard focus says it is coming; screen readers
+ * get that as its description. The tooltip is rendered into the page body, so a scrolling sidebar or list never
+ * cuts it off. It never runs an action.
  */
 export function SoonButton({
   label,
@@ -46,6 +64,13 @@ export function SoonButton({
   tabbable?: boolean;
 }) {
   const tipId = useId();
+  const [position, setPosition] = useState<CSSProperties | undefined>();
+  const show = (target: HTMLElement) => {
+    setPosition(tipPosition(target.getBoundingClientRect(), placement));
+  };
+  const hide = () => {
+    setPosition(undefined);
+  };
   const inert = (event: MouseEvent) => {
     event.preventDefault();
   };
@@ -59,13 +84,30 @@ export function SoonButton({
         aria-describedby={tipId}
         tabIndex={tabbable ? undefined : -1}
         onClick={inert}
+        onMouseEnter={(event) => {
+          show(event.currentTarget);
+        }}
+        onMouseLeave={hide}
+        onFocus={(event) => {
+          if (event.currentTarget.matches(':focus-visible')) show(event.currentTarget);
+        }}
+        onBlur={hide}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && position) {
+            event.stopPropagation();
+            hide();
+          }
+        }}
       >
         {children}
       </button>
-      <span className={`ph-tooltip ph-tooltip--${placement}`}>
-        <span aria-hidden="true">{label} · </span>
-        <span id={tipId}>{soon}</span>
-      </span>
+      {createPortal(
+        <span className="ph-tooltip" role="tooltip" style={position} hidden={!position}>
+          <span aria-hidden="true">{label} · </span>
+          <span id={tipId}>{soon}</span>
+        </span>,
+        document.body,
+      )}
     </span>
   );
 }
@@ -154,6 +196,7 @@ export type MenuEntry =
  */
 export function MenuButton({
   label,
+  description,
   button,
   buttonClassName,
   menuClassName,
@@ -161,8 +204,10 @@ export function MenuButton({
   entries,
   placement = 'below',
 }: {
-  /** The button's accessible name; it must contain the button's visible text. */
+  /** The button's accessible name, e.g. "Switch organization". */
   label: string;
+  /** Read after the name, e.g. the current organization the button shows. */
+  description?: string | undefined;
   button: ReactNode;
   buttonClassName?: string | undefined;
   menuClassName?: string | undefined;
@@ -172,6 +217,7 @@ export function MenuButton({
   placement?: 'below' | 'above';
 }) {
   const menuId = useId();
+  const descriptionId = useId();
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -293,6 +339,7 @@ export function MenuButton({
         type="button"
         className={buttonClassName}
         aria-label={label}
+        aria-describedby={description ? descriptionId : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -308,6 +355,11 @@ export function MenuButton({
       >
         {button}
       </button>
+      {description && (
+        <span id={descriptionId} hidden>
+          {description}
+        </span>
+      )}
       {open && (
         <div className={classes('ph-menu', `ph-menu--${placement}`, menuClassName)}>
           {header}
@@ -368,7 +420,9 @@ export function Dialog({
     const items = dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
     const first = items?.[0];
     const last = items?.[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
+    // The dialog itself has focus when nothing inside was chosen to start with; Shift+Tab must not leave it.
+    const atStart = document.activeElement === first || document.activeElement === dialogRef.current;
+    if (event.shiftKey && atStart) {
       event.preventDefault();
       last?.focus();
     } else if (!event.shiftKey && document.activeElement === last) {

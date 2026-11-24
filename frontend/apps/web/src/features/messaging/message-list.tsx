@@ -11,6 +11,9 @@ export type Row =
   | { key: string; message: Message; pending?: undefined }
   | { key: string; message?: undefined; pending: PendingMessage };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Message times whose day is remembered; the list keeps a few hundred messages at most. */
+const MAX_CACHED_DAYS = 2000;
 /** Rows are about this tall until measured. */
 const ESTIMATED_ROW_HEIGHT = 64;
 /** Closer than this to the bottom, the list keeps following new messages. */
@@ -104,7 +107,28 @@ export function MessageList({
   }, [rows, total, virtualizer, anchorAt]);
 
   const items = virtualizer.getVirtualItems();
+  // Day keys and texts are formatted once per message time and language, not on every scroll; today and yesterday
+  // once per render, so the labels move on at midnight.
+  const days = useRef<{ locale: Locale; byTime: Map<string, { key: string; text: string }> }>({
+    locale,
+    byTime: new Map(),
+  });
+  if (days.current.locale !== locale) days.current = { locale, byTime: new Map() };
   const now = new Date();
+  const today = formatMessageDay(now, locale, now).key;
+  const yesterday = formatMessageDay(new Date(now.getTime() - DAY_MS), locale, now).key;
+  const dayOf = (createdAt: string) => {
+    const cache = days.current.byTime;
+    let day = cache.get(createdAt);
+    if (!day) {
+      if (cache.size >= MAX_CACHED_DAYS) cache.clear();
+      const { key, text } = formatMessageDay(new Date(createdAt), locale, now);
+      day = { key, text };
+      cache.set(createdAt, day);
+    }
+
+    return day;
+  };
   const firstIndex = items[0]?.index;
   const lastIndex = items.at(-1)?.index;
   useEffect(() => {
@@ -153,10 +177,10 @@ export function MessageList({
           const row = rows[item.index];
           if (!row) return null;
           // A day divider above the first message of each day (docs/design: Main, "Bugün").
-          const day = formatMessageDay(new Date(createdAtOf(row)), locale, now);
+          const day = dayOf(createdAtOf(row));
           const previous = rows[item.index - 1];
-          const newDay =
-            !previous || formatMessageDay(new Date(createdAtOf(previous)), locale, now).key !== day.key;
+          const newDay = !previous || dayOf(createdAtOf(previous)).key !== day.key;
+          const dayLabel = day.key === today ? t('today') : day.key === yesterday ? t('yesterday') : day.text;
           return (
             <li
               key={item.key}
@@ -167,7 +191,7 @@ export function MessageList({
             >
               {newDay && (
                 <p className="bm-day">
-                  <span>{day.relative ? t(day.relative) : day.text}</span>
+                  <span>{dayLabel}</span>
                 </p>
               )}
               <MessageRow

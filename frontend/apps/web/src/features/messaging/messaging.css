@@ -500,6 +500,7 @@
 
 .bm-composer:focus-within {
   border-color: var(--ph-focus-border);
+  outline: 1px solid var(--ph-focus-border);
   box-shadow: var(--ph-focus);
 }
 
@@ -664,6 +665,17 @@
   outline-offset: -2px;
 }
 
+/* On the accent fill an accent ring would vanish: the selected channel takes a ring in its text color inside, the
+   send button one outside on the panel. */
+.bm-item[aria-current='true']:focus-visible {
+  outline-color: var(--ph-on-accent);
+  outline-offset: -4px;
+}
+
+.bm-composer__bar .bm-send:focus-visible {
+  outline-offset: 2px;
+}
+
 .bm-sr-only {
   position: absolute;
   width: 1px;
@@ -707,4 +719,10 @@
   .bm-composer {
     margin: 0 var(--ph-space-8) var(--ph-space-8);
   }
+}
+
+.bm-composer__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-2);
 }

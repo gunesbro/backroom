@@ -79,7 +79,8 @@ export function OrganizationSwitcher({
 
   return (
     <MenuButton
-      label={t('switchOrganization', { name: current.name })}
+      label={t('switchOrganization')}
+      description={current.name}
       buttonClassName="bo-switcher"
       menuClassName="bo-switcher__menu"
       entries={entries}
@@ -119,7 +120,8 @@ export function AccountBar() {
   return (
     <section className="bo-account" aria-label={t('account')}>
       <MenuButton
-        label={t('accountMenu', { name: user.name })}
+        label={t('accountMenu')}
+        description={user.name}
         buttonClassName="bo-account__button"
         menuClassName="bo-account__menu"
         placement="above"

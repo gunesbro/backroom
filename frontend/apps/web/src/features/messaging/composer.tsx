@@ -130,16 +130,18 @@ export function Composer({
         onKeyDown={keyDown}
       />
       <div className="bm-composer__bar">
-        {passive('addMenu', <Icon name="plus" />, 'bm-composer__plus')}
-        {passive(
-          'toggleFormatting',
-          <span className="bm-composer__aa" aria-hidden="true">
-            Aa
-          </span>,
-        )}
-        {passive('emoji', <Icon name="smile" />)}
-        {passive('mention', <Icon name="mention" />)}
-        {passive('attachFile', <Icon name="attach" />)}
+        <Toolbar label={t('messageTools')} className="bm-composer__tools">
+          {passive('addMenu', <Icon name="plus" />, 'bm-composer__plus')}
+          {passive(
+            'toggleFormatting',
+            <span className="bm-composer__aa" aria-hidden="true">
+              Aa
+            </span>,
+          )}
+          {passive('emoji', <Icon name="smile" />)}
+          {passive('mention', <Icon name="mention" />)}
+          {passive('attachFile', <Icon name="attach" />)}
+        </Toolbar>
         <div className="bm-composer__meta">
           {showCounter ? (
             <p

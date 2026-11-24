@@ -46,7 +46,8 @@
   --ph-row-hover: #f5f7fb;
   --ph-tooltip: #1f2430;
   --ph-on-tooltip: #fff;
-  --ph-focus-border: #8fa2e8;
+  /* Focus rings and focused borders: at least 3:1 (WCAG 1.4.11) on the panel, page and sidebar in both themes. */
+  --ph-focus-border: #3b5bdb;
   --ph-focus: 0 0 0 3px var(--ph-accent-soft);
   --ph-backdrop: rgb(10 12 18 / 45%);
   --ph-shadow-bar: 0 4px 12px rgb(20 24 33 / 10%);
@@ -639,15 +640,16 @@ body {
 }
 
 .ph-tooltip {
-  position: absolute;
-  z-index: 30;
-  display: none;
+  position: fixed;
+  z-index: 60;
+  display: block;
   width: max-content;
   max-width: 240px;
   padding: var(--ph-space-4) var(--ph-space-8);
   border-radius: var(--ph-radius-sm);
   background: var(--ph-tooltip);
   color: var(--ph-on-tooltip);
+  font-family: var(--ph-font);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.4;
@@ -655,31 +657,8 @@ body {
   pointer-events: none;
 }
 
-.ph-soon:hover > .ph-tooltip,
-.ph-soon:has(> button:focus-visible) > .ph-tooltip {
-  display: block;
-}
-
-.ph-tooltip--top {
-  bottom: calc(100% + var(--ph-space-6));
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.ph-tooltip--top-start {
-  bottom: calc(100% + var(--ph-space-6));
-  left: 0;
-}
-
-.ph-tooltip--bottom {
-  top: calc(100% + var(--ph-space-6));
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.ph-tooltip--bottom-end {
-  top: calc(100% + var(--ph-space-6));
-  right: 0;
+.ph-tooltip[hidden] {
+  display: none;
 }
 
 /* Menus (docs/design: OrgNotif, the organization menu; Thread, the status menu). */
