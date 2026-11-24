@@ -30,6 +30,14 @@ public sealed class EndToEndEnvironment : IAsyncLifetime
 
     private static readonly string[] s_hosts = ["control-plane", "cell-a-app", "cell-a-worker", "cell-b-app", "cell-b-worker"];
 
+    private static readonly (string Resource, string Name)[] s_developmentPorts =
+    [
+        ("control-plane", "http"), ("control-plane", "https"), ("keycloak", "http"), ("mailpit", "http"), ("mailpit", "smtp"),
+        ("cell-a-app", "http"), ("cell-a-worker", "http"), ("cell-b-app", "http"), ("cell-b-worker", "http"),
+    ];
+
+    private static readonly HashSet<int> s_developmentPortNumbers = [5100, 7100, 8443, 8025, 1025, 5200, 5201, 5202, 5203];
+
     private readonly SemaphoreSlim _organizationsLock = new(1, 1);
     private DistributedApplication? _app;
     private DirectoryInfo? _keyDirectoryRoot;
@@ -90,6 +98,7 @@ public sealed class EndToEndEnvironment : IAsyncLifetime
         ControlPlaneUrl = _app.GetEndpoint("control-plane", "http");
         OpenIdConnectUrl = new Uri(_app.GetEndpoint("keycloak", "http"), "/realms/backroom/protocol/openid-connect/");
         MailpitUrl = _app.GetEndpoint("mailpit", "http");
+        RequireNoDevelopmentPorts();
         var password = _app.Services.GetRequiredService<DistributedApplicationModel>().Resources
             .OfType<ParameterResource>()
             .Single(parameter => parameter.Name == "dev-user-password");
@@ -151,12 +160,17 @@ public sealed class EndToEndEnvironment : IAsyncLifetime
         _owner?.Dispose();
         _organizationsLock.Dispose();
         _http?.Dispose();
-        if (_app is not null)
+        try
         {
-            await _app.DisposeAsync();
+            if (_app is not null)
+            {
+                await _app.DisposeAsync();
+            }
         }
-
-        _keyDirectoryRoot?.Delete(recursive: true);
+        finally
+        {
+            _keyDirectoryRoot?.Delete(recursive: true);
+        }
     }
 
     // The control plane places organizations only on cells with a recent link heartbeat (flow 2, step 2), and a cell's
@@ -200,6 +214,22 @@ public sealed class EndToEndEnvironment : IAsyncLifetime
         }
 
         return new TestOrganization(id, created.Json["cellId"]!.GetValue<string>(), new Uri(created.Json["cellUrl"]!.GetValue<string>()));
+    }
+
+    // The isolation guard: a run that got a development port (AppHost launch profiles and DevelopmentServices) would
+    // collide with, or talk to, a developer's running AppHost.
+    private void RequireNoDevelopmentPorts()
+    {
+        var app = _app ?? throw NotStarted();
+        var used = s_developmentPorts
+            .Select(endpoint => (endpoint.Resource, endpoint.Name, app.GetEndpoint(endpoint.Resource, endpoint.Name).Port))
+            .Where(endpoint => s_developmentPortNumbers.Contains(endpoint.Port))
+            .ToList();
+        if (used.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "The isolated run got development ports: " + string.Join(", ", used.Select(endpoint => $"{endpoint.Resource}/{endpoint.Name}:{endpoint.Port}")));
+        }
     }
 
     private static InvalidOperationException NotStarted() =>

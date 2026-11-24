@@ -3,6 +3,7 @@ using Backroom.AppHost;
 var builder = DistributedApplication.CreateBuilder(args);
 
 var run = DevelopmentRun.FromConfiguration(builder.Configuration);
+run.WarnIfIsolated(builder);
 var cells = DevelopmentCells.Selected(builder.Configuration);
 var services = builder.AddDevelopmentServices(run);
 var keycloak = services.Keycloak;

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Backroom.AppHost;
 
@@ -20,12 +22,15 @@ internal sealed record DevelopmentRun(bool Isolated, string? KeyDirectoryRoot)
     public static DevelopmentRun FromConfiguration(IConfiguration configuration)
     {
         var isolated = configuration.GetValue(IsolatedKey, defaultValue: false);
+        var root = configuration[KeyDirectoryRootKey];
         if (!isolated)
         {
-            return new DevelopmentRun(Isolated: false, KeyDirectoryRoot: null);
+            // A key root alone would move a developer's cell keys away from their registration; it belongs to isolated runs only.
+            return string.IsNullOrEmpty(root)
+                ? new DevelopmentRun(Isolated: false, KeyDirectoryRoot: null)
+                : throw new InvalidOperationException($"{KeyDirectoryRootKey} is used only together with {IsolatedKey}=true.");
         }
 
-        var root = configuration[KeyDirectoryRootKey];
         if (string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root))
         {
             throw new InvalidOperationException($"An isolated run needs {KeyDirectoryRootKey}, an absolute directory path.");
@@ -33,4 +38,26 @@ internal sealed record DevelopmentRun(bool Isolated, string? KeyDirectoryRoot)
 
         return new DevelopmentRun(Isolated: true, KeyDirectoryRoot: root);
     }
+
+    /// <summary>Warns at start when the run is isolated, so nobody mistakes it for the development environment.</summary>
+    public void WarnIfIsolated(IDistributedApplicationBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        if (!Isolated)
+        {
+            return;
+        }
+
+        builder.Eventing.Subscribe<BeforeStartEvent>((@event, _) =>
+        {
+            s_logIsolatedRun(@event.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Backroom.AppHost"), null);
+            return Task.CompletedTask;
+        });
+    }
+
+    // Not the source generator: it does not run in the AppHost project.
+    private static readonly Action<ILogger, Exception?> s_logIsolatedRun = LoggerMessage.Define(
+        LogLevel.Warning,
+        new EventId(1, "IsolatedRun"),
+        "Isolated run: no data volumes, no LiveKit or object storage, cell keys under a temporary root. Not the development environment.");
 }

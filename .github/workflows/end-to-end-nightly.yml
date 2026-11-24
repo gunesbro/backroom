@@ -53,12 +53,26 @@ jobs:
       - name: Build
         run: dotnet build backend/tests/Backroom.EndToEndTests --no-restore --configuration Release
 
-      # The worker reaches the control plane over HTTPS (gRPC) with the development certificate. On Linux, trusting it
-      # means pointing OpenSSL at the folder dotnet dev-certs writes it to.
+      # The worker reaches the control plane over HTTPS (gRPC) with the development certificate. On Linux, .NET trusts it
+      # through OpenSSL's SSL_CERT_DIR, which dotnet dev-certs reads while it runs (so it is set on this step) and the
+      # later steps need too (so it is exported).
       - name: Trust the development certificate
+        env:
+          SSL_CERT_DIR: /home/runner/.aspnet/dev-certs/trust:/usr/lib/ssl/certs
         run: |
-          dotnet dev-certs https --trust
-          echo "SSL_CERT_DIR=$HOME/.aspnet/dev-certs/trust:/usr/lib/ssl/certs" >> "$GITHUB_ENV"
+          # Exit code 4 means partial trust: OpenSSL trusts it, but the browsers' NSS stores could not be updated, which
+          # the tests do not use. Every other non-zero code fails the step.
+          status=0
+          dotnet dev-certs https --trust || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 4 ]; then
+            exit "$status"
+          fi
+          # Check that OpenSSL (and so .NET) now validates the certificate from the trusted folder; TLS validation stays on.
+          cert_dir="$(mktemp -d)"
+          dotnet dev-certs https --export-path "$cert_dir/dev-cert.pem" --format PEM --no-password
+          openssl verify -CApath /home/runner/.aspnet/dev-certs/trust "$cert_dir/dev-cert.pem"
+          rm -rf "$cert_dir"
+          echo "SSL_CERT_DIR=$SSL_CERT_DIR" >> "$GITHUB_ENV"
 
       - name: End-to-end tests (all)
         env:
