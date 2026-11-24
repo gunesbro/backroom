@@ -597,6 +597,8 @@
           "Backroom.Modules.Files.Presentation": "[1.0.0, )",
           "Backroom.Modules.Messaging.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Messaging.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Notifications.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Notifications.Presentation": "[1.0.0, )",
           "Backroom.Modules.Organization.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Organization.Presentation": "[1.0.0, )",
           "Backroom.Modules.Permissions.Infrastructure": "[1.0.0, )",
@@ -702,6 +704,30 @@
           "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
           "Backroom.Modules.Messaging.Application": "[1.0.0, )",
           "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.notifications.application": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Application": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Presence.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.15, )"
+        }
+      },
+      "backroom.modules.notifications.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Notifications.Application": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.notifications.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Notifications.Application": "[1.0.0, )"
         }
       },
       "backroom.modules.organization.application": {

@@ -65,6 +65,11 @@
     <Project Path="src/Modules/Realtime/Backroom.Modules.Realtime.Contracts/Backroom.Modules.Realtime.Contracts.csproj" />
     <Project Path="src/Modules/Realtime/Backroom.Modules.Realtime.Infrastructure/Backroom.Modules.Realtime.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Notifications/">
+    <Project Path="src/Modules/Notifications/Backroom.Modules.Notifications.Application/Backroom.Modules.Notifications.Application.csproj" />
+    <Project Path="src/Modules/Notifications/Backroom.Modules.Notifications.Infrastructure/Backroom.Modules.Notifications.Infrastructure.csproj" />
+    <Project Path="src/Modules/Notifications/Backroom.Modules.Notifications.Presentation/Backroom.Modules.Notifications.Presentation.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Presence/">
     <Project Path="src/Modules/Presence/Backroom.Modules.Presence.Contracts/Backroom.Modules.Presence.Contracts.csproj" />
     <Project Path="src/Modules/Presence/Backroom.Modules.Presence.Infrastructure/Backroom.Modules.Presence.Infrastructure.csproj" />
@@ -106,6 +111,9 @@
   </Folder>
   <Folder Name="/tests/Modules/Realtime/">
     <Project Path="tests/Modules/Realtime/Backroom.Modules.Realtime.IntegrationTests/Backroom.Modules.Realtime.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/Notifications/">
+    <Project Path="tests/Modules/Notifications/Backroom.Modules.Notifications.IntegrationTests/Backroom.Modules.Notifications.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/tests/Modules/Files/">
     <Project Path="tests/Modules/Files/Backroom.Modules.Files.IntegrationTests/Backroom.Modules.Files.IntegrationTests.csproj" />

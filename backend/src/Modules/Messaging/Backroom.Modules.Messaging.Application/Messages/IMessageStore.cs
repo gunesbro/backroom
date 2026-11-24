@@ -17,4 +17,7 @@ internal interface IMessageStore
 
     /// <summary>Messages with a sequence number above <paramref name="after"/>, oldest first, at most <paramref name="count"/>.</summary>
     Task<IReadOnlyList<MessageEntry>> ListAfterAsync(Guid channelId, long after, int count, CancellationToken cancellationToken);
+
+    /// <summary>The live (not deleted) messages among <paramref name="messageIds"/> with their conversation and text; unknown ones are left out.</summary>
+    Task<IReadOnlyList<MessagePreviewSource>> ListForPreviewAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken);
 }

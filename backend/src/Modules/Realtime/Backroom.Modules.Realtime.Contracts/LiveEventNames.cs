@@ -10,4 +10,5 @@ public static class LiveEventNames
     public const string ChannelCreated = "ChannelCreated";
     public const string SessionRevoked = "SessionRevoked";
     public const string PresenceChanged = "PresenceChanged";
+    public const string NotificationRequested = "NotificationRequested";
 }

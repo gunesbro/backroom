@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\Backroom.Modules.Notifications.Application\Backroom.Modules.Notifications.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Backroom.Modules.Notifications.IntegrationTests" />
+  </ItemGroup>
+
+</Project>
