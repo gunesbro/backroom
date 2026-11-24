@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Local cache and sync: SQLite on desktop, IndexedDB on the web.",
+  "description": "Bounded local cache: IndexedDB on the web, SQLite on desktop later.",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "fake-indexeddb": "6.2.8",
     "typescript": "6.0.3"
   }
 }
