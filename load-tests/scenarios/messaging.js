@@ -1,7 +1,7 @@
 // Messaging load: senders post to public channels at a fixed arrival rate, readers page through history with keyset
 // paging, and listeners hold a SignalR connection and measure how long a message takes to become visible.
 // Run it after `node tools/loadtest.mjs provision` and with `node tools/loadtest.mjs serve` running (README).
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 import { DURATION, THRESHOLDS, env, num } from '../lib/config.js';
 import { orgs, pick, userFor, users } from '../lib/fixture.js';
@@ -103,5 +103,7 @@ export function listener() {
     onVisible: (ms) => visibleMs.add(ms),
     onError: () => wsErrors.add(1),
   });
-  sleep(1); // a failed connection must not spin
+  // A failed connection must not spin: a timer keeps the iteration alive for at least a second. Not sleep(), which
+  // blocks the event loop and would delay the socket's callbacks (and ws_ready_ms) by that second.
+  setTimeout(() => {}, 1000);
 }
