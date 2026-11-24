@@ -270,6 +270,22 @@ describe('RealtimeClient', () => {
   });
 });
 
+describe('RealtimeClient queued joins', () => {
+  it('Subscribe_QueuedForARefusedOrganization_IsNotSent', async () => {
+    const { client, hubs } = setup();
+    client.start();
+    await flush();
+    hubs[0]?.invoke.mockRejectedValueOnce(new Error('realtime.not_found'));
+    client.subscribeOrganization('o1');
+    client.subscribeChannel('o1', 'c1');
+    client.subscribeChannel('o1', 'c2');
+    await flush();
+
+    // Only the organization was asked; its two channels were dropped before they were sent.
+    expect(hubs[0]?.invoke).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('backoffWithJitter', () => {
   it('Attempt_Grows_AndNeverPassesThirtySeconds', () => {
     expect(backoffWithJitter(0, () => 1)).toBe(500);

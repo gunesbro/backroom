@@ -80,17 +80,18 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
 
   /** Resolves when the hub answered (or refused); never rejects. */
   const invoke = (target: Hub, key: string, { method, args }: Join): Promise<void> => {
-    const run = queue.then(() => target.invoke(method, ...args));
+    const run = queue.then(() => {
+      // Dropped since it was queued (its organization was refused): do not ask, a refusal counts against the limit.
+      if (method.startsWith('Subscribe') && !wanted.has(key)) return undefined;
+      return target.invoke(method, ...args);
+    });
     queue = run.catch(() => undefined);
     return run.then(
       () => undefined,
       (error: unknown) => {
         // Refused for every reason the same way (not a member, unknown or non-public channel): do not ask again.
         // A refused organization takes its channels with it, or every reconnect would run into the refusal limit.
-        if (
-          method.startsWith('Subscribe') &&
-          (isHubError(error, 'realtime.not_found') || isHubError(error, 'realtime.forbidden'))
-        ) {
+        if (method.startsWith('Subscribe') && isHubError(error, 'realtime.not_found')) {
           wanted.delete(key);
           if (method === 'SubscribeOrganization') {
             for (const other of [...wanted.keys()]) {
