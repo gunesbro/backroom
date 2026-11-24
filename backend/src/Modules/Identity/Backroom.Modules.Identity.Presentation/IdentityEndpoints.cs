@@ -74,13 +74,26 @@ public static class IdentityEndpoints
             return Refuse(loggers, httpContext, result.Reason!);
         }
 
-        _ = await revocations.RevokeAsync(result.AccountId, result.SessionId, cancellationToken);
+        try
+        {
+            _ = await revocations.RevokeAsync(result.AccountId, result.SessionId, cancellationToken);
+        }
+#pragma warning disable CA1031 // Any failure is counted and logged (ids only) before it becomes a 500.
+        catch (Exception exception) when (exception is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            IdentityTelemetry.LogoutFailures.Add(1);
+            IdentityLog.LogoutFailed(loggers.CreateLogger("Backroom.Modules.Identity.BackchannelLogout"), result.AccountId, exception.GetType().Name);
+            throw;
+        }
+
         return TypedResults.Ok();
     }
 
     // 400 with the error body of the specification; the reason stays in the log, so a caller learns nothing about what was wrong.
     private static JsonHttpResult<LogoutError> Refuse(ILoggerFactory loggers, HttpContext httpContext, string reason)
     {
+        IdentityTelemetry.LogoutRefusals.Add(1);
         IdentityLog.LogoutRefused(loggers.CreateLogger("Backroom.Modules.Identity.BackchannelLogout"), reason);
         httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
         return TypedResults.Json(

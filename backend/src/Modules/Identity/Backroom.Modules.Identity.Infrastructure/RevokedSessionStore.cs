@@ -18,11 +18,14 @@ internal sealed class RevokedSessionStore(DatabaseSession session) : IRevokedSes
             WHERE r.session_id = '' AND r.revoked_at < EXCLUDED.revoked_at
         """;
 
+    // Newest first, in pages by keyset (revoked_at, account_id, session_id), so the caller can keep the newest revocations of one cell's
+    // members however many other accounts have signed out.
     private const string ListSql = """
         SELECT session_id, account_id, revoked_at, keep_until
         FROM identity.revoked_sessions
         WHERE keep_until > $1
-        ORDER BY revoked_at, account_id, session_id
+          AND ($3::timestamptz IS NULL OR (revoked_at, account_id, session_id) < ($3, $4, $5))
+        ORDER BY revoked_at DESC, account_id DESC, session_id DESC
         LIMIT $2
         """;
 
@@ -47,11 +50,14 @@ internal sealed class RevokedSessionStore(DatabaseSession session) : IRevokedSes
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
-    public async Task<IReadOnlyList<RevokedSession>> ListInForceAsync(DateTimeOffset now, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<RevokedSession>> ListInForceAsync(DateTimeOffset now, int limit, RevokedSession? after, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(ListSql, session.Connection, session.Transaction);
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = now });
         command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = limit });
+        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset?> { TypedValue = after?.RevokedAt });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = after?.AccountId ?? Guid.Empty });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = after?.SessionId ?? string.Empty });
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var revocations = new List<RevokedSession>();
         while (await reader.ReadAsync(cancellationToken))

@@ -50,10 +50,7 @@ internal sealed class LogoutTokenIssuer : IDisposable
             ["typ"] = "Logout",
             ["events"] = new JsonObject { [EventName] = new JsonObject() },
         };
-        if (sessionId is not null)
-        {
-            payload["sid"] = sessionId;
-        }
+        payload["sid"] = sessionId ?? Guid.NewGuid().ToString("D");
 
         change?.Invoke(payload);
         var credentials = key switch

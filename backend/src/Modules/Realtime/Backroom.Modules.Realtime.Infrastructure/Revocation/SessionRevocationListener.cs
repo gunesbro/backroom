@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -92,44 +93,78 @@ internal sealed partial class SessionRevocationListener(
             return;
         }
 
-        try
-        {
-            var notice = new SessionRevokedPayload(SessionRevokedPayload.SessionEnded);
-            foreach (var state in matching)
-            {
-                try
-                {
-                    await hub.Clients.Client(state.ConnectionId).SendAsync(LiveEventNames.SessionRevoked, notice, cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-#pragma warning disable CA1031 // A connection that cannot be told is closed anyway.
-                catch (Exception exception)
-#pragma warning restore CA1031
-                {
-                    LogNoticeFailed(logger, exception.GetType().Name, revocation.AccountId);
-                }
-            }
-
-            if (options.Value.RevocationCloseGrace > TimeSpan.Zero)
-            {
-                await Task.Delay(options.Value.RevocationCloseGrace, timeProvider, cancellationToken);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Stopping: the connections end with the node.
-        }
-
+        // learned without delay however many connections this one closes.
+        var notice = new SessionRevokedPayload(SessionRevokedPayload.SessionEnded);
         foreach (var state in matching)
         {
-            state.Abort();
-            RealtimeTelemetry.RevokedConnections.Add(1);
+            try
+            {
+                await hub.Clients.Client(state.ConnectionId).SendAsync(LiveEventNames.SessionRevoked, notice, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+#pragma warning disable CA1031 // A connection that cannot be told is closed anyway.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogNoticeFailed(logger, exception.GetType().Name, revocation.AccountId);
+            }
+
+            ScheduleAbort(state);
         }
 
         LogClosed(logger, revocation.AccountId, matching.Count);
+    }
+
+    /// <summary>The most aborts waiting for their grace at once (bounded by the node's connections anyway); beyond it a connection is closed at once.</summary>
+    internal const int MaxPendingAborts = 10_000;
+
+    private readonly ConcurrentDictionary<ITimer, byte> _pendingAborts = new();
+
+    /// <summary>Aborts waiting for their grace; for tests.</summary>
+    internal int PendingAborts => _pendingAborts.Count;
+
+    private void ScheduleAbort(ConnectionState state)
+    {
+        var grace = options.Value.RevocationCloseGrace;
+        if (grace <= TimeSpan.Zero || _pendingAborts.Count >= MaxPendingAborts)
+        {
+            Abort(state);
+            return;
+        }
+
+        ITimer? timer = null;
+        timer = timeProvider.CreateTimer(
+            _ =>
+            {
+                _ = _pendingAborts.TryRemove(timer!, out var _);
+                timer!.Dispose();
+                Abort(state);
+            },
+            null,
+            grace,
+            Timeout.InfiniteTimeSpan);
+        _pendingAborts[timer] = 0;
+    }
+
+    private static void Abort(ConnectionState state)
+    {
+        state.Abort();
+        RealtimeTelemetry.RevokedConnections.Add(1);
+    }
+
+    public override Task StopAsync(CancellationToken cancellationToken)
+    {
+        // Connections end with the node; the timers must not outlive it.
+        foreach (var timer in _pendingAborts.Keys)
+        {
+            timer.Dispose();
+        }
+
+        _pendingAborts.Clear();
+        return base.StopAsync(cancellationToken);
     }
 
     private static bool Matches(ConnectionState state, SessionRevocation revocation) =>

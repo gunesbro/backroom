@@ -120,6 +120,29 @@ public sealed class RevokedSessionJobTests(PostgresDatabase database) : IAsyncLi
         forCell.Single(revoked => revoked.SessionId == "s-member").KeepUntil.Should().Be(s_now.AddMinutes(4));
         forOtherCell.Select(revoked => revoked.AccountId).Should().BeEquivalentTo([bothCells, elsewhere]);
     }
+    [Fact]
+    public async Task FullSyncQuery_WhenManyOtherAccountsSignedOutLater_StillReportsTheMembersOldestRevocationAsync()
+    {
+        var cell = await _data.AddCellAsync();
+        var member = Guid.NewGuid();
+        await _data.AddMembershipAsync(member, cell);
+        await _data.AddRevokedSessionAsync(member, "s-old-member", s_now.AddMinutes(-3), s_now.AddMinutes(2));
+        var strangers = await _data.AddStrangerRevocationsAsync(2 * RevokedSessionQueries.PageSize + 100, s_now.AddMinutes(-1), s_now.AddMinutes(4));
+
+        try
+        {
+            var forCell = await FullSyncAsync(cell);
+
+            forCell.Should().ContainSingle(revoked => revoked.AccountId == member && revoked.SessionId == "s-old-member",
+                "the members' rows are found on a later page, not cut off by newer rows of other accounts");
+            forCell.Should().OnlyContain(revoked => revoked.AccountId == member);
+        }
+        finally
+        {
+            await _data.DeleteRevokedSessionsAsync([member, .. strangers]);
+        }
+    }
+
 
     private async Task<IReadOnlyList<RevokedSession>> FullSyncAsync(string cellId)
     {

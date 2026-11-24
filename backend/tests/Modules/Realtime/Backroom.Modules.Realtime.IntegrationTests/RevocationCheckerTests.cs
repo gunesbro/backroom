@@ -197,6 +197,60 @@ public sealed class RevocationCheckerTests
     }
 
     [Fact]
+    public async Task Check_AfterTheCacheFilled_RecentSessionsStillCostNoReadAsync()
+    {
+        var checker = Checker();
+        var accounts = Enumerable.Range(0, 40).Select(_ => Guid.NewGuid()).ToList();
+        for (var session = 0; session < 40; session++)
+        {
+            await checker.CheckAsync("s" + session, accounts[session], s_start, CancellationToken);
+        }
+
+        checker.ClearCount.Should().Be(_options.RevocationCacheMaxEntries, "over the limit the oldest go, not everything");
+        var reads = _store.Reads;
+        for (var session = 36; session < 40; session++)
+        {
+            (await checker.CheckAsync("s" + session, accounts[session], s_start, CancellationToken)).Should().Be(RevocationVerdict.Valid);
+        }
+
+        _store.Reads.Should().Be(reads, "the recent answers were kept");
+        await checker.CheckAsync("s0", accounts[0], s_start, CancellationToken);
+        _store.Reads.Should().Be(reads + 1, "the oldest was evicted");
+    }
+
+    [Fact]
+    public async Task Check_AFloodOfClearAnswers_NeverEvictsARevocationInForceAsync()
+    {
+        var checker = Checker();
+        checker.Learn(new SessionRevocation(_account, "s-revoked", _time.GetUtcNow(), _time.GetUtcNow().AddMinutes(5)));
+
+        for (var session = 0; session < 100; session++)
+        {
+            await checker.CheckAsync("flood" + session, Guid.NewGuid(), s_start, CancellationToken);
+        }
+
+        _store.Down = true;
+        (await CheckAsync(checker, "s-revoked")).Should().Be(RevocationVerdict.Revoked, "no read needed: the revocation is still held");
+    }
+
+    [Fact]
+    public async Task Check_WithAFullCacheAndValkeyDown_KeepsTheGraceOfRecentAnswersAsync()
+    {
+        var checker = Checker();
+        var accounts = Enumerable.Range(0, 40).Select(_ => Guid.NewGuid()).ToList();
+        for (var session = 0; session < 40; session++)
+        {
+            await checker.CheckAsync("s" + session, accounts[session], s_start, CancellationToken);
+        }
+
+        _store.Down = true;
+        _time.Advance(_options.RevocationCacheTtl + TimeSpan.FromSeconds(10));
+
+        (await checker.CheckAsync("s39", accounts[39], s_start, CancellationToken)).Should().Be(RevocationVerdict.Valid, "the grace survives the eviction");
+        (await checker.CheckAsync("s0", accounts[0], s_start, CancellationToken)).Should().Be(RevocationVerdict.Unavailable, "an evicted session was never seen again, so it fails closed");
+    }
+
+    [Fact]
     public async Task Check_WhenTheCallerGivesUp_DoesNotFailClosedAsync()
     {
         using var cancelled = new CancellationTokenSource();

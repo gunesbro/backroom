@@ -18,7 +18,7 @@ namespace Backroom.Modules.Identity.Presentation;
 /// RS256 only, the realm as issuer, one of the people's clients as audience. On top of that it requires what the
 /// specification demands of a logout token: <c>iat</c> that is recent (<see cref="MaxAge"/>), a <c>jti</c>, the
 /// <c>events</c> claim with <c>http://schemas.openid.net/event/backchannel-logout</c>, no <c>nonce</c>, and a
-/// <c>sub</c> (the account; Keycloak always sends it) with an optional <c>sid</c>. An access, ID or refresh token carries no
+/// <c>sub</c> (the account; Keycloak always sends it) and a <c>sid</c> (the session; required, because every client sets session-required). An access, ID or refresh token carries no
 /// such event, so none of them is accepted here, and a logout token is not accepted as an access token (no <c>typ</c> of
 /// <c>Bearer</c>).
 /// </summary>
@@ -158,24 +158,21 @@ internal sealed partial class LogoutTokenValidator(IOptionsMonitor<JwtBearerOpti
             return LogoutTokenResult.Invalid("no account");
         }
 
-        string? sessionId = null;
-        if (root.TryGetProperty("sid", out var sid))
+        // The sid is required: every client has backchannel.logout.session.required, so Keycloak always sends it, and a token
+        // that names no session would end every session of the account (and leave a replay window for an old token).
+        if (!root.TryGetProperty("sid", out var sid) || sid.ValueKind != JsonValueKind.String
+            || sid.GetString() is not { } sessionId || !SessionIdPattern().IsMatch(sessionId))
         {
-            if (sid.ValueKind != JsonValueKind.String || sid.GetString() is not { } value || !SessionIdPattern().IsMatch(value))
-            {
-                return LogoutTokenResult.Invalid("bad sid");
-            }
-
-            sessionId = value;
+            return LogoutTokenResult.Invalid("no or bad sid");
         }
 
-        LogAccepted(logger, accountId, sessionId is null);
+        LogAccepted(logger, accountId);
         return LogoutTokenResult.Valid(accountId, sessionId);
     }
 
     [GeneratedRegex(@"\A[\x21-\x7E]{1,128}\z", RegexOptions.CultureInvariant)]
     private static partial Regex SessionIdPattern();
 
-    [LoggerMessage(EventId = 20, Level = LogLevel.Debug, Message = "A logout token for account {AccountId} was accepted (all sessions: {AllSessions}).")]
-    private static partial void LogAccepted(ILogger logger, Guid accountId, bool allSessions);
+    [LoggerMessage(EventId = 20, Level = LogLevel.Debug, Message = "A logout token for account {AccountId} was accepted.")]
+    private static partial void LogAccepted(ILogger logger, Guid accountId);
 }

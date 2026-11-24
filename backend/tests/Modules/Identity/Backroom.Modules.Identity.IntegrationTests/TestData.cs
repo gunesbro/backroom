@@ -65,6 +65,16 @@ internal sealed class TestData(PostgresDatabase database)
     public Task DeleteRevokedSessionsAsync(params Guid[] accountIds) =>
         ExecuteAsync("DELETE FROM identity.revoked_sessions WHERE account_id = ANY($1)", accountIds);
 
+    /// <summary>Inserts <paramref name="count"/> revoked sessions of accounts that belong to no cell, and returns their ids.</summary>
+    public async Task<Guid[]> AddStrangerRevocationsAsync(int count, DateTimeOffset revokedAt, DateTimeOffset keepUntil)
+    {
+        var accounts = Enumerable.Range(0, count).Select(_ => Guid.NewGuid()).ToArray();
+        await ExecuteAsync(
+            "INSERT INTO identity.revoked_sessions (session_id, account_id, revoked_at, keep_until) SELECT 's-stranger', unnest($1::uuid[]), $2, $3",
+            accounts, revokedAt, keepUntil);
+        return accounts;
+    }
+
     private async Task<string> AddCellCoreAsync(string id)
     {
         await ExecuteAsync(

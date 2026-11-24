@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -11,8 +12,8 @@ namespace Backroom.Modules.Realtime.Infrastructure.Revocation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Cache.</b> A small in-memory map in front of Valkey, bounded (<see cref="RealtimeOptions.RevocationCacheMaxEntries"/>;
-/// a full one is emptied) and expiring: a "revoked" entry lasts until its <c>keep_until</c> (a revocation never un-revokes), a
+/// <b>Cache.</b> In-memory maps in front of Valkey, bounded (<see cref="RealtimeOptions.RevocationCacheMaxEntries"/>, 100,000 by default;
+/// over the limit the oldest "not revoked" answers are evicted, never a revocation in force and never everything) and expiring: a "revoked" entry lasts until its <c>keep_until</c> (a revocation never un-revokes), a
 /// "not revoked" entry for <see cref="RealtimeOptions.RevocationCacheTtl"/>. Each active session costs one Valkey read (one
 /// <c>MGET</c> for the session and the account) per TTL, not one per request.
 /// </para>
@@ -35,21 +36,19 @@ namespace Backroom.Modules.Realtime.Infrastructure.Revocation;
 /// </remarks>
 internal sealed partial class RevocationChecker(IRevocationStore store, IOptions<RealtimeOptions> options, TimeProvider timeProvider, ILogger<RevocationChecker> logger)
 {
-    private readonly Lock _lock = new();
-    private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+    // Revocations in force (few: the sign-outs of the last minutes) and clear answers (one or more per active session) live apart,
+    // so a flood of clear answers can never push a revocation out. Both are concurrent maps: a lookup takes no lock.
+    private readonly ConcurrentDictionary<string, Entry> _revoked = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Entry> _clear = new(StringComparer.Ordinal);
+    private readonly ConcurrentQueue<string> _clearOrder = new();
     private long _lastFailureTicks;
+    private int _evicting;
 
-    /// <summary>Entries held now; for tests and diagnostics.</summary>
-    internal int Count
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _entries.Count;
-            }
-        }
-    }
+    /// <summary>Entries held now (revoked and clear); for tests and diagnostics.</summary>
+    internal int Count => _revoked.Count + _clear.Count;
+
+    /// <summary>Clear answers held now; for tests.</summary>
+    internal int ClearCount => _clear.Count;
 
     /// <summary>
     /// Checks a token's session id (<c>sid</c>), account (<c>sub</c>) and issue time (<c>iat</c>). Never throws for a Valkey failure; it
@@ -140,7 +139,7 @@ internal sealed partial class RevocationChecker(IRevocationStore store, IOptions
             return;
         }
 
-        _ = Put(key, new Entry(Revoked: true, revocation.RevokedAt, revocation.KeepUntil, now));
+        _ = PutRevoked(key, new Entry(Revoked: true, revocation.RevokedAt, revocation.KeepUntil, now), now);
     }
 
     // The entry for the key, and whether it can be used as it is: a revoked one until keep_until, a clear one while fresh
@@ -152,71 +151,93 @@ internal sealed partial class RevocationChecker(IRevocationStore store, IOptions
             return (null, true);
         }
 
-        Entry entry;
-        lock (_lock)
+        if (_revoked.TryGetValue(key, out var revoked))
         {
-            if (!_entries.TryGetValue(key, out entry))
+            if (now < revoked.KeepUntil)
             {
-                return (null, false);
+                return (revoked, true);
             }
+
+            _ = _revoked.TryRemove(new KeyValuePair<string, Entry>(key, revoked));
+        }
+
+        if (!_clear.TryGetValue(key, out var entry))
+        {
+            return (null, false);
         }
 
         var settings = options.Value;
-        if (entry.Revoked)
-        {
-            return now < entry.KeepUntil ? (entry, true) : (null, false);
-        }
-
-        var age = now - entry.CheckedAt;
         var limit = allowStale ? settings.RevocationCacheTtl + settings.RevocationStaleTolerance : settings.RevocationCacheTtl;
-        return age < limit ? (entry, true) : (null, false);
+        return now - entry.CheckedAt < limit ? (entry, true) : (null, false);
     }
 
     private Entry Remember(string key, RevocationRecord? record, DateTimeOffset now)
     {
+        if (record is { } held)
+        {
+            return PutRevoked(key, new Entry(Revoked: true, held.RevokedAt, held.KeepUntil, now), now);
+        }
+
         // A revocation this node already knows is never forgotten because Valkey does not hold it (it was cut short).
-        var entry = record is { } held
-            ? new Entry(Revoked: true, held.RevokedAt, held.KeepUntil, now)
-            : new Entry(Revoked: false, default, default, now);
-        return Put(key, entry);
-    }
-
-    private Entry Put(string key, Entry entry)
-    {
-        lock (_lock)
+        if (_revoked.TryGetValue(key, out var known) && now < known.KeepUntil)
         {
-            if (_entries.Count >= options.Value.RevocationCacheMaxEntries && !_entries.ContainsKey(key))
-            {
-                Trim(entry.CheckedAt);
-            }
-
-            // Never replace a revoked entry with a clear one while the revocation is in force.
-            if (!entry.Revoked && _entries.TryGetValue(key, out var existing) && existing.Revoked && entry.CheckedAt < existing.KeepUntil)
-            {
-                return existing;
-            }
-
-            _entries[key] = entry;
-            return entry;
-        }
-    }
-
-    // Under the lock: drop what is no longer needed; if the cache is still full, start again (a miss costs one read).
-    private void Trim(DateTimeOffset now)
-    {
-        var settings = options.Value;
-        var expired = _entries
-            .Where(pair => pair.Value.Revoked ? now >= pair.Value.KeepUntil : now - pair.Value.CheckedAt >= settings.RevocationCacheTtl + settings.RevocationStaleTolerance)
-            .Select(pair => pair.Key)
-            .ToList();
-        foreach (var key in expired)
-        {
-            _entries.Remove(key);
+            return known;
         }
 
-        if (_entries.Count >= settings.RevocationCacheMaxEntries)
+        var entry = new Entry(Revoked: false, default, default, now);
+        if (_clear.TryAdd(key, entry))
         {
-            _entries.Clear();
+            _clearOrder.Enqueue(key);
+            EvictClear();
+        }
+        else
+        {
+            _clear[key] = entry;
+        }
+
+        return entry;
+    }
+
+    private Entry PutRevoked(string key, Entry entry, DateTimeOffset now)
+    {
+        if (_revoked.Count >= options.Value.RevocationCacheMaxEntries && !_revoked.ContainsKey(key))
+        {
+            // Only expired revocations are dropped; one in force is never evicted. A flood beyond the limit (not a thing sign-outs do)
+            // is left to Valkey, which still refuses the token on the next read.
+            foreach (var pair in _revoked.Where(pair => now >= pair.Value.KeepUntil))
+            {
+                _ = _revoked.TryRemove(pair);
+            }
+
+            if (_revoked.Count >= options.Value.RevocationCacheMaxEntries)
+            {
+                return entry;
+            }
+        }
+
+        return _revoked.AddOrUpdate(key, entry, (_, existing) => existing.KeepUntil >= entry.KeepUntil ? existing : entry);
+    }
+
+    // Over the limit, the oldest clear answers go first (a miss costs one read); revocations and recent answers stay. One thread
+    // evicts at a time; the others carry on, and the next insert catches up.
+    private void EvictClear()
+    {
+        var max = options.Value.RevocationCacheMaxEntries;
+        if (_clear.Count <= max || Interlocked.CompareExchange(ref _evicting, 1, 0) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            while (_clear.Count > max && _clearOrder.TryDequeue(out var oldest))
+            {
+                _ = _clear.TryRemove(oldest, out _);
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _evicting, 0);
         }
     }
 

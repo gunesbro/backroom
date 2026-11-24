@@ -60,8 +60,8 @@ public sealed class RealtimeOptions
     /// </summary>
     public TimeSpan RevocationStaleTolerance { get; set; } = TimeSpan.FromSeconds(30);
 
-    /// <summary>Entries in a node's revocation cache (one per active session and account); a full cache is emptied, never grown.</summary>
-    public int RevocationCacheMaxEntries { get; set; } = 10_000;
+    /// <summary>Entries in a node's revocation cache, per kind (an account entry and one or more session entries per active person; sized for 5,000 users); over the limit the oldest "not revoked" answers are evicted (revocations in force never are).</summary>
+    public int RevocationCacheMaxEntries { get; set; } = 100_000;
 
     /// <summary>
     /// What a request gets when the revocation store cannot be read and no recent answer is cached. <see langword="true"/> (the

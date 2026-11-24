@@ -97,6 +97,21 @@ public sealed class KeycloakRealmTests(KeycloakRealm realm) : IClassFixture<Keyc
     }
 
     [Fact]
+    public void Realm_Clients_SetNoAccessTokenLifespanAboveFiveMinutes()
+    {
+        // A client-level lifespan overrides the realm's; revocations are kept only for the realm's five minutes plus the skew.
+        var file = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "keycloak", "backroom-realm.json")))!;
+        foreach (var client in file["clients"]!.AsArray())
+        {
+            if (client!["attributes"]?["access.token.lifespan"]?.GetValue<string>() is { } lifespan)
+            {
+                int.Parse(lifespan, System.Globalization.CultureInfo.InvariantCulture)
+                    .Should().BeLessThanOrEqualTo(300, $"client {client["clientId"]} must not outlive the revocations");
+            }
+        }
+    }
+
+    [Fact]
     public void Realm_AccessTokenLifespan_IsNotLongerThanRevocationsAreKept()
     {
         // A revocation is kept for the longest access token lifetime plus the skew; a longer-lived token would outlive it.

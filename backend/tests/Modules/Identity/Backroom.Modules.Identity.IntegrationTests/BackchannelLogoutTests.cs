@@ -4,6 +4,8 @@ using System.Text.Json.Nodes;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Backroom.Modules.Identity.Application;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.IdentityModel.Tokens;
 using Backroom.Modules.Identity.Contracts;
@@ -62,17 +64,6 @@ public sealed class BackchannelLogoutTests(PostgresDatabase database) : IAsyncLi
     }
 
     [Fact]
-    public async Task Logout_WithoutASessionId_RevokesEverySessionOfTheAccountAsync()
-    {
-        var account = Guid.NewGuid();
-
-        using var response = await PostAsync(_issuer.Create(_time.GetUtcNow(), account));
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await _data.RevokedSessionAsync(account)).SessionId.Should().BeEmpty("an empty session id stands for every session");
-    }
-
-    [Fact]
     public async Task Logout_WithAnAudienceOfAnotherPeopleClient_IsAcceptedAsync()
     {
         foreach (var client in new[] { "web", "desktop", "ops" })
@@ -109,7 +100,7 @@ public sealed class BackchannelLogoutTests(PostgresDatabase database) : IAsyncLi
         using var second = await PostAsync(_issuer.Create(_time.GetUtcNow(), account, session));
 
         first.StatusCode.Should().Be(HttpStatusCode.OK);
-        second.StatusCode.Should().Be(HttpStatusCode.OK, "Keycloak retries, and a retry is not an error");
+        second.StatusCode.Should().Be(HttpStatusCode.OK, "a duplicated delivery is not an error");
         (await _data.CountRevokedSessionsAsync(account)).Should().Be(1);
         (await _data.SessionRevokedMessagesAsync(cell)).Should().ContainSingle("a repeated logout must not be sent to the cell again");
     }
@@ -155,23 +146,28 @@ public sealed class BackchannelLogoutTests(PostgresDatabase database) : IAsyncLi
     }
 
     [Fact]
-    public async Task Logout_ForEverySessionTwice_KeepsOneRowAndTellsTheCellAgainAsync()
+    public async Task Revoke_ForEverySessionTwice_KeepsOneRowAndTellsTheCellAgainAsync()
     {
+        // The endpoint always has a session id; revoking every session is Identity's own operation (for later callers).
         var account = Guid.NewGuid();
         var cell = await _data.AddCellAsync();
         await _data.AddMembershipAsync(account, cell);
 
-        using var first = await PostAsync(_issuer.Create(_time.GetUtcNow(), account));
+        await RevokeEverySessionAsync(account);
         _time.Advance(TimeSpan.FromSeconds(10));
-        using var second = await PostAsync(_issuer.Create(_time.GetUtcNow(), account));
+        await RevokeEverySessionAsync(account);
 
-        first.StatusCode.Should().Be(HttpStatusCode.OK);
-        second.StatusCode.Should().Be(HttpStatusCode.OK);
         (await _data.CountRevokedSessionsAsync(account)).Should().Be(1);
         var messages = await _data.SessionRevokedMessagesAsync(cell);
         messages.Should().HaveCount(2);
-        messages[1].RevokedAt.ToDateTimeOffset().Should().Be(s_now.AddSeconds(10), "the later logout moves the revocation forward");
+        messages[1].RevokedAt.ToDateTimeOffset().Should().Be(s_now.AddSeconds(10), "the later revocation moves it forward");
         messages.Should().OnlyContain(message => message.SessionId.Length == 0);
+    }
+
+    private async Task RevokeEverySessionAsync(Guid account)
+    {
+        await using var scope = _controlPlane.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<SessionRevocations>().RevokeAsync(account, null, CancellationToken);
     }
 
     public static TheoryData<string> InvalidTokens() => new()
@@ -200,6 +196,7 @@ public sealed class BackchannelLogoutTests(PostgresDatabase database) : IAsyncLi
         "sid with a space",
         "sid not a string",
         "access token",
+        "no sid",
     };
 
     [Theory]
@@ -236,6 +233,7 @@ public sealed class BackchannelLogoutTests(PostgresDatabase database) : IAsyncLi
             "oversized sid" => _issuer.Create(now, account, new string('s', 129)),
             "sid with a space" => _issuer.Create(now, account, "session one"),
             "sid not a string" => _issuer.Create(now, account, session, payload => payload["sid"] = 42),
+            "no sid" => _issuer.Create(now, account, session, payload => payload.Remove("sid")),
             "access token" => _issuer.Create(now, account, session, payload =>
             {
                 payload["typ"] = "Bearer";

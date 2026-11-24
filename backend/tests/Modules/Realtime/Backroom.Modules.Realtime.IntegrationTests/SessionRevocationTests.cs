@@ -8,6 +8,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.Modules.Realtime.Contracts;
+using Backroom.Modules.Realtime.Infrastructure.Revocation;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.Valkey;
@@ -104,6 +105,37 @@ public sealed class SessionRevocationTests(PostgresDatabase database, KeycloakRe
         await onB.Closed.WaitAsync(HubClient.Deadline, CancellationToken);
         otherSession.Closed.IsCompleted.Should().BeFalse("another session of the account stays");
         otherAccount.Closed.IsCompleted.Should().BeFalse("the same session id of another account is another session");
+    }
+
+    [Fact]
+    public async Task Revoke_ABurstOf20_IsLearnedAndAnnouncedWithoutWaitingOutTheCloseGraceAsync()
+    {
+        var accounts = Enumerable.Range(0, 20).Select(_ => Guid.NewGuid()).ToList();
+        var clients = new List<HubClient>();
+        foreach (var account in accounts)
+        {
+            clients.Add(await ConnectWithAsync(NodeA, Token(account, "s-burst")));
+        }
+
+        var listener = NodeA.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<SessionRevocationListener>().Single();
+        var now = DateTimeOffset.UtcNow;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        foreach (var account in accounts)
+        {
+            await listener.HandleAsync(SessionRevocationChannel.Encode(new SessionRevocation(account, "s-burst", now, now.AddMinutes(5))), CancellationToken);
+        }
+
+        stopwatch.Stop();
+        // Handling must not wait the 250 ms grace per connection (20 x 250 ms = 5 s); the closes follow on timers.
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+        foreach (var client in clients)
+        {
+            (await client.NextSessionRevokedAsync()).Reason.Should().Be("session_ended");
+            await client.Closed.WaitAsync(HubClient.Deadline, CancellationToken);
+            await client.DisposeAsync();
+        }
+
+        await WaitUntilAsync(() => Task.FromResult(listener.PendingAborts == 0));
     }
 
     [Fact]
