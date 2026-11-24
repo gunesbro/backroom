@@ -42,11 +42,40 @@ function encode(value, out) {
   }
 }
 
-/** Invocation without an invocation id: [1, {}, null, target, args]. */
-function invocation(target, args) {
+/** Invocation [1, {}, invocationId, target, args]; with an id the server answers with a completion. */
+function invocation(target, args, invocationId = null) {
   const out = [];
-  encode([1, {}, null, target, args], out);
+  encode([1, {}, invocationId, target, args], out);
   return frame(out);
+}
+
+/**
+ * The completions in a binary WebSocket message, as [invocationId, ok]. A message can hold several length-prefixed
+ * SignalR messages; a completion is [3, {}, invocationId, resultKind, ...] with resultKind 1 for an error.
+ */
+export function completionsOf(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const found = [];
+  let offset = 0;
+  while (offset < bytes.length) {
+    let length = 0;
+    let shift = 0;
+    let b;
+    do {
+      b = bytes[offset++];
+      length |= (b & 0x7f) << shift;
+      shift += 7;
+    } while (b & 0x80 && offset < bytes.length);
+    const start = offset;
+    offset += length;
+    // fixarray, type 3 (Completion), empty header map, fixstr invocation id, then the result kind.
+    if ((bytes[start] & 0xf0) === 0x90 && bytes[start + 1] === 3 && bytes[start + 2] === 0x80 && (bytes[start + 3] & 0xe0) === 0xa0) {
+      const idLength = bytes[start + 3] & 0x1f;
+      const id = String.fromCharCode(...bytes.subarray(start + 4, start + 4 + idLength));
+      found.push([id, bytes[start + 4 + idLength] !== 1]);
+    }
+  }
+  return found;
 }
 
 /** The send time in the first "lt:<ms>:" stamp of a binary frame, or null. */
@@ -68,7 +97,8 @@ export function stampOf(buffer) {
 
 /**
  * Opens the hub, subscribes to the channels and calls onVisible(milliseconds since the stamp) for each message posted.
- * onReady(milliseconds from connecting until subscribed) is called once. The connection closes after holdMs.
+ * onReady(milliseconds from connecting until the server confirmed every subscription) is called once, and only if none
+ * was refused; a refused subscription calls onError('subscribe') instead. The connection closes after holdMs.
  * The k6 iteration ends when the connection has closed (the event loop is empty).
  */
 export function listen({ cellUrl, token, orgId, channelIds, holdMs, onReady, onVisible, onError }) {
@@ -77,21 +107,41 @@ export function listen({ cellUrl, token, orgId, channelIds, holdMs, onReady, onV
   const ws = new WebSocket(url);
   ws.binaryType = 'arraybuffer';
   let pinger;
+  let handshakeDone = false;
+  let pending = 0;
+  let refused = false;
 
   ws.onopen = () => ws.send(`{"protocol":"messagepack","version":1}${RECORD_SEPARATOR}`);
   ws.onmessage = (event) => {
-    if (typeof event.data === 'string') {
-      // The handshake answer ("{}" or an error); subscribe once it is accepted.
-      if (event.data.startsWith('{"error"')) {
+    if (!handshakeDone) {
+      // The handshake answer ("{}" or an error, JSON ending with the record separator). With a binary protocol the server
+      // sends it in a binary frame, so it is read as text whatever the frame type.
+      handshakeDone = true;
+      const answer = typeof event.data === 'string' ? event.data : String.fromCharCode(...new Uint8Array(event.data));
+      if (answer.startsWith('{"error"')) {
         onError('handshake');
         ws.close();
         return;
       }
-      channelIds.forEach((id) => ws.send(invocation('SubscribeChannel', [orgId, id])));
-      onReady(Date.now() - started);
-      pinger = setInterval(() => ws.send(PING), 10_000);
-      setTimeout(() => ws.close(), holdMs);
+      pending = channelIds.length;
+      channelIds.forEach((id, i) => ws.send(invocation('SubscribeChannel', [orgId, id], String(i + 1))));
+      pinger = setInterval(() => {
+        if (ws.readyState === 1) ws.send(PING);
+      }, 10_000);
+      setTimeout(() => {
+        clearInterval(pinger);
+        ws.close();
+      }, holdMs);
       return;
+    }
+    if (pending > 0) {
+      for (const [, ok] of completionsOf(event.data)) {
+        if (!ok) {
+          refused = true;
+          onError('subscribe');
+        }
+        if (--pending === 0 && !refused) onReady(Date.now() - started);
+      }
     }
     const sentAt = stampOf(event.data);
     if (sentAt !== null) {
