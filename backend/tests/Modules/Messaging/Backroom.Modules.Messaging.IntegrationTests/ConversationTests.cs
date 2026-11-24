@@ -351,6 +351,21 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         failure.SqlState.Should().Be("42501", "the policy's WITH CHECK refuses a row of another organization");
     }
 
+    [Fact]
+    public async Task IsMember_AfterLeavingAPublicChannel_IsFalseWhileItStaysReadableAsync()
+    {
+        var (organizationId, channelId) = await ChannelWithBobAsync();
+        var bob = await AccountAsync(Bob);
+        (await JoinAsync(organizationId, channelId, Bob)).Dispose();
+        (await IsMemberAsync(organizationId, channelId, bob)).Should().BeTrue();
+
+        (await LeaveAsync(organizationId, channelId, Bob)).Dispose();
+
+        (await IsMemberAsync(organizationId, channelId, bob)).Should().BeFalse();
+        (await CanReadAsync(organizationId, channelId, bob)).Should().BeTrue();
+        (await IsMemberAsync(organizationId, Guid.CreateVersion7(), bob)).Should().BeFalse();
+    }
+
     private async Task<(Guid OrganizationId, Guid ChannelId)> ChannelWithBobAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
@@ -398,5 +413,13 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         await InOrganizationAsync(organizationId, async services =>
             canRead = await services.GetRequiredService<IConversationReadAccess>().CanReadAsync(organizationId, conversationId, accountId, CancellationToken));
         return canRead;
+    }
+
+    private async Task<bool> IsMemberAsync(Guid organizationId, Guid conversationId, Guid accountId)
+    {
+        var isMember = false;
+        await InOrganizationAsync(organizationId, async services =>
+            isMember = await services.GetRequiredService<IConversationReadAccess>().IsMemberAsync(organizationId, conversationId, accountId, CancellationToken));
+        return isMember;
     }
 }

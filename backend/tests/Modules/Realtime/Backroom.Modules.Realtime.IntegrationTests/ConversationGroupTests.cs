@@ -206,6 +206,24 @@ public sealed class ConversationGroupTests(PostgresDatabase database, KeycloakRe
     }
 
     [Fact]
+    public async Task ConversationMemberRemoved_ByTheConsumerAfterLeavingAPublicChannel_EvictsTheReaderAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var general = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
+        var bobOnA = await ConnectAsync(NodeA, Bob);
+        var bobOnB = await ConnectAsync(NodeB, Bob);
+        await bobOnA.SubscribeConversationAsync(organizationId, general);
+        await bobOnB.SubscribeConversationAsync(organizationId, general);
+
+        // Bob may still read the open public channel, but he is not a member: the durable path evicts him
+        // (here as if the after-commit path had failed).
+        await RemoveAsync(organizationId, general, Bob, byConsumer: true);
+
+        await WaitForSubscriptionsAsync(Bob, expected: 0);
+    }
+
+    [Fact]
     public async Task ConversationMemberRemoved_ArrivingAfterTheMemberRejoined_KeepsTheGroupAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
