@@ -71,21 +71,58 @@ public static partial class DataMigrationRules
                 case InsertDataOperation or UpdateDataOperation or DeleteDataOperation:
                     yield return $"{name} uses {operation.GetType().Name}; write the statement with OrganizationDataSql.";
                     break;
-                case SqlOperation sql when ContainsDataStatement(sql.Sql)
-                    && !sql.Sql.StartsWith(OrganizationDataMigrationExtensions.Marker, StringComparison.Ordinal):
+                case SqlOperation sql when ContainsDataStatement(sql.Sql) && !IsHelperOutput(sql.Sql):
                     yield return $"{name} runs a data statement outside OrganizationDataSql; under forced row-level security it changes no row.";
                     break;
             }
         }
     }
 
-    /// <summary>Whether the SQL holds an INSERT, UPDATE, DELETE or MERGE statement (comments ignored).</summary>
+    /// <summary>
+    /// Whether the SQL is what the helper emits: the marker, then for the same non-empty set of tables a
+    /// <c>NO FORCE</c> line each before the statements and a restoring <c>FORCE</c> line each after them. A marker
+    /// copied by hand, or a restore that is missing or names other tables, does not count.
+    /// </summary>
+    public static bool IsHelperOutput(string sql)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        if (!sql.StartsWith(OrganizationDataMigrationExtensions.Marker, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var lifted = LiftPattern().Matches(sql);
+        var restored = RestorePattern().Matches(sql);
+        if (lifted.Count == 0)
+        {
+            return false;
+        }
+
+        var liftedTables = lifted.Select(match => match.Groups["table"].Value).ToHashSet(StringComparer.Ordinal);
+        var restoredTables = restored.Select(match => match.Groups["table"].Value).ToHashSet(StringComparer.Ordinal);
+        var lastLift = lifted[^1].Index;
+        return liftedTables.SetEquals(restoredTables)
+            && restored.All(match => match.Index > lastLift)
+            && ContainsDataStatement(sql[lastLift..restored[0].Index]);
+    }
+
+    /// <summary>
+    /// Whether the SQL holds an INSERT, UPDATE, DELETE or MERGE statement (comments ignored). Known gaps, left to
+    /// review: dynamic SQL (<c>EXECUTE format(...)</c> in a <c>DO</c> block or function builds the statement at run
+    /// time, so only its literal parts are seen) and <c>COPY ... FROM</c>, which loads rows without these keywords.
+    /// </summary>
     public static bool ContainsDataStatement(string sql)
     {
         ArgumentNullException.ThrowIfNull(sql);
         var code = CommentPattern().Replace(sql, " ");
         return DataStatementPattern().IsMatch(code);
     }
+
+    [GeneratedRegex(@"^ALTER TABLE (?<table>\S+) NO FORCE ROW LEVEL SECURITY;$", RegexOptions.Multiline | RegexOptions.CultureInvariant)]
+    private static partial Regex LiftPattern();
+
+    [GeneratedRegex(@"^ALTER TABLE (?<table>\S+) FORCE ROW LEVEL SECURITY;$", RegexOptions.Multiline | RegexOptions.CultureInvariant)]
+    private static partial Regex RestorePattern();
 
     [GeneratedRegex(@"--[^\n]*|/\*.*?\*/", RegexOptions.Singleline | RegexOptions.CultureInvariant)]
     private static partial Regex CommentPattern();

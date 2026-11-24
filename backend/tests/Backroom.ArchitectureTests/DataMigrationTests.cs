@@ -57,6 +57,28 @@ public sealed class DataMigrationTests
     }
 
     [Fact]
+    public void OrganizationDataSqlText_LimitsTheLockWaitBeforeLiftingForce()
+    {
+        var sql = OrganizationDataMigrationExtensions.OrganizationDataSqlText("s", ["t"], "UPDATE s.t SET a = 1");
+
+        sql.IndexOf("SET LOCAL lock_timeout = '5s';", StringComparison.Ordinal).Should()
+            .BePositive().And.BeLessThan(sql.IndexOf("NO FORCE", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("UPDATE s.t SET a = 1;")]
+    [InlineData("ALTER TABLE \"s\".\"t\" NO FORCE ROW LEVEL SECURITY;\nUPDATE s.t SET a = 1;")]
+    [InlineData("ALTER TABLE \"s\".\"t\" NO FORCE ROW LEVEL SECURITY;\nALTER TABLE \"s\".\"u\" NO FORCE ROW LEVEL SECURITY;\nUPDATE s.t SET a = 1;\nALTER TABLE \"s\".\"t\" FORCE ROW LEVEL SECURITY;")]
+    [InlineData("ALTER TABLE \"s\".\"t\" FORCE ROW LEVEL SECURITY;\nALTER TABLE \"s\".\"t\" NO FORCE ROW LEVEL SECURITY;\nUPDATE s.t SET a = 1;")]
+    [InlineData("UPDATE s.t SET a = 1;\nALTER TABLE \"s\".\"t\" NO FORCE ROW LEVEL SECURITY;\nALTER TABLE \"s\".\"t\" FORCE ROW LEVEL SECURITY;")]
+    public void FindViolations_WhenMarkerIsCopiedWithoutTheMatchingForceLines_ReturnsViolation(string body)
+    {
+        var sql = OrganizationDataMigrationExtensions.Marker + "\n" + body;
+
+        DataMigrationRules.FindViolations("m", [new SqlOperation { Sql = sql }]).Should().ContainSingle();
+    }
+
+    [Fact]
     public void FindViolations_WhenMigrationUsesDataOperations_ReturnsViolation()
     {
         DataMigrationRules.FindViolations("m", [new InsertDataOperation { Table = "t" }]).Should().ContainSingle();
