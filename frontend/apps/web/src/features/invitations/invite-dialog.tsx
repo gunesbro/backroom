@@ -147,7 +147,10 @@ export function InviteDialog({
       const sent = new Set(result.outcomes.filter((outcome) => outcome.sent).map((outcome) => outcome.email));
       setAddresses((current) => current.filter((email) => !sent.has(email)));
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: invitationsKey(orgId) }),
+    // Not awaited: the form is usable again as soon as the answers are in, not when the list has reloaded.
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: invitationsKey(orgId) });
+    },
   });
 
   const submit = (event: SubmitEvent<HTMLFormElement>) => {

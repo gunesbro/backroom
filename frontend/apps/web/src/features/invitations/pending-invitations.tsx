@@ -82,7 +82,9 @@ function InvitationRow({
   const revokeRef = useRef<HTMLButtonElement>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
   const [note, setNote] = useState<string | undefined>();
-  const refresh = () => queryClient.invalidateQueries({ queryKey: invitationsKey(orgId) });
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: invitationsKey(orgId) });
+  };
   const revoke = useMutation({
     mutationFn: () => api.revoke(orgId, invitation.id),
     onSuccess: () => {
