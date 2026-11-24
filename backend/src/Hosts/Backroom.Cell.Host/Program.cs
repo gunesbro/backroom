@@ -1,5 +1,6 @@
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.BuildingBlocks.Presentation.Authentication;
+using Backroom.BuildingBlocks.Presentation.Cors;
 using Backroom.Cell.Host;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
@@ -19,6 +20,7 @@ var cellId = builder.Configuration[CellIdentity.ConfigurationKey]
     ?? throw new InvalidOperationException($"{CellIdentity.ConfigurationKey} is required.");
 
 builder.AddServiceDefaults();
+builder.AddWebOriginsCors();
 
 // This cell accepts only tokens issued for it (audience cell-{id}).
 // The SignalR hub's WebSocket cannot carry a header, so its path (only) accepts the token as access_token.
@@ -35,6 +37,7 @@ builder.Services.AddOrganizationEndpoints();
 var app = builder.Build();
 
 app.UseDefaultErrorHandling();
+app.UseWebOriginsCors();
 app.UseAuthentication();
 if (role == CellRole.App)
 {

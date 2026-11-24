@@ -46,6 +46,7 @@ Read the relevant section of the requirements before starting any task. If a tas
 - Cargo has no such setting, but the same 7-day rule applies to crates: check the release date on crates.io of every crate a change adds to `Cargo.lock`, transitive ones included, move a young one back with `cargo update -p <crate> --precise <version>`, and pin a direct dependency with `=` while its newest release is too young.
 - Semgrep rulesets are fetched when the job runs, so new rules can flag unchanged code; fix the finding or suppress it inline with a `nosemgrep` comment and a reason.
 - Hosts allow `localhost`, `127.0.0.1` and `[::1]` (`AllowedHosts`); deployments set the real host names through configuration (`AllowedHosts` environment variable).
+- CORS: each host allows only the browser origins in `Cors:AllowedOrigins` (exact origins, no wildcards or paths; https except loopback http and `tauri://localhost`; empty means none; environment variable `Cors__AllowedOrigins__0`, `__1`, ...). APIs take bearer tokens only, so credentials are never allowed. Deployments set the real web origins; the AppHost sets the dev, ops and desktop ones. The desktop CSP `connect-src` must list the same cell origins.
 
 ## Performance and resources
 
@@ -197,7 +198,7 @@ Frontend notes:
 - Workspace packages (`@backroom/*`) export their TypeScript sources directly; there is no separate build step for them.
 - The feature boundary is enforced by a local ESLint rule (`frontend/eslint-rules/feature-boundaries.js`, tested with ESLint's RuleTester); it resolves alias and relative imports, including escapes into sibling features.
 - The `identifier` in `tauri.conf.json` (`io.github.gunesbro.backroom`) is fixed now; it is hard to change after release because it decides data folders and upgrade identity. `productName`, window titles and the HTML titles are still plain strings; before the first release they must come from the single branding setting the requirements call for.
-- Desktop CSP is minimal; the cell API origins, `wss:` for SignalR and LiveKit, and `blob:` for media must be added when those features arrive.
+- Desktop CSP is minimal; the cell API origins (`connect-src`, matching each cell's `Cors:AllowedOrigins` entry for the desktop origin), `wss:` for SignalR and LiveKit, and `blob:` for media must be added when those features arrive.
 - The local Keycloak keeps its data in a Docker volume, so changes to the realm file (`backend/src/Aspire/Backroom.AppHost/keycloak-dev/backroom-realm.json`) are not re-imported. Apply them to the running realm with `kcadm.sh` inside the container, or reset the Keycloak volume (ask first: it deletes local accounts). `KeycloakRealmTests` import the file fresh, so they always test the file itself.
 
 ## Git
