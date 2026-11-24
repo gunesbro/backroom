@@ -15,6 +15,10 @@ const READ_RATE = num('READ_RATE', 5); // history reads per second
 const MESSAGE_LENGTH = num('MESSAGE_LENGTH', 80);
 const HISTORY_PAGES = num('HISTORY_PAGES', 3); // pages after the first one
 const PAGE_SIZE = Math.min(num('PAGE_SIZE', 50), 100);
+// SEND_TARGET=one sends every message to one channel (the first channel of the first organization, by its members):
+// the worst case for the per-channel sequence lock. The default spreads the sends over all channels.
+const ONE_CHANNEL = env('SEND_TARGET', 'all') === 'one';
+const firstOrgUsers = users.filter((user) => user.orgIndex === 0);
 const durationSeconds = Number(/^(\d+)s$/.exec(DURATION)?.[1] ?? 60) + 5;
 
 const sendMs = new Trend('send_ms', true);
@@ -62,9 +66,10 @@ export const options = {
 };
 
 export function sender() {
-  const user = pick(users);
+  const user = pick(ONE_CHANNEL ? firstOrgUsers : users);
   const org = orgs[user.orgIndex];
-  const res = sendMessage(org, pick(org.channelIds), tokenFor(user.index), MESSAGE_LENGTH);
+  const channelId = ONE_CHANNEL ? org.channelIds[0] : pick(org.channelIds);
+  const res = sendMessage(org, channelId, tokenFor(user.index), MESSAGE_LENGTH);
   sendMs.add(res.timings.duration);
   if (!check(res, { 'message created': (r) => r.status === 201 || r.status === 200 })) {
     sendFailed.add(1);
