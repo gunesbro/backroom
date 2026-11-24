@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import { requestJson, type AccessTokenSource } from '@/shared/http';
+import type { Block } from './rich-text/blocks';
 
 export type Channel = { id: string; name: string; createdAt: string };
 export type ChannelPage = { channels: Channel[]; next: string | null };
@@ -11,6 +12,8 @@ export type Message = {
   authorAccountId: string;
   /** Plain text. The server also derives `blocks`; Phase 1 has one paragraph, so the text is all that is read. */
   text: string;
+  /** The rich text blocks (docs/contracts/phase-2.md). Unchecked server data: read it with `parseBlocks`. */
+  blocks?: unknown;
   createdAt: string;
 };
 /** Where a page starts: the newest messages (none), earlier than a seq, or later than a seq. */
@@ -37,7 +40,7 @@ export interface MessagingApi {
   sendMessage: (
     orgId: string,
     channelId: string,
-    input: { clientMessageId: string; text: string },
+    input: { clientMessageId: string; text: string; blocks?: Block[] },
   ) => Promise<Message>;
   /** One page of members, to put names to authors. */
   listMembers: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<MemberPage>;

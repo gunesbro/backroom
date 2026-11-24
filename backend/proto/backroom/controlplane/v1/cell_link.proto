@@ -85,6 +85,12 @@ message Hello {
 message Welcome {
   // How often the cell should run FullSync and send a MembershipDigest.
   uint32 full_sync_interval_seconds = 1;
+  // The cell's current epoch from the control plane's registry (docs/adr/0011, "Cell epoch"), at least 1.
+  // It changes when the cell's database is restored or a replica is promoted. The cell stores it, and its
+  // app role accepts writes only once the stored epoch is confirmed. 0 (an older control plane) confirms
+  // nothing. When the epoch changes while a stream is open, the control plane ends the stream with
+  // FAILED_PRECONDITION and detail "cell.epoch_changed"; the cell fences writes and reconnects.
+  uint64 epoch = 2;
 }
 
 message Ack {

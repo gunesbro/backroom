@@ -37,6 +37,11 @@ export const config = {
    * reported only to cells messaging connects to. On in development.
    */
   presenceEnabled: import.meta.env.VITE_PRESENCE_ENABLED === 'true',
+  /**
+   * Feature flag: the rich text composer (Phase 2 step 6): Lexical editor, formatting toolbar, blocks. Off: the plain
+   * textarea. Off in development too (.env.development) until the server-side step 6 PR accepts client blocks.
+   */
+  richTextEnabled: import.meta.env.VITE_RICH_TEXT_ENABLED === 'true',
   /** The control plane's origin; empty means this origin (the development server proxies /api). */
   controlPlaneUrl: import.meta.env.VITE_CONTROL_PLANE_URL ?? '',
   /** Data regions offered for new organizations, comma-separated region ids. */

@@ -16,8 +16,14 @@ internal interface ICellRegistry
     /// <summary>Whether <paramref name="cellId"/> has completed registration.</summary>
     Task<bool> IsRegisteredAsync(string cellId, CancellationToken cancellationToken);
 
-    /// <summary>Records that the registered cell is connected and runs <paramref name="version"/>.</summary>
-    Task RecordHeartbeatAsync(string cellId, string version, CancellationToken cancellationToken);
+    /// <summary>
+    /// Records that the registered cell is connected and runs <paramref name="version"/>; returns its current epoch
+    /// (docs/adr/0011, "Cell epoch"), or <see langword="null"/> if the cell is not registered.
+    /// </summary>
+    Task<long?> RecordHeartbeatAsync(string cellId, string version, CancellationToken cancellationToken);
+
+    /// <summary>Increments the cell's epoch; returns the new one, or <see langword="null"/> if there is no such cell.</summary>
+    Task<long?> IncrementEpochAsync(string cellId, CancellationToken cancellationToken);
 
     /// <summary>How many shared cells are registered or pending with a key that can still be used.</summary>
     Task<int> CountSharedCellsAsync(CancellationToken cancellationToken);

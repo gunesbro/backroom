@@ -1,7 +1,19 @@
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode, type SubmitEvent } from 'react';
+import {
+  Suspense,
+  lazy,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type SubmitEvent,
+} from 'react';
 import { Icon, SoonButton, Toolbar, type IconName } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
+import { config } from '@/config';
 import { messages } from './messages';
+import { MAX_BLOCKS_JSON_BYTES, blocksJsonBytes, blocksToText, type Block } from './rich-text/blocks';
+import type { RichFieldHandle, RichValue } from './rich-text/rich-field';
 import { COUNTER_FROM_REMAINING, MAX_MESSAGE_LENGTH, normalizeMessageText } from './text';
 
 type SoonKey =
@@ -19,6 +31,11 @@ type SoonKey =
   | 'emoji'
   | 'mention'
   | 'attachFile';
+
+/** The editor and Lexical load as their own chunk, only when the rich text flag is on. */
+const RichField = lazy(() =>
+  import('./rich-text/rich-field').then(({ RichField: field }) => ({ default: field })),
+);
 
 /** The formatting toolbar in groups (docs/design: Main); formatting comes in Phase 2. */
 const FORMATS: readonly (readonly { key: SoonKey; icon?: IconName; text?: string }[])[] = [
@@ -51,22 +68,34 @@ export function Composer({
   onSend,
 }: {
   channelName: string;
-  /** Gets the normalized text. */
-  onSend: (text: string) => void;
+  /** Gets the normalized text and, with the rich text editor, the blocks. */
+  onSend: (text: string, blocks?: Block[]) => void;
 }) {
   const t = useTranslate(messages);
   const counterId = useId();
   const hintId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const richRef = useRef<RichFieldHandle>(null);
+  const rich = config.richTextEnabled;
   const [value, setValue] = useState('');
+  const [blocks, setBlocks] = useState<Block[]>([]);
 
-  const text = normalizeMessageText(value);
+  // The count is of the text the server derives from the blocks, so the composer's count is the server's.
+  const text = rich ? blocksToText(blocks) : normalizeMessageText(value);
   const remaining = MAX_MESSAGE_LENGTH - text.length;
-  const over = remaining < 0;
+  const tooLarge = rich && blocksJsonBytes(blocks) > MAX_BLOCKS_JSON_BYTES;
+  const over = remaining < 0 || tooLarge;
   const canSend = text.length > 0 && !over;
 
   const submit = () => {
     if (!canSend) return;
+    if (rich) {
+      onSend(text, blocks);
+      richRef.current?.clear();
+      setBlocks([]);
+      richRef.current?.focus();
+      return;
+    }
     onSend(text);
     setValue('');
     // Sending with the button must not take the keyboard away from the field.
@@ -81,7 +110,7 @@ export function Composer({
     }
   };
 
-  const showCounter = remaining <= COUNTER_FROM_REMAINING;
+  const showCounter = remaining <= COUNTER_FROM_REMAINING || tooLarge;
   const soon = t('soon');
   const passive = (key: SoonKey, content: ReactNode, className?: string) => (
     <SoonButton key={key} label={t(key)} soon={soon} className={className}>
@@ -96,39 +125,57 @@ export function Composer({
         submit();
       }}
     >
-      <Toolbar label={t('formatting')} className="bm-format">
-        {FORMATS.map((group, index) => (
-          <span key={group[0]?.key} className="bm-format__group">
-            {index > 0 && <span className="bm-format__sep" aria-hidden="true" />}
-            {group.map((item) =>
-              passive(
-                item.key,
-                item.icon ? (
-                  <Icon name={item.icon} size={16} />
-                ) : (
-                  <span className={`bm-format__${item.key}`} aria-hidden="true">
-                    {item.text}
-                  </span>
-                ),
-              ),
-            )}
-          </span>
-        ))}
-      </Toolbar>
-      <textarea
-        ref={inputRef}
-        className="bm-composer__input"
-        aria-label={t('composerLabel', { name: channelName })}
-        aria-describedby={showCounter ? `${hintId} ${counterId}` : hintId}
-        aria-invalid={over ? true : undefined}
-        placeholder={t('composerPlaceholder', { name: channelName })}
-        rows={1}
-        value={value}
-        onChange={(event) => {
-          setValue(event.target.value);
-        }}
-        onKeyDown={keyDown}
-      />
+      {rich ? (
+        <Suspense fallback={<div className="bm-composer__input bm-rt__input" aria-busy="true" />}>
+          <RichField
+            ref={richRef}
+            label={t('composerLabel', { name: channelName })}
+            placeholder={t('composerPlaceholder', { name: channelName })}
+            describedBy={showCounter ? `${hintId} ${counterId}` : hintId}
+            invalid={over}
+            onChange={(next: RichValue) => {
+              setBlocks(next.blocks);
+            }}
+            onSubmit={submit}
+          />
+        </Suspense>
+      ) : (
+        <>
+          <Toolbar label={t('formatting')} className="bm-format">
+            {FORMATS.map((group, index) => (
+              <span key={group[0]?.key} className="bm-format__group">
+                {index > 0 && <span className="bm-format__sep" aria-hidden="true" />}
+                {group.map((item) =>
+                  passive(
+                    item.key,
+                    item.icon ? (
+                      <Icon name={item.icon} size={16} />
+                    ) : (
+                      <span className={`bm-format__${item.key}`} aria-hidden="true">
+                        {item.text}
+                      </span>
+                    ),
+                  ),
+                )}
+              </span>
+            ))}
+          </Toolbar>
+          <textarea
+            ref={inputRef}
+            className="bm-composer__input"
+            aria-label={t('composerLabel', { name: channelName })}
+            aria-describedby={showCounter ? `${hintId} ${counterId}` : hintId}
+            aria-invalid={over ? true : undefined}
+            placeholder={t('composerPlaceholder', { name: channelName })}
+            rows={1}
+            value={value}
+            onChange={(event) => {
+              setValue(event.target.value);
+            }}
+            onKeyDown={keyDown}
+          />
+        </>
+      )}
       <div className="bm-composer__bar">
         <Toolbar label={t('messageTools')} className="bm-composer__tools">
           {passive('addMenu', <Icon name="plus" />, 'bm-composer__plus')}
@@ -149,7 +196,11 @@ export function Composer({
               className={over ? 'bm-counter bm-counter--over' : 'bm-counter'}
               role={over ? 'status' : undefined}
             >
-              {over ? t('charactersOver', { count: -remaining }) : t('charactersLeft', { count: remaining })}
+              {tooLarge
+                ? t('formattingTooLarge')
+                : over
+                  ? t('charactersOver', { count: -remaining })
+                  : t('charactersLeft', { count: remaining })}
             </p>
           ) : null}
           <p id={hintId} className="bm-composer__hint">

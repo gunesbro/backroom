@@ -13,9 +13,10 @@ namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 /// <summary>
 /// The hub at <see cref="RealtimeEndpoints.HubPath"/> (docs/contracts/phase-1.md, "Live events"). Clients only subscribe
 /// and unsubscribe; the server sends everything else (<see cref="Contracts.ILiveEventPublisher"/>). A subscription is
-/// granted after the same checks as a read: an active member of the organization and, for a channel, one that exists, is
-/// public and is not archived. Every refusal for a missing organization, membership or channel answers the same
-/// <c>realtime.not_found</c>, so a client learns nothing about what it may not see. Errors are <see cref="HubException"/>s
+/// granted after the same checks as a read: an active member of the organization and, for a channel, read access to it
+/// (<c>IConversationReadAccess</c>: an open public channel, or an open conversation the account is a member of). Every
+/// refusal for a missing organization, membership or channel answers the same <c>realtime.not_found</c>, so a client
+/// learns nothing about what it may not see. Errors are <see cref="HubException"/>s
 /// with a stable code and no internals; anything else the client gets is SignalR's generic failure.
 /// </summary>
 [Authorize]
@@ -25,8 +26,8 @@ internal sealed partial class RealtimeHub(
     DelayedAbort aborts,
     TimeProvider timeProvider,
     IOrganizationMembershipCheck membership,
-    IChannelReadAccess channels,
     IPresenceTracker presence,
+    IConversationReadAccess conversations,
     OrganizationContext organization,
     IUnitOfWork unitOfWork,
     IOptions<RealtimeOptions> options,
@@ -378,7 +379,7 @@ internal sealed partial class RealtimeHub(
             organization.Enter(organizationId);
             await unitOfWork.BeginAsync(cancellationToken);
             var allowed = await membership.IsActiveMemberAsync(accountId, cancellationToken)
-                && (channelId is not { } channel || await channels.CanReadAsync(organizationId, channel, accountId, cancellationToken));
+                && (channelId is not { } channel || await conversations.CanReadAsync(organizationId, channel, accountId, cancellationToken));
             await unitOfWork.CommitAsync(cancellationToken);
             return allowed;
         }

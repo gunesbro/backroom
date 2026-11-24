@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -11,6 +12,7 @@ using Backroom.BuildingBlocks.Domain.Errors;
 using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.BuildingBlocks.Presentation.Errors;
 using Backroom.Modules.CellManagement.Application;
+using Backroom.Modules.CellManagement.Application.Epoch;
 using Backroom.Modules.CellManagement.Application.Listing;
 using Backroom.Modules.CellManagement.Application.Provisioning;
 using Backroom.Modules.CellManagement.Application.Registration;
@@ -80,6 +82,12 @@ public static class CellManagementEndpoints
             .WithMetadata(new OpsAction(ProvisionAction))
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxRequestBytes));
 
+        // The restore and failover procedure: increment before the cell accepts writes (docs/runbooks/cell-restore-and-failover.md).
+        endpoints.MapPost("/api/v1/ops/cells/{id}/epoch", IncrementEpochAsync)
+            .RequireAuthorization(AuthorizationPolicies.Operations)
+            .WithMetadata(new OpsAction(IncrementEpochAction))
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxRequestBytes));
+
         endpoints.MapGrpcService<CellLinkEndpoint>().RequireAuthorization(AuthorizationPolicies.Cell);
 
         return endpoints;
@@ -102,6 +110,8 @@ public static class CellManagementEndpoints
     private const string ListAction = "ops.cells.list";
 
     private const string ProvisionAction = "ops.cells.provision";
+
+    private const string IncrementEpochAction = "ops.cells.epoch.increment";
 
     private static async Task<IResult> ListAsync(
         CellListService cells, ICurrentAccount account, OpsAudit audit, HttpContext httpContext, string? after, int? limit, CancellationToken cancellationToken)
@@ -133,6 +143,35 @@ public static class CellManagementEndpoints
         catch (Exception)
         {
             audit.Record(accountId, ListAction, OpsAudit.Failed);
+            throw;
+        }
+    }
+
+    private static async Task<IResult> IncrementEpochAsync(
+        string id, CellEpochService epochs, ICurrentAccount account, OpsAudit audit, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        httpContext.Response.Headers.CacheControl = "no-store";
+        var accountId = account.AccountId;
+        // The cell id is not personal data; it is audited only once it passed the id rule.
+        var target = CellIds.IsValid(id) ? id : null;
+        try
+        {
+            var result = await epochs.IncrementAsync(id, cancellationToken);
+            audit.Record(
+                accountId,
+                IncrementEpochAction,
+                result.IsSuccess ? OpsAudit.Success : result.Error.Kind == ErrorKind.Validation ? OpsAudit.Invalid : OpsAudit.Rejected,
+                target);
+            return result.ToHttpResult(epoch => TypedResults.Ok(new CellEpochResponse(id, epoch.ToString(CultureInfo.InvariantCulture))));
+        }
+        catch (OperationCanceledException)
+        {
+            audit.Record(accountId, IncrementEpochAction, OpsAudit.Cancelled, target);
+            throw;
+        }
+        catch (Exception)
+        {
+            audit.Record(accountId, IncrementEpochAction, OpsAudit.Failed, target);
             throw;
         }
     }

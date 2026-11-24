@@ -123,6 +123,7 @@ internal sealed class TestCell : IAsyncDisposable
             services.AddSingleton<RecordingSessionRevocation>();
             services.AddSingleton<Backroom.Modules.Realtime.Contracts.ISessionRevocation>(provider => provider.GetRequiredService<RecordingSessionRevocation>());
             services.AddSingleton<FullSyncRunner>();
+            services.AddSingleton<Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch.CellEpochStore>();
             services.AddScoped<IDownstreamHandler<Backroom.ControlPlane.Contracts.V1.SessionRevoked>, SessionRevokedHandler>();
             services.AddSingleton<RecordingAccountStatusSink>();
             services.AddSingleton<Backroom.Modules.Presence.Contracts.IAccountStatusSink>(provider => provider.GetRequiredService<RecordingAccountStatusSink>());
