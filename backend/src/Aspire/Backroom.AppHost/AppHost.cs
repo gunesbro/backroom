@@ -70,7 +70,11 @@ var cellApp = builder.AddProject<Projects.Backroom_Cell_Host>("cell-app", launch
     .WithEnvironment("Cell__Id", DevelopmentCells.First)
     .WithEnvironment("Cell__Role", "app")
     .WithEnvironment("Authentication__Authority", authority)
+    // Live events: the SignalR backplane and the member-removal channel (docs/contracts/phase-1.md, "Live events"). Cells share the
+    // development instance and are separated by a channel prefix.
+    .WithEnvironment("Valkey__ConnectionString", services.Valkey.Resource.ConnectionStringExpression)
     .WaitFor(keycloak)
+    .WaitFor(services.Valkey)
     .WithHttpHealthCheck("/health");
 
 // The worker registers the cell with the control plane on its first start, then keeps its link
@@ -93,7 +97,9 @@ var cellWorker = builder.AddProject<Projects.Backroom_Cell_Host>("cell-worker", 
     // Invitation emails link to the web app's dev server (frontend/apps/web, fixed port); http only on loopback in Development.
     .WithEnvironment("Organization__InvitationLinks__WebOrigin", "http://localhost:5173")
     .WaitFor(keycloak)
+    .WithEnvironment("Valkey__ConnectionString", services.Valkey.Resource.ConnectionStringExpression)
     .WaitFor(services.RabbitMq)
+    .WaitFor(services.Valkey)
     .WaitFor(services.Mailpit)
     .WaitFor(controlPlane)
     .WithHttpHealthCheck("/health");

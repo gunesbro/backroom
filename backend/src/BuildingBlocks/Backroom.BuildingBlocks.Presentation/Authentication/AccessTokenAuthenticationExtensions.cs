@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Backroom.BuildingBlocks.Application.Accounts;
@@ -22,12 +23,15 @@ public static class AccessTokenAuthenticationExtensions
     /// <paramref name="audience"/>: a token that names several targets is accepted by none, so a token
     /// given to one cell cannot be replayed against another service. Every endpoint requires such a
     /// token unless it allows anonymous access explicitly. Outside Development the authority must use
-    /// HTTPS and failure details are not sent to clients.
+    /// HTTPS and failure details are not sent to clients. With <paramref name="queryTokenPath"/> (a SignalR hub, whose
+    /// WebSocket cannot carry a header) a token in the <c>access_token</c> query parameter is accepted on that path only,
+    /// and the request log lines that would print it are turned off.
     /// </summary>
     public static IHostApplicationBuilder AddAccessTokenAuthentication(
         this IHostApplicationBuilder builder,
         string audience,
-        IReadOnlyCollection<string> allowedClients)
+        IReadOnlyCollection<string> allowedClients,
+        string? queryTokenPath = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(audience);
@@ -39,6 +43,13 @@ public static class AccessTokenAuthenticationExtensions
 
         var development = builder.Environment.IsDevelopment();
         var clients = allowedClients.ToHashSet(StringComparer.Ordinal);
+
+        if (queryTokenPath is not null)
+        {
+            // The hosting "Request starting" line carries the whole URL, and with it the token in the query string. The
+            // requests are still traced and counted (the tracing redacts the token, see ServiceDefaults); only that line goes.
+            builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+        }
 
         builder.Services.AddOptions<AccessTokenOptions>()
             .BindConfiguration(AccessTokenOptions.SectionName)
@@ -52,7 +63,7 @@ public static class AccessTokenAuthenticationExtensions
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
         builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
             .Configure<IOptions<AccessTokenOptions>>((jwt, tokens) =>
-                Configure(jwt, tokens.Value.Authority, audience, context => ValidatePersonClaimsAsync(context, clients), includeErrorDetails: development));
+                Configure(jwt, tokens.Value.Authority, audience, context => ValidatePersonClaimsAsync(context, clients), includeErrorDetails: development, queryTokenPath));
 
         // The requirement is its own handler, so it needs no registration.
         builder.Services.AddAuthorizationBuilder()
@@ -99,7 +110,7 @@ public static class AccessTokenAuthenticationExtensions
         && string.IsNullOrEmpty(uri.Fragment);
 
     private static void Configure(
-        JwtBearerOptions jwt, string authority, string audience, Func<TokenValidatedContext, Task> validateClaims, bool includeErrorDetails)
+        JwtBearerOptions jwt, string authority, string audience, Func<TokenValidatedContext, Task> validateClaims, bool includeErrorDetails, string? queryTokenPath = null)
     {
         var issuer = authority.TrimEnd('/');
         jwt.Authority = issuer;
@@ -128,6 +139,30 @@ public static class AccessTokenAuthenticationExtensions
             NameClaimType = KeycloakClaims.Subject,
         };
         jwt.Events = new JwtBearerEvents { OnTokenValidated = validateClaims };
+        if (queryTokenPath is not null)
+        {
+            jwt.Events.OnMessageReceived = context => TakeQueryToken(context, queryTokenPath);
+        }
+    }
+
+    /// <summary>The query parameter SignalR clients put the token in, because browsers cannot set headers on a WebSocket.</summary>
+    public const string QueryTokenParameter = "access_token";
+
+    // Only on the one path, only for the WebSocket request itself (negotiate uses the Authorization header) and only when
+    // no Authorization header came: everywhere else a token in a URL is refused.
+    private static Task TakeQueryToken(MessageReceivedContext context, string path)
+    {
+        var request = context.Request;
+        if (request.Path.StartsWithSegments(path, StringComparison.OrdinalIgnoreCase)
+            && request.HttpContext.WebSockets.IsWebSocketRequest
+            && !request.Headers.ContainsKey("Authorization")
+            && request.Query[QueryTokenParameter] is { Count: 1 } values
+            && !string.IsNullOrEmpty(values[0]))
+        {
+            context.Token = values[0];
+        }
+
+        return Task.CompletedTask;
     }
 
     private static bool IsOnlyAudience(IEnumerable<string> audiences, string audience)

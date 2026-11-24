@@ -1,11 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    Technical module: the SignalR gateway (hub, Valkey backplane, MessagePack) and the live event publisher.
+    The hub lives here, not in a Presentation project, because the publisher sends through the hub's context.
+  -->
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="MessagePack" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\Backroom.Modules.Realtime.Contracts\Backroom.Modules.Realtime.Contracts.csproj" />
+    <ProjectReference Include="..\..\Messaging\Backroom.Modules.Messaging.Contracts\Backroom.Modules.Messaging.Contracts.csproj" />
+    <ProjectReference Include="..\..\Organization\Backroom.Modules.Organization.Contracts\Backroom.Modules.Organization.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Backroom.Modules.Realtime.IntegrationTests" />
   </ItemGroup>
 
 </Project>

@@ -6,6 +6,7 @@ using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.Messaging.Application.Channels;
 using Backroom.Modules.Messaging.Application.Live;
 using Backroom.Modules.Messaging.Application.Messages;
+using Backroom.Modules.Messaging.Contracts;
 
 namespace Backroom.Modules.Messaging.Infrastructure;
 
@@ -34,6 +35,7 @@ public static class MessagingModule
         // Monotonic within the process, so messages sent in the same millisecond keep their order by id.
         services.TryAddSingleton<IIdGenerator>(provider => new UuidV7IdGenerator(provider.GetRequiredService<TimeProvider>()));
         services.TryAddScoped<IChannelStore, ChannelStore>();
+        services.TryAddScoped<IChannelReadAccess, ChannelReadAccess>();
         services.TryAddScoped<IMessageStore, MessageStore>();
         services.TryAddScoped<AfterCommitLiveEvents>();
         services.TryAddScoped<ChannelService>();

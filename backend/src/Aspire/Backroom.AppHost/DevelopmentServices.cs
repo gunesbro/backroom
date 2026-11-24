@@ -9,6 +9,7 @@ namespace Backroom.AppHost;
 /// </summary>
 internal static class DevelopmentServices
 {
+    public const string ValkeyImageTag = "9.1.3";
     public const string MailpitImageTag = "v1.32.0";
     public const string KeycloakImageTag = "26.8.1";
     public const string SeaweedFsImage = "chrislusf/seaweedfs";
@@ -35,7 +36,8 @@ internal static class DevelopmentServices
         var postgres = builder.AddPostgres("postgres")
             .WithDataVolume();
 
-        builder.AddValkey("valkey")
+        var valkey = builder.AddValkey("valkey")
+            .WithImageTag(ValkeyImageTag)
             .WithDataVolume();
 
         var rabbitMq = builder.AddRabbitMQ("rabbitmq")
@@ -107,6 +109,6 @@ internal static class DevelopmentServices
             .WithEndpoint(port: LiveKitRtcUdpPort, targetPort: 7882, name: "rtc-udp", scheme: "udp", protocol: ProtocolType.Udp, isProxied: false)
             .WithHttpHealthCheck("/", endpointName: "http");
 
-        return new DevelopmentResources(keycloak, postgres, controlPlaneAdminSecret, rabbitMq, mailpit);
+        return new DevelopmentResources(keycloak, postgres, controlPlaneAdminSecret, rabbitMq, mailpit, valkey);
     }
 }

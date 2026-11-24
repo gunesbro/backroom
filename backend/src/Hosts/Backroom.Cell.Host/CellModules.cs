@@ -24,6 +24,7 @@ internal static class CellModules
             .AddMessagingDatabase()
             .AddPermissionsDatabase()
             .AddEmailDatabase()
+            .AddRealtimeDatabase()
             .AddControlPlaneConnectorDatabase();
     }
 
@@ -32,9 +33,16 @@ internal static class CellModules
         builder.Services.AddCellDatabases();
         builder.Services.AddPermissions();
         builder.Services.AddOrganization();
-        // Live events: the placeholder publisher until the Valkey and SignalR gateway arrives (step 6.2).
+        // Live events: the publisher, the Valkey connection and the SignalR backplane, in every role (Messaging publishes
+        // from the app role; the worker consumes member-removed).
         builder.Services.AddRealtime();
         builder.Services.AddMessaging();
+        if (role == CellRole.App)
+        {
+            // The hub's checks and the listener that removes connections from groups (the hub itself is mapped in Program).
+            builder.Services.AddRealtimeGateway();
+        }
+
         // Every role needs the invitation keys: the app issues codes, the worker will build the links.
         builder.Services.AddOrganizationInvitations().BindConfiguration(InvitationKeyOptions.SectionName);
         if (role == CellRole.Worker)
@@ -47,6 +55,8 @@ internal static class CellModules
             builder.Services.AddOrganizationInvitationJobs();
             builder.Services.AddMaintenanceJobRunner().BindConfiguration(MaintenanceJobOptions.SectionName);
             builder.Services.AddEmail().BindConfiguration(EmailOptions.SectionName);
+            // member-removed → every app node removes the account's connections from the organization's groups.
+            builder.Services.AddRealtimeMemberRemoval();
 
             // The modules registered their event handlers and outbox schemas above. Consumers before the relay,
             // so their queues are declared before events are published.
