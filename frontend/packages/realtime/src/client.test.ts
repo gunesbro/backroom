@@ -87,10 +87,10 @@ describe('RealtimeClient', () => {
     client.subscribeOrganization('o1');
     client.start();
     await flush();
-    client.subscribeChannel('o1', 'c1');
+    client.subscribeConversation('o1', 'c1');
     await flush();
 
-    expect(hubs[0]?.invoked).toEqual(['SubscribeOrganization o1', 'SubscribeChannel o1 c1']);
+    expect(hubs[0]?.invoked).toEqual(['SubscribeOrganization o1', 'SubscribeConversation o1 c1']);
   });
 
   it('Reconnect_AfterTheConnectionDrops_ResubscribesAndReportsAReconnect', async () => {
@@ -98,7 +98,7 @@ describe('RealtimeClient', () => {
     const seen: string[] = [];
     client.onStatus((status, reconnected) => seen.push(`${status}${reconnected ? '+re' : ''}`));
     client.subscribeOrganization('o1');
-    client.subscribeChannel('o1', 'c1');
+    client.subscribeConversation('o1', 'c1');
     client.start();
     await flush();
 
@@ -108,7 +108,7 @@ describe('RealtimeClient', () => {
     await flush();
 
     expect(hubs).toHaveLength(2);
-    expect(hubs[1]?.invoked).toEqual(['SubscribeOrganization o1', 'SubscribeChannel o1 c1']);
+    expect(hubs[1]?.invoked).toEqual(['SubscribeOrganization o1', 'SubscribeConversation o1 c1']);
     expect(seen).toEqual(['connecting', 'connected', 'reconnecting', 'connected+re']);
   });
 
@@ -146,7 +146,7 @@ describe('RealtimeClient', () => {
       if (status === 'connected' && again) reconnected.push(gates.length);
     });
     client.subscribeOrganization('o1');
-    client.subscribeChannel('o1', 'c1');
+    client.subscribeConversation('o1', 'c1');
     client.start();
     await flush();
     hubs[0]?.drop();
@@ -161,33 +161,33 @@ describe('RealtimeClient', () => {
     gates.shift()?.();
     await flush();
 
-    expect(hubs[1]?.invoked).toEqual(['SubscribeOrganization o1', 'SubscribeChannel o1 c1']);
+    expect(hubs[1]?.invoked).toEqual(['SubscribeOrganization o1', 'SubscribeConversation o1 c1']);
     expect(reconnected).toHaveLength(1);
     expect(client.status()).toBe('connected');
   });
 
-  it('Subscribe_WhenTheOrganizationIsRefused_DropsItsChannelsFromTheReplay', async () => {
+  it('Subscribe_WhenTheOrganizationIsRefused_DropsItsConversationsFromTheReplay', async () => {
     const { client, hubs, retries } = setup();
     client.start();
     await flush();
     hubs[0]?.invoke.mockRejectedValueOnce(new Error('realtime.not_found'));
     client.subscribeOrganization('o1');
-    client.subscribeChannel('o1', 'c1');
-    client.subscribeChannel('o2', 'c9');
+    client.subscribeConversation('o1', 'c1');
+    client.subscribeConversation('o2', 'c9');
     await flush();
     hubs[0]?.drop();
     retries.shift()?.();
     await flush();
 
-    expect(hubs[1]?.invoked).toEqual(['SubscribeChannel o2 c9']);
+    expect(hubs[1]?.invoked).toEqual(['SubscribeConversation o2 c9']);
   });
 
   it('Unsubscribe_ThenReconnect_DoesNotJoinTheGroupAgain', async () => {
     const { client, hubs, retries } = setup();
-    client.subscribeChannel('o1', 'c1');
+    client.subscribeConversation('o1', 'c1');
     client.start();
     await flush();
-    client.unsubscribeChannel('o1', 'c1');
+    client.unsubscribeConversation('o1', 'c1');
     hubs[0]?.drop();
     retries.shift()?.();
     await flush();
@@ -276,13 +276,68 @@ describe('RealtimeClient', () => {
     client.start();
     await flush();
     hubs[0]?.invoke.mockRejectedValueOnce(new Error('An unexpected error. realtime.not_found'));
-    client.subscribeChannel('o1', 'gone');
+    client.subscribeConversation('o1', 'gone');
     await flush();
     hubs[0]?.drop();
     retries.shift()?.();
     await flush();
 
     expect(hubs[1]?.invoked).toEqual([]);
+  });
+});
+
+describe('RealtimeClient conversation events after leaving', () => {
+  const posted = (channelId: string) => ({
+    orgId: 'o1',
+    channelId,
+    message: {
+      id: 'm1',
+      seq: 1,
+      clientMessageId: 'x',
+      authorAccountId: 'a',
+      text: 'hi',
+      createdAt: '2026-11-25T10:00:00Z',
+    },
+  });
+
+  it('MessagePosted_AfterUnsubscribing_IsNotDelivered', async () => {
+    const { client, hubs } = setup();
+    const received: string[] = [];
+    client.on('MessagePosted', (payload) => received.push(payload.channelId));
+    client.subscribeConversation('o1', 'c1');
+    client.start();
+    await flush();
+
+    hubs[0]?.emit('MessagePosted', posted('c1'));
+    client.unsubscribeConversation('o1', 'c1');
+    // Already on its way when the server took the connection out of the group.
+    hubs[0]?.emit('MessagePosted', posted('c1'));
+    hubs[0]?.emit('MessagePosted', posted('never-joined'));
+
+    expect(received).toEqual(['c1']);
+  });
+
+  it('MembershipChanged_Removed_StopsDeliveryAndTheReplay', async () => {
+    const { client, hubs, retries } = setup();
+    const received: string[] = [];
+    const changes: string[] = [];
+    client.on('MessagePosted', (payload) => received.push(payload.channelId));
+    client.on('MembershipChanged', (payload) => changes.push(`${payload.conversationId} ${payload.change}`));
+    client.subscribeConversation('o1', 'c1');
+    client.subscribeConversation('o1', 'c2');
+    client.start();
+    await flush();
+
+    hubs[0]?.emit('MembershipChanged', { orgId: 'o1', conversationId: 'c1', change: 'removed' });
+    hubs[0]?.emit('MessagePosted', posted('c1'));
+    hubs[0]?.emit('MessagePosted', posted('c2'));
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    expect(changes).toEqual(['c1 removed']);
+    expect(received).toEqual(['c2']);
+    expect(hubs[1]?.invoked).toEqual(['SubscribeConversation o1 c2']);
   });
 });
 
@@ -293,11 +348,11 @@ describe('RealtimeClient queued joins', () => {
     await flush();
     hubs[0]?.invoke.mockRejectedValueOnce(new Error('realtime.not_found'));
     client.subscribeOrganization('o1');
-    client.subscribeChannel('o1', 'c1');
-    client.subscribeChannel('o1', 'c2');
+    client.subscribeConversation('o1', 'c1');
+    client.subscribeConversation('o1', 'c2');
     await flush();
 
-    // Only the organization was asked; its two channels were dropped before they were sent.
+    // Only the organization was asked; its two conversations were dropped before they were sent.
     expect(hubs[0]?.invoke).toHaveBeenCalledTimes(1);
   });
 });

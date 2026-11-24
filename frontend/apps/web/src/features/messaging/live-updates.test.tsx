@@ -42,6 +42,7 @@ function fakeRealtime() {
     MessagePosted: [],
     ChannelCreated: [],
     SessionRevoked: [],
+    MembershipChanged: [],
   };
   const statusListeners: ((status: ConnectionStatus, reconnected: boolean) => void)[] = [];
   let status: ConnectionStatus = 'stopped';
@@ -52,8 +53,8 @@ function fakeRealtime() {
     stop: vi.fn(() => Promise.resolve()),
     subscribeOrganization: vi.fn(),
     unsubscribeOrganization: vi.fn(),
-    subscribeChannel: vi.fn(),
-    unsubscribeChannel: vi.fn(),
+    subscribeConversation: vi.fn(),
+    unsubscribeConversation: vi.fn(),
     on: (event: RealtimeEventName, listener: (payload: never) => void) => {
       (listeners[event] as ((payload: never) => void)[]).push(listener);
       return () => undefined;
@@ -296,8 +297,8 @@ describe('Live updates in the open channel', () => {
 
     expect(live.spies.start).toHaveBeenCalled();
     expect(live.spies.subscribeOrganization).toHaveBeenCalledWith(ORG);
-    expect(live.spies.subscribeChannel).toHaveBeenCalledWith(ORG, GENERAL.id);
-    expect(live.spies.subscribeChannel).toHaveBeenCalledWith(ORG, RANDOM.id);
+    expect(live.spies.subscribeConversation).toHaveBeenCalledWith(ORG, GENERAL.id);
+    expect(live.spies.subscribeConversation).toHaveBeenCalledWith(ORG, RANDOM.id);
   });
 });
 

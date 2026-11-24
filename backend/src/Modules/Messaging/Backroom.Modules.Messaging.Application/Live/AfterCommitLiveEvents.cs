@@ -13,17 +13,41 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
 {
     private readonly List<MessagePostedPayload> _messages = [];
     private readonly List<ChannelCreatedPayload> _channels = [];
+    private readonly List<(Guid OrgId, Guid ConversationId, Guid AccountId)> _removals = [];
 
     public void Add(MessagePostedPayload payload) => _messages.Add(payload);
 
     public void Add(ChannelCreatedPayload payload) => _channels.Add(payload);
 
+    /// <summary>
+    /// The account's membership of the conversation ended: after the commit, its connections leave the conversation's live
+    /// group on every node (docs/contracts/phase-2.md, "Live events", removal). The outbox event repeats it durably.
+    /// </summary>
+    public void AddRemoval(Guid orgId, Guid conversationId, Guid accountId) => _removals.Add((orgId, conversationId, accountId));
+
     public async Task FlushAsync(CancellationToken cancellationToken)
     {
         var messages = _messages.ToArray();
         var channels = _channels.ToArray();
+        var removals = _removals.ToArray();
         _messages.Clear();
         _channels.Clear();
+        _removals.Clear();
+
+        // Removals first: a removed account must not get what follows.
+        foreach (var (orgId, conversationId, accountId) in removals)
+        {
+            try
+            {
+                await publisher.RemoveFromConversationAsync(orgId, conversationId, accountId, cancellationToken);
+            }
+#pragma warning disable CA1031 // Best effort: the consumer of the durable event repeats it.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogRemovalFailed(logger, exception.GetType().Name, orgId, conversationId);
+            }
+        }
 
         foreach (var channel in channels)
         {
@@ -60,4 +84,7 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Publishing the live event MessagePosted failed ({ExceptionType}) in organization {OrganizationId}, channel {ChannelId}, message {MessageId}.")]
     private static partial void LogMessagePostedFailed(ILogger logger, string exceptionType, Guid organizationId, Guid channelId, Guid messageId);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Removing a member from the live group failed ({ExceptionType}) in organization {OrganizationId}, conversation {ConversationId}.")]
+    private static partial void LogRemovalFailed(ILogger logger, string exceptionType, Guid organizationId, Guid conversationId);
 }

@@ -9,7 +9,7 @@ using Backroom.Testing.Valkey;
 namespace Backroom.Modules.Realtime.IntegrationTests;
 
 /// <summary>
-/// What a client may subscribe to: an active member of the organization, and for a channel read access to it (an open
+/// What a client may subscribe to: an active member of the organization, and for a conversation read access to it (an open
 /// public channel, or an open conversation the account is a member of). Every refusal about existence or membership is the same code, so nothing leaks.
 /// </summary>
 [Collection(CellCollection.Name)]
@@ -43,7 +43,7 @@ public sealed class SubscriptionTests(PostgresDatabase database, KeycloakRealm k
     [Theory]
     [InlineData("deactivated")]
     [InlineData("removed")]
-    public async Task SubscribeChannel_AsAMemberWhoIsNoLongerActive_IsRefusedAsNotFoundAsync(string status)
+    public async Task SubscribeConversation_AsAMemberWhoIsNoLongerActive_IsRefusedAsNotFoundAsync(string status)
     {
         var organizationId = await ProvisionForAsync(Alice);
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
@@ -51,13 +51,13 @@ public sealed class SubscriptionTests(PostgresDatabase database, KeycloakRealm k
         await ExecuteAsync("UPDATE organization.members SET status = $1 WHERE org_id = $2 AND account_id = $3", status, organizationId, await AccountAsync(Bob));
         var bob = await ConnectAsync(NodeA, Bob);
 
-        var failure = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeChannelAsync(organizationId, channelId));
+        var failure = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeConversationAsync(organizationId, channelId));
 
         failure.Message.Should().EndWith(NotFound);
     }
 
     [Fact]
-    public async Task SubscribeChannel_WithAChannelOfAnotherOrganization_IsRefusedAsNotFoundAsync()
+    public async Task SubscribeConversation_WithAChannelOfAnotherOrganization_IsRefusedAsNotFoundAsync()
     {
         var aliceOrganization = await ProvisionForAsync(Alice);
         var bobOrganization = await ProvisionForAsync(Bob);
@@ -65,71 +65,68 @@ public sealed class SubscriptionTests(PostgresDatabase database, KeycloakRealm k
         var bob = await ConnectAsync(NodeA, Bob);
 
         // Bob is a member of his own organization, but names Alice's channel in it, and Alice's organization with it.
-        var inOwnOrganization = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeChannelAsync(bobOrganization, aliceChannel));
-        var inAlicesOrganization = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeChannelAsync(aliceOrganization, aliceChannel));
+        var inOwnOrganization = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeConversationAsync(bobOrganization, aliceChannel));
+        var inAlicesOrganization = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeConversationAsync(aliceOrganization, aliceChannel));
 
         inOwnOrganization.Message.Should().EndWith(NotFound);
         inAlicesOrganization.Message.Should().EndWith(NotFound);
     }
 
     [Fact]
-    public async Task SubscribeChannel_WithAChannelThatDoesNotExist_IsRefusedAsNotFoundAsync()
+    public async Task SubscribeConversation_WithAChannelThatDoesNotExist_IsRefusedAsNotFoundAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
         var alice = await ConnectAsync(NodeA, Alice);
 
-        var failure = await Assert.ThrowsAsync<HubException>(() => alice.SubscribeChannelAsync(organizationId, Guid.NewGuid()));
+        var failure = await Assert.ThrowsAsync<HubException>(() => alice.SubscribeConversationAsync(organizationId, Guid.NewGuid()));
 
         failure.Message.Should().EndWith(NotFound);
     }
 
     [Fact]
-    public async Task SubscribeChannel_WithAnArchivedChannel_IsRefusedAsNotFoundAsync()
+    public async Task SubscribeConversation_WithAnArchivedChannel_IsRefusedAsNotFoundAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "old");
         await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", channelId);
         var alice = await ConnectAsync(NodeA, Alice);
 
-        var failure = await Assert.ThrowsAsync<HubException>(() => alice.SubscribeChannelAsync(organizationId, channelId));
+        var failure = await Assert.ThrowsAsync<HubException>(() => alice.SubscribeConversationAsync(organizationId, channelId));
 
         failure.Message.Should().EndWith(NotFound);
     }
 
     [Fact]
-    public async Task SubscribeChannel_WithAPrivateChannel_IsAllowedOnlyForItsMembersAsync()
+    public async Task SubscribeConversation_WithAPrivateChannel_IsAllowedOnlyForItsMembersOnEveryNodeAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
-        var bobAccount = await AccountAsync(Bob);
-        var privateId = Guid.CreateVersion7();
-        // Inserted directly until private channels have their routes (Phase 2 step 7).
-        await ExecuteAsync(
-            "INSERT INTO messaging.conversations (id, org_id, kind, name, name_key, created_by, created_at, member_count) VALUES ($1, $2, 'private_channel', 'Secret', 'secret', $3, now(), 1)",
-            privateId, organizationId, bobAccount);
-        await ExecuteAsync(
-            "INSERT INTO messaging.conversation_members (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by) VALUES ($1, $2, $3, 'owner', now(), 0, $3)",
-            organizationId, privateId, bobAccount);
-        var alice = await ConnectAsync(NodeA, Alice);
+        var privateId = await CreatePrivateConversationAsync(organizationId, Bob);
+        var aliceOnA = await ConnectAsync(NodeA, Alice);
+        var aliceOnB = await ConnectAsync(NodeB, Alice);
         var bob = await ConnectAsync(NodeA, Bob);
 
-        // Alice holds the Owner role, which gives no access to a conversation she is not in.
-        var failure = await Assert.ThrowsAsync<HubException>(() => alice.SubscribeChannelAsync(organizationId, privateId));
-        await bob.SubscribeChannelAsync(organizationId, privateId);
+        // Alice holds the Owner role, which gives no access to a conversation she is not in, on either node.
+        var onA = await Assert.ThrowsAsync<HubException>(() => aliceOnA.SubscribeConversationAsync(organizationId, privateId));
+        var onB = await Assert.ThrowsAsync<HubException>(() => aliceOnB.SubscribeConversationAsync(organizationId, privateId));
+        await bob.SubscribeConversationAsync(organizationId, privateId);
 
-        failure.Message.Should().EndWith(NotFound);
+        onA.Message.Should().EndWith(NotFound);
+        onB.Message.Should().EndWith(NotFound);
+        (await SubscriptionCountAsync(NodeA, Alice)).Should().Be(0);
+        (await SubscriptionCountAsync(NodeB, Alice)).Should().Be(0);
     }
 
     [Fact]
-    public async Task SubscribeChannel_AsAnActiveMemberWithoutARole_IsAllowedAsync()
+    public async Task SubscribeConversation_AsAnActiveMemberWithoutARole_IsAllowedAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
         await AddMemberAsync(organizationId, Bob, role: null);
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
         var bob = await ConnectAsync(NodeB, Bob);
 
-        await bob.SubscribeChannelAsync(organizationId, channelId);
-        await bob.SubscribeChannelAsync(organizationId, channelId); // idempotent
+        await bob.SubscribeConversationAsync(organizationId, channelId);
+        await bob.SubscribeConversationAsync(organizationId, channelId); // idempotent
 
         await SendMessageAsync(NodeA, organizationId, channelId, Alice, "hi");
         (await bob.NextMessageAsync()).Message.Text.Should().Be("hi");
@@ -142,7 +139,7 @@ public sealed class SubscriptionTests(PostgresDatabase database, KeycloakRealm k
         var alice = await ConnectAsync(NodeA, Alice);
 
         (await Assert.ThrowsAsync<HubException>(() => alice.SubscribeOrganizationAsync(Guid.Empty))).Message.Should().EndWith("realtime.invalid_argument");
-        (await Assert.ThrowsAsync<HubException>(() => alice.SubscribeChannelAsync(Guid.NewGuid(), Guid.Empty))).Message.Should().EndWith("realtime.invalid_argument");
+        (await Assert.ThrowsAsync<HubException>(() => alice.SubscribeConversationAsync(Guid.NewGuid(), Guid.Empty))).Message.Should().EndWith("realtime.invalid_argument");
     }
 
     [Fact]
@@ -151,10 +148,10 @@ public sealed class SubscriptionTests(PostgresDatabase database, KeycloakRealm k
         var organizationId = await ProvisionForAsync(Alice);
         var bob = await ConnectAsync(NodeA, Bob);
 
-        var failure = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeChannelAsync(organizationId, Guid.NewGuid()));
+        var failure = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeConversationAsync(organizationId, Guid.NewGuid()));
 
         // SignalR adds the exception type name for a HubException; nothing else but the code.
-        failure.Message.Should().Be("An unexpected error occurred invoking 'SubscribeChannel' on the server. HubException: realtime.not_found");
+        failure.Message.Should().Be("An unexpected error occurred invoking 'SubscribeConversation' on the server. HubException: realtime.not_found");
         failure.Message.Should().NotContainAny("Npgsql", "postgres", "   at ", organizationId.ToString());
     }
 }

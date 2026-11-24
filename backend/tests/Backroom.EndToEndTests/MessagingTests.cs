@@ -29,7 +29,7 @@ public sealed class MessagingTests(EndToEndEnvironment environment)
         var channelId = channel.Json["id"]!.GetValue<Guid>();
 
         await using var live = await LiveClient.ConnectAsync(organization.CellUrl, readerToken, CancellationToken);
-        await live.SubscribeChannelAsync(organization.Id, channelId, CancellationToken);
+        await live.SubscribeConversationAsync(organization.Id, channelId, CancellationToken);
 
         var clientMessageId = Guid.NewGuid();
         var posted = await Api.PostAsync(

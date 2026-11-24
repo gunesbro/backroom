@@ -90,7 +90,7 @@ public sealed class ConnectionTests(PostgresDatabase database, KeycloakRealm key
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
         var token = await TokenAsync(Alice);
         var client = await ConnectAsync(NodeA, Alice);
-        await client.SubscribeChannelAsync(organizationId, channelId);
+        await client.SubscribeConversationAsync(organizationId, channelId);
         await SendMessageAsync(NodeB, organizationId, channelId, Alice, "this text must not be logged either");
         await client.NextMessageAsync();
 
@@ -126,7 +126,7 @@ public sealed class ConnectionTests(PostgresDatabase database, KeycloakRealm key
         using var listener = new MetricCounter();
 
         var client = await ConnectAsync(NodeA, Alice);
-        await client.SubscribeChannelAsync(organizationId, channelId);
+        await client.SubscribeConversationAsync(organizationId, channelId);
         await SendMessageAsync(NodeA, organizationId, channelId, Alice, "hi");
         await client.NextMessageAsync();
 

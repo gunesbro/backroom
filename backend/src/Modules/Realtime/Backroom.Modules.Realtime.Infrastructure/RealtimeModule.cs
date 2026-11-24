@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Backroom.BuildingBlocks.Infrastructure.Messaging;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
+using Backroom.Modules.Messaging.Contracts;
 using Backroom.Modules.Organization.Contracts;
 using Backroom.Modules.Realtime.Contracts;
 using Backroom.Modules.Realtime.Infrastructure.Gateway;
@@ -40,7 +41,7 @@ public static class RealtimeModule
                 options => !string.IsNullOrWhiteSpace(options.CellId) && !options.CellId.Contains(':', StringComparison.Ordinal),
                 "Cell:Id is required and must not contain ':'.")
             .Validate(
-                options => options.MaxSubscriptionsPerConnection is > 0 and <= 1000
+                options => options.MaxSubscriptionsPerConnection is >= 2 and <= 1000
                     && options.MaxConnectionsPerAccount is > 0 and <= 100
                     && options.MaxReceiveMessageSizeBytes is >= 256 and <= 64 * 1024
                     && options.MaxConcurrentPublishes is > 0 and <= 10_000
@@ -102,7 +103,7 @@ public static class RealtimeModule
 
     /// <summary>
     /// App role, after <see cref="AddRealtime"/> and the host's database session: the hub's checks and the listener that
-    /// removes connections from an organization's groups when a member is removed.
+    /// removes connections from groups when a member is removed from an organization or a conversation.
     /// </summary>
     public static IServiceCollection AddRealtimeGateway(this IServiceCollection services)
     {
@@ -113,13 +114,15 @@ public static class RealtimeModule
     }
 
     /// <summary>
-    /// Worker role, after <see cref="AddRealtime"/>: consumes <c>organization.member-removed.v1</c> and tells the app nodes
-    /// to remove the account from the organization's groups (the inbox is in the module's schema).
+    /// Worker role, after <see cref="AddRealtime"/>: consumes <c>organization.member-removed.v1</c> and
+    /// <c>messaging.conversation-member-removed.v1</c> and tells the app nodes to remove the account from the
+    /// organization's groups or the conversation's group (the inbox is in the module's schema).
     /// </summary>
     public static IServiceCollection AddRealtimeMemberRemoval(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddRealtimeDatabase();
-        return services.AddIntegrationEventHandler<MemberRemoved, MemberRemovedConsumer>(RealtimeDbContext.Schema);
+        services.AddIntegrationEventHandler<MemberRemoved, MemberRemovedConsumer>(RealtimeDbContext.Schema);
+        return services.AddIntegrationEventHandler<ConversationMemberRemoved, ConversationMemberRemovedConsumer>(RealtimeDbContext.Schema);
     }
 }

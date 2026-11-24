@@ -10,6 +10,7 @@ export type {
   ChannelCreated,
   ConnectionStatus,
   LiveMessage,
+  MembershipChanged,
   MessagePosted,
   RealtimeEventName,
   RealtimeEvents,
