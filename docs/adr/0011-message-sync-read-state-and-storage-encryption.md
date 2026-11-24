@@ -69,7 +69,7 @@ A client never derives correctness from live events. Every start, reload and rec
   - The consumer writes the rows of one event in batches, grouped by account, to keep lock time short.
 - **Content and retention.** Rows carry ids only, never content, and content is always read through the regular permission check. Rows are kept 30 days and deleted by a maintenance job (ADR 0010). Read state and thread followers are not time-limited.
 
-### Sync: snapshot plus delta, with a watermark
+### Sync: snapshot plus delta, with a pending flag
 
 - **The delta.** `GET /api/v1/orgs/{orgId}/sync?since={cursor}` returns, in bounded pages:
   - the feed rows after the cursor;
