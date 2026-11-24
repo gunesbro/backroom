@@ -416,7 +416,8 @@
   border-radius: var(--ph-radius-md);
 }
 
-.bm-message:hover {
+.bm-message:hover,
+.bm-message:focus-within {
   background: var(--ph-row-hover);
 }
 
@@ -426,17 +427,13 @@
   top: -14px;
   right: var(--ph-space-8);
   z-index: 1;
-  display: none;
+  display: flex;
   gap: var(--ph-space-2);
   padding: 3px;
   border: 1px solid var(--ph-line);
   border-radius: var(--ph-radius-md);
   background: var(--ph-panel);
   box-shadow: var(--ph-shadow-bar);
-}
-
-.bm-message:hover .bm-actions {
-  display: flex;
 }
 
 .bm-actions button {
@@ -659,8 +656,7 @@
 .bm-bell:focus-visible,
 .bm-header__button:focus-visible,
 .bm-format button:focus-visible,
-.bm-composer__bar button:focus-visible,
-.bm-log:focus-visible {
+.bm-composer__bar button:focus-visible {
   outline: 2px solid var(--ph-accent);
   outline-offset: -2px;
 }
@@ -725,4 +721,9 @@
   display: flex;
   align-items: center;
   gap: var(--ph-space-2);
+}
+
+.bm-message:focus-visible {
+  outline: 2px solid var(--ph-accent);
+  outline-offset: -2px;
 }

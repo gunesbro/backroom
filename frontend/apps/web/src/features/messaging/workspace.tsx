@@ -9,6 +9,7 @@ import { ChannelSidebar, type ChannelsState } from './channel-sidebar';
 import { Composer } from './composer';
 import { CreateChannelDialog } from './create-channel-dialog';
 import { MessageList, type Row } from './message-list';
+import { rowKey } from './row-key';
 import { messages } from './messages';
 import { NewMessageAnnouncer } from './new-message-announcer';
 import { usePendingMessages } from './pending-messages';
@@ -218,14 +219,17 @@ function ChannelView({
       ? []
       : pendingHere.flatMap((item) =>
           item.message && !known.has(item.message.id)
-            ? [{ key: item.message.id, message: item.message }]
+            ? [{ key: rowKey(item.message), message: item.message }]
             : [],
         );
     const unsent = pendingHere
       .filter((item) => item.status !== 'confirmed' && !knownClient.has(item.clientMessageId))
-      .map((item) => ({ key: `pending:${item.clientMessageId}`, pending: item }));
-    return [...confirmed.map((message) => ({ key: message.id, message })), ...overlay, ...unsent];
-  }, [confirmed, pendingHere, query.hasPreviousPage]);
+      .map((item) => ({
+        key: rowKey({ authorAccountId: ownAccountId ?? '', clientMessageId: item.clientMessageId, id: '' }),
+        pending: item,
+      }));
+    return [...confirmed.map((message) => ({ key: rowKey(message), message })), ...overlay, ...unsent];
+  }, [confirmed, pendingHere, query.hasPreviousPage, ownAccountId]);
 
   // Confirmed messages leave the pending list once a fetched page has them.
   const { prune } = pending;

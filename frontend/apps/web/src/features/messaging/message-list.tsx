@@ -1,5 +1,15 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from 'react';
+import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
 import { Avatar, Icon, SoonButton, type IconName } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
@@ -20,6 +30,7 @@ const ESTIMATED_ROW_HEIGHT = 64;
 const FOLLOW_DISTANCE = 80;
 /** Earlier messages are asked for once the oldest drawn row is this close to the top of the list. */
 const LOAD_EARLIER_WITHIN = 3;
+const ROW_KEY_ATTRIBUTE = 'data-row-key';
 
 /**
  * The messages of a channel, oldest first, virtualized (TanStack Virtual): only the rows near the view are in the
@@ -66,6 +77,22 @@ export function MessageList({
   // The row at the top of the view after the last change, and where it was: rows added or dropped above it move it.
   const previous = useRef<{ rows: readonly Row[]; anchor?: { key: string; start: number } }>({ rows });
 
+  // Roving tabindex: the row that is the list's one tab stop, and the row that holds focus (kept drawn while it does).
+  const [activeKey, setActiveKey] = useState<string>();
+  const focusedKey = useRef<string>(undefined);
+  const pendingFocus = useRef<string>(undefined);
+  const focusedIndex = useRef(0);
+  const previousRows = useRef<readonly Row[]>(rows);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const rangeExtractor = useCallback((range: Range) => {
+    const indexes = defaultRangeExtractor(range);
+    const focused = focusedKey.current;
+    const at = focused === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === focused);
+    if (at < 0 || indexes.includes(at)) return indexes;
+    return [...indexes, at].sort((a, b) => a - b);
+  }, []);
+
   // The virtualizer is used only in this component and its functions are not passed to memoized children.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -74,6 +101,7 @@ export function MessageList({
     estimateSize: () => ESTIMATED_ROW_HEIGHT,
     getItemKey: (index) => rows[index]?.key ?? index,
     overscan: 8,
+    rangeExtractor,
   });
   const total = virtualizer.getTotalSize();
 
@@ -129,6 +157,90 @@ export function MessageList({
 
     return day;
   };
+  // Without a known (or drawn) active row, the last drawn one is the tab stop.
+  const lastDrawn = items.at(-1);
+  const tabStopKey =
+    activeKey !== undefined && items.some((item) => rows[item.index]?.key === activeKey)
+      ? activeKey
+      : lastDrawn && rows[lastDrawn.index]?.key;
+  const rowElement = (key: string) =>
+    scrollRef.current?.querySelector<HTMLElement>(`[${ROW_KEY_ATTRIBUTE}="${CSS.escape(key)}"]`);
+  // Moving by key scrolls the target row into the drawn range first; focus follows once it is in the page.
+  useLayoutEffect(() => {
+    const key = pendingFocus.current;
+    const element = key === undefined ? undefined : rowElement(key);
+    if (element) {
+      pendingFocus.current = undefined;
+      element.focus({ preventScroll: true });
+    }
+  }, [items]);
+  const onLogFocus = (event: FocusEvent<HTMLElement>) => {
+    const key = event.target.closest(`[${ROW_KEY_ATTRIBUTE}]`)?.getAttribute(ROW_KEY_ATTRIBUTE);
+    focusedKey.current = key ?? undefined;
+    if (key) {
+      setActiveKey(key);
+      const at = rows.findIndex((row) => row.key === key);
+      if (at >= 0) focusedIndex.current = at;
+    }
+  };
+  const onLogBlur = (event: FocusEvent<HTMLElement>) => {
+    // A row removed while it has focus can report a blur; it is the row's loss, not the person's move.
+    if (event.relatedTarget === null && !event.target.isConnected) return;
+    focusedKey.current = undefined;
+  };
+  // The focused row left the list (its page was dropped): focus goes to the row now in its place, not to the page.
+  useLayoutEffect(() => {
+    const key = focusedKey.current;
+    const before = previousRows.current;
+    previousRows.current = rows;
+    if (key === undefined) return;
+    const at = rows.findIndex((row) => row.key === key);
+    if (at >= 0) {
+      focusedIndex.current = at;
+      return;
+    }
+
+    // The nearest row that is still there: the next one after the old position, else the one before it.
+    const survivors = new Set(rows.map((row) => row.key));
+    const after = before.slice(focusedIndex.current + 1).find((row) => survivors.has(row.key));
+    const earlier = before.slice(0, focusedIndex.current).findLast((row) => survivors.has(row.key));
+    const nearestKey = (after ?? earlier)?.key;
+    const nearest = rows.findIndex((row) => row.key === nearestKey);
+    focusedKey.current = undefined;
+    if (nearestKey === undefined || nearest < 0) return;
+    focusedIndex.current = nearest;
+    setActiveKey(nearestKey);
+    virtualizer.scrollToIndex(nearest);
+    // Drawn already: focus now (the items may not change); otherwise after the scroll draws it.
+    const element = rowElement(nearestKey);
+    if (element) element.focus({ preventScroll: true });
+    else pendingFocus.current = nearestKey;
+  }, [rows, virtualizer]);
+  const onRowKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const key = (event.target as HTMLElement).getAttribute(ROW_KEY_ATTRIBUTE);
+    if (key === null || event.altKey || event.ctrlKey || event.metaKey) return;
+    const index = rows.findIndex((row) => row.key === key);
+    const next =
+      event.key === 'ArrowUp' || event.key === 'PageUp'
+        ? Math.max(index - 1, 0)
+        : event.key === 'ArrowDown' || event.key === 'PageDown'
+          ? Math.min(index + 1, rows.length - 1)
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? rows.length - 1
+              : undefined;
+    const nextKey = next === undefined ? undefined : rows[next]?.key;
+    if (next === undefined || nextKey === undefined) return;
+    event.preventDefault();
+    setActiveKey(nextKey);
+    focusedIndex.current = next;
+    virtualizer.scrollToIndex(next);
+    // Already drawn: focus now; otherwise the effect above does it after the scroll draws the row.
+    const element = rowElement(nextKey);
+    if (element) element.focus({ preventScroll: true });
+    else pendingFocus.current = nextKey;
+  };
   const firstIndex = items[0]?.index;
   const lastIndex = items.at(-1)?.index;
   useEffect(() => {
@@ -158,12 +270,13 @@ export function MessageList({
     <div
       ref={scrollRef}
       className="bm-log"
-      role="log"
+      role="feed"
       // The list is virtualized and long: a separate live region announces new messages.
-      aria-live="off"
       aria-label={t('messagesLabel', { name: channelName })}
       aria-busy={loadingEarlier || loadingNewer}
-      tabIndex={0}
+      onKeyDown={onRowKeyDown}
+      onFocus={onLogFocus}
+      onBlur={onLogBlur}
       onScroll={(event) => {
         const element = event.currentTarget;
         previous.current = { rows, ...anchorAt(element.scrollTop) };
@@ -172,7 +285,7 @@ export function MessageList({
       }}
     >
       {loadingEarlier && <p className="bm-log__status">{t('loadingEarlier')}</p>}
-      <ol className="bm-rows" style={{ height: total }}>
+      <ol className="bm-rows" role="none" style={{ height: total }}>
         {items.map((item) => {
           const row = rows[item.index];
           if (!row) return null;
@@ -184,6 +297,7 @@ export function MessageList({
           return (
             <li
               key={item.key}
+              role="none"
               ref={virtualizer.measureElement}
               data-index={item.index}
               className="bm-row"
@@ -196,6 +310,8 @@ export function MessageList({
               )}
               <MessageRow
                 row={row}
+                tabStop={row.key === tabStopKey}
+                position={item.index + 1}
                 authorName={authorName}
                 ownAccountId={ownAccountId}
                 ownName={ownName}
@@ -229,15 +345,16 @@ const MESSAGE_ACTIONS: readonly {
 ];
 
 /**
- * Shown over the message under the pointer; every action is for a later phase. Hidden from screen readers and out
- * of the tab order, so a long list does not add six inert stops per message.
+ * Shown over the message under the pointer, with focus inside or tapped; every action is for a later phase. It is
+ * built only for that one row, so a long list does not carry six buttons per message. Tab from the row reaches the
+ * buttons and Escape returns to the row.
  */
 function MessageActions() {
   const t = useTranslate(messages);
   return (
-    <div className="bm-actions" aria-hidden="true">
+    <div className="bm-actions">
       {MESSAGE_ACTIONS.map((action) => (
-        <SoonButton key={action.key} label={t(action.key)} soon={t('soon')} tabbable={false}>
+        <SoonButton key={action.key} label={t(action.key)} soon={t('soon')}>
           <Icon name={action.icon} size={16} />
         </SoonButton>
       ))}
@@ -247,6 +364,8 @@ function MessageActions() {
 
 const MessageRow = memo(function MessageRow({
   row,
+  tabStop,
+  position,
   authorName,
   ownAccountId,
   ownName,
@@ -255,6 +374,10 @@ const MessageRow = memo(function MessageRow({
   onDiscard,
 }: {
   row: Row;
+  /** The list's one tab stop (roving tabindex); the other rows are reached by the arrow keys. */
+  tabStop: boolean;
+  /** One-based place in the feed (aria-posinset); the size is unknown, as more pages load. */
+  position: number;
   authorName: (accountId: string) => string;
   ownAccountId: string | undefined;
   ownName: string;
@@ -264,6 +387,12 @@ const MessageRow = memo(function MessageRow({
 }) {
   const now = new Date();
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [tapped, setTapped] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const headId = useId();
+  // A press that focuses the row (mouse, finger) is not keyboard focus: it must not pin the action bar open.
+  const pressed = useRef(false);
   const t = useTranslate(messages);
   const pending = row.pending;
   const message = row.message;
@@ -275,19 +404,54 @@ const MessageRow = memo(function MessageRow({
   const text = pending?.text ?? message?.text ?? '';
   return (
     <div
+      ref={rowRef}
       className={pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message'}
-      // The action bar is built only for the message under the pointer, not for every row in the list.
-      onMouseEnter={() => {
-        setHovered(true);
+      role="article"
+      aria-labelledby={headId}
+      aria-posinset={position}
+      aria-setsize={-1}
+      data-row-key={row.key}
+      tabIndex={tabStop ? 0 : -1}
+      // The action bar is built only for the row under the pointer, with focus inside, or tapped: not for every row.
+      onPointerEnter={(event) => {
+        if (event.pointerType === 'mouse') setHovered(true);
       }}
-      onMouseLeave={() => {
+      onPointerLeave={() => {
         setHovered(false);
       }}
+      onPointerDownCapture={() => {
+        pressed.current = true;
+      }}
+      onFocus={() => {
+        if (!pressed.current) setFocused(true);
+        pressed.current = false;
+      }}
+      onBlur={(event) => {
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+        setFocused(false);
+        setTapped(false);
+      }}
+      onPointerUp={(event) => {
+        pressed.current = false;
+        // A tap on touch or pen has no hover: it shows the bar, and a second tap on the message hides it.
+        if (event.pointerType === 'mouse' || (event.target as HTMLElement).closest('.bm-actions, button, a'))
+          return;
+        setTapped((value) => !value);
+      }}
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Escape') return;
+        setTapped(false);
+        // From inside the action bar back to the row; Escape elsewhere is left alone.
+        if ((event.target as HTMLElement).closest('.bm-actions')) {
+          event.stopPropagation();
+          rowRef.current?.focus({ preventScroll: true });
+        }
+      }}
     >
-      {hovered && !pending && <MessageActions />}
+      {(hovered || focused || tapped) && !pending && <MessageActions />}
       <Avatar name={name} toneKey={authorId} shape="square" size="lg" />
       <div className="bm-message__body">
-        <p className="bm-message__head">
+        <p className="bm-message__head" id={headId}>
           <b>{name}</b>{' '}
           <time className="ph-muted" dateTime={createdAt}>
             {formatMessageTime(new Date(createdAt), locale, now)}

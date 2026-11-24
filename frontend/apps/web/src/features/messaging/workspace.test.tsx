@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axe from 'axe-core';
 import { delay, http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -30,7 +30,7 @@ beforeAll(() => {
   server.listen({ onUnhandledFrame: 'error' });
   // jsdom has no layout: the log is 400 px tall, a row 40 px, and scrollTop can be set.
   const tops = new WeakMap<Element, number>();
-  const isLog = (element: Element) => element.getAttribute('role') === 'log';
+  const isLog = (element: Element) => element.getAttribute('role') === 'feed';
   Object.defineProperties(HTMLElement.prototype, {
     offsetHeight: {
       configurable: true,
@@ -49,6 +49,12 @@ beforeAll(() => {
       configurable: true,
       get: function (this: HTMLElement) {
         return isLog(this) ? Number.parseInt(this.querySelector('ol')?.style.height ?? '0', 10) : 0;
+      },
+    },
+    scrollTo: {
+      configurable: true,
+      value: function (this: HTMLElement, options: { top?: number }) {
+        tops.set(this, options.top ?? 0);
       },
     },
     scrollTop: {
@@ -175,9 +181,9 @@ function renderWorkspace(locale: Locale = 'en', organization: Org = ORG_A) {
 
 /** The log once its messages are in: scrolls to the end, as the browser does after the list sets its position. */
 async function openLog(name = 'Messages in #general') {
-  const log = await screen.findByRole('log', { name });
+  const log = await screen.findByRole('feed', { name });
   await waitFor(() => {
-    expect(within(log).queryAllByRole('listitem').length).toBeGreaterThan(0);
+    expect(within(log).queryAllByRole('article').length).toBeGreaterThan(0);
   });
   fireEvent.scroll(log);
   return log;
@@ -196,7 +202,7 @@ describe('Channels', () => {
       'true',
     );
     expect(within(nav).getByRole('button', { name: 'random' })).not.toHaveAttribute('aria-current');
-    expect(await screen.findByRole('log', { name: 'Messages in #general' })).toBeInTheDocument();
+    expect(await screen.findByRole('feed', { name: 'Messages in #general' })).toBeInTheDocument();
   });
 
   it('ChannelList_WithANextPage_LoadsTheRestOnRequest', async () => {
@@ -217,7 +223,7 @@ describe('Channels', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'random' }));
 
-    expect(await screen.findByRole('log', { name: 'Messages in #random' })).toBeInTheDocument();
+    expect(await screen.findByRole('feed', { name: 'Messages in #random' })).toBeInTheDocument();
     expect(await screen.findByText('random two')).toBeInTheDocument();
   });
 
@@ -240,7 +246,7 @@ describe('Channels', () => {
     fireEvent.change(within(dialog).getByLabelText('Channel name'), { target: { value: '  design ' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    expect(await screen.findByRole('log', { name: 'Messages in #design' })).toBeInTheDocument();
+    expect(await screen.findByRole('feed', { name: 'Messages in #design' })).toBeInTheDocument();
     expect(body).toEqual({ name: 'design' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'design' })).toHaveAttribute('aria-current', 'true');
@@ -604,7 +610,7 @@ describe('Races and isolation', () => {
     fireEvent.change(composer(), { target: { value: 'sent too early' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
-    const log = await screen.findByRole('log', { name: 'Messages in #general' });
+    const log = await screen.findByRole('feed', { name: 'Messages in #general' });
     await waitFor(() => {
       expect(within(log).getByText('sent too early')).toBeInTheDocument();
     });
@@ -654,10 +660,10 @@ describe('Races and isolation', () => {
       ),
     );
     const { switchTo } = renderWorkspace();
-    await screen.findByRole('log', { name: 'Messages in #general' });
+    await screen.findByRole('feed', { name: 'Messages in #general' });
 
     switchTo({ id: ORG_B, name: 'Globex', cell: { id: 'a', url: CELL } });
-    const log = await screen.findByRole('log', { name: 'Messages in #bgeneral' });
+    const log = await screen.findByRole('feed', { name: 'Messages in #bgeneral' });
     await within(log).findByText('organization B message');
     await new Promise((resolve) => setTimeout(resolve, 350));
 
@@ -683,12 +689,12 @@ describe('Races and isolation', () => {
     expect(composer()).toHaveFocus();
   });
 
-  it('MessageLog_IsNotLive_AndTheComposerShowsItsKeyboardHint', async () => {
+  it('MessageFeed_IsNotLive_AndTheComposerShowsItsKeyboardHint', async () => {
     serveCell();
     renderWorkspace();
     const log = await openLog();
 
-    expect(log).toHaveAttribute('aria-live', 'off');
+    expect(log).not.toHaveAttribute('aria-live');
     expect(screen.getByText('Enter to send · Shift+Enter for a new line')).toBeInTheDocument();
     expect(composer()).toHaveAccessibleDescription(/Enter to send/);
   });
@@ -764,10 +770,127 @@ describe('Shell', () => {
     const text = await within(log).findByText('message 3');
 
     expect(within(log).queryAllByRole('button', { name: 'Reply', hidden: true })).toHaveLength(0);
-    fireEvent.mouseEnter(text.closest('.bm-message') as HTMLElement);
+    fireEvent.pointerEnter(text.closest('.bm-message') as HTMLElement, { pointerType: 'mouse' });
     expect(within(log).getAllByRole('button', { name: 'Reply', hidden: true })).toHaveLength(1);
-    fireEvent.mouseLeave(text.closest('.bm-message') as HTMLElement);
+    fireEvent.pointerLeave(text.closest('.bm-message') as HTMLElement, { pointerType: 'mouse' });
     expect(within(log).queryAllByRole('button', { name: 'Reply', hidden: true })).toHaveLength(0);
+  });
+
+  it('MessageRows_AreOneTabStopAndMoveWithTheArrowKeys', async () => {
+    serveCell({ counts: { [GENERAL.id]: 4 } });
+    renderWorkspace();
+    const log = await openLog();
+    await within(log).findByText('message 4');
+    const rows = () => within(log).getAllByRole('article');
+
+    expect(rows().map((row) => row.tabIndex)).toEqual([-1, -1, -1, 0]);
+    expect(rows()[3]).toHaveAccessibleName(/^Veli Yılmaz .+$/);
+    expect(rows()[3]).toHaveAttribute('aria-posinset', '4');
+    expect(rows()[3]).toHaveAttribute('aria-setsize', '-1');
+    act(() => {
+      rows()[3]?.focus();
+    });
+    fireEvent.keyDown(rows()[3] as HTMLElement, { key: 'ArrowUp' });
+    expect(rows()[2]).toHaveFocus();
+    expect(rows().map((row) => row.tabIndex)).toEqual([-1, -1, 0, -1]);
+    fireEvent.keyDown(rows()[2] as HTMLElement, { key: 'Home' });
+    expect(rows()[0]).toHaveFocus();
+    fireEvent.keyDown(rows()[0] as HTMLElement, { key: 'ArrowUp' });
+    expect(rows()[0]).toHaveFocus();
+    fireEvent.keyDown(rows()[0] as HTMLElement, { key: 'End' });
+    expect(rows()[3]).toHaveFocus();
+    fireEvent.keyDown(rows()[3] as HTMLElement, { key: 'ArrowDown' });
+    expect(rows()[3]).toHaveFocus();
+  });
+
+  it('MessageRows_WhenLongList_KeyboardReachesTheFirstAndLastLoadedMessage', async () => {
+    serveCell({ counts: { [GENERAL.id]: 40 } });
+    renderWorkspace();
+    const log = await openLog();
+    await within(log).findByText('message 40');
+    const last = within(log).getByText('message 40').closest<HTMLElement>('[role="article"]');
+    act(() => {
+      last?.focus();
+    });
+
+    fireEvent.keyDown(last as HTMLElement, { key: 'Home' });
+    fireEvent.scroll(log);
+
+    await waitFor(() => {
+      expect(within(log).getByText('message 1').closest('[role="article"]')).toHaveFocus();
+    });
+  });
+
+  it('MessageActions_OnFocusWithinTheRow_ShowAndAreReachableByTab', async () => {
+    serveCell();
+    renderWorkspace();
+    const log = await openLog();
+    const row = (await within(log).findByText('message 3')).closest<HTMLElement>('[role="article"]');
+
+    expect(within(log).queryAllByRole('button', { name: 'Reply' })).toHaveLength(0);
+    act(() => {
+      row?.focus();
+    });
+    const buttons = within(row as HTMLElement).getAllByRole('button');
+    expect(buttons.map((button) => button.tabIndex)).toEqual(buttons.map(() => 0));
+    expect(within(row as HTMLElement).getByRole('button', { name: 'Reply' })).toBeInTheDocument();
+    expect(within(log).getAllByRole('button', { name: 'Reply' })).toHaveLength(1);
+
+    act(() => {
+      buttons[1]?.focus();
+    });
+    expect(row).toContainElement(document.activeElement as HTMLElement);
+    act(() => {
+      (document.activeElement as HTMLElement).blur();
+    });
+    fireEvent.blur(row as HTMLElement, { relatedTarget: null });
+    expect(within(log).queryAllByRole('button', { name: 'Reply' })).toHaveLength(0);
+  });
+
+  it('MessageActions_Escape_ReturnsFocusToTheRow', async () => {
+    serveCell();
+    renderWorkspace();
+    const log = await openLog();
+    const row = (await within(log).findByText('message 3')).closest<HTMLElement>('[role="article"]');
+    act(() => {
+      row?.focus();
+    });
+    const reply = within(row as HTMLElement).getByRole('button', { name: 'Reply' });
+    act(() => {
+      reply.focus();
+    });
+
+    fireEvent.keyDown(reply, { key: 'Escape' });
+
+    expect(row).toHaveFocus();
+  });
+
+  it('MessageActions_OnTouchTap_ShowAndTapAgainHides', async () => {
+    serveCell();
+    renderWorkspace();
+    const log = await openLog();
+    const text = await within(log).findByText('message 3');
+
+    fireEvent.pointerUp(text, { pointerType: 'touch' });
+    expect(within(log).getAllByRole('button', { name: 'Reply' })).toHaveLength(1);
+    fireEvent.pointerUp(text, { pointerType: 'touch' });
+    expect(within(log).queryAllByRole('button', { name: 'Reply' })).toHaveLength(0);
+    fireEvent.pointerUp(text, { pointerType: 'mouse' });
+    expect(within(log).queryAllByRole('button', { name: 'Reply' })).toHaveLength(0);
+  });
+
+  it('MessageRows_WithTheActionBarShown_HaveNoAxeViolations', async () => {
+    serveCell({ counts: { [GENERAL.id]: 5 } });
+    const { container } = renderWorkspace();
+    const log = await openLog();
+    const row = (await within(log).findByText('message 5')).closest<HTMLElement>('[role="article"]');
+    act(() => {
+      row?.focus();
+    });
+
+    const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
+
+    expect(results.violations.map((violation) => `${violation.id}: ${violation.help}`)).toEqual([]);
   });
 
   it('Composer_PassiveTools_ShareOneTabStop', async () => {
