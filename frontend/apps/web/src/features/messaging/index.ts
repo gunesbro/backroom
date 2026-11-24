@@ -4,7 +4,9 @@ import { lazy } from 'react';
 export {
   createMessagingApi,
   MessagingApiContext,
+  useMessagingEnabled,
   type Cell,
+  type CellTokenSource,
   type MessagingApi,
   type MessagingApiFactory,
 } from './api';

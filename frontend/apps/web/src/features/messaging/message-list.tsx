@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { formatMessageTime, type Locale } from '@backroom/i18n';
 import { Avatar } from '@backroom/ui';
@@ -28,6 +28,9 @@ export function MessageList({
   hasEarlier,
   loadingEarlier,
   onLoadEarlier,
+  hasNewer,
+  loadingNewer,
+  onLoadNewer,
   authorName,
   ownAccountId,
   locale,
@@ -39,6 +42,10 @@ export function MessageList({
   hasEarlier: boolean;
   loadingEarlier: boolean;
   onLoadEarlier: () => void;
+  /** Pages of newer messages were dropped from memory and are loaded again near the end of the list. */
+  hasNewer: boolean;
+  loadingNewer: boolean;
+  onLoadNewer: () => void;
   authorName: (accountId: string) => string;
   ownAccountId: string | undefined;
   locale: Locale;
@@ -86,6 +93,7 @@ export function MessageList({
 
   const items = virtualizer.getVirtualItems();
   const firstIndex = items[0]?.index;
+  const lastIndex = items.at(-1)?.index;
   useEffect(() => {
     if (
       armed.current &&
@@ -97,15 +105,27 @@ export function MessageList({
       onLoadEarlier();
     }
   }, [firstIndex, hasEarlier, loadingEarlier, onLoadEarlier]);
+  useEffect(() => {
+    if (
+      armed.current &&
+      hasNewer &&
+      !loadingNewer &&
+      lastIndex !== undefined &&
+      lastIndex >= rows.length - 1 - LOAD_EARLIER_WITHIN
+    ) {
+      onLoadNewer();
+    }
+  }, [lastIndex, rows.length, hasNewer, loadingNewer, onLoadNewer]);
 
-  const now = new Date();
   return (
     <div
       ref={scrollRef}
       className="bm-log"
       role="log"
+      // The list is virtualized and long: a separate live region announces new messages.
+      aria-live="off"
       aria-label={t('messagesLabel', { name: channelName })}
-      aria-busy={loadingEarlier}
+      aria-busy={loadingEarlier || loadingNewer}
       tabIndex={0}
       onScroll={(event) => {
         const element = event.currentTarget;
@@ -131,7 +151,6 @@ export function MessageList({
                 authorName={authorName}
                 ownAccountId={ownAccountId}
                 locale={locale}
-                now={now}
                 onRetry={onRetry}
                 onDiscard={onDiscard}
               />
@@ -143,12 +162,11 @@ export function MessageList({
   );
 }
 
-function MessageRow({
+const MessageRow = memo(function MessageRow({
   row,
   authorName,
   ownAccountId,
   locale,
-  now,
   onRetry,
   onDiscard,
 }: {
@@ -156,10 +174,10 @@ function MessageRow({
   authorName: (accountId: string) => string;
   ownAccountId: string | undefined;
   locale: Locale;
-  now: Date;
   onRetry: (clientMessageId: string) => void;
   onDiscard: (clientMessageId: string) => void;
 }) {
+  const now = new Date();
   const t = useTranslate(messages);
   const pending = row.pending;
   const message = row.message;
@@ -212,4 +230,4 @@ function MessageRow({
       </div>
     </div>
   );
-}
+});

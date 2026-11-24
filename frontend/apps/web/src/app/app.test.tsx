@@ -35,6 +35,56 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
+/** Calls to the test cell's address. */
+function cellCalls(spy: { mock: { calls: Parameters<typeof fetch>[] } }) {
+  return spy.mock.calls.filter(([input]) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    return url.includes('a.example.test');
+  });
+}
+
+describe('App messaging flag', () => {
+  const list = () => fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) });
+
+  it('Organization_WithMessagingOff_ShowsOnlyTheNameAndNeverCallsACell', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    render(<App authClient={fakeAuthClient()} createApi={list} />);
+
+    expect(await screen.findByRole('heading', { name: 'Acme' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(cellCalls(fetchSpy)).toHaveLength(0);
+    fetchSpy.mockRestore();
+  });
+
+  it('Organization_WithTheFlagButNoCellTokenSource_StaysOffAndSendsNoToken', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    render(<App authClient={fakeAuthClient()} createApi={list} messagingEnabled />);
+
+    expect(await screen.findByRole('heading', { name: 'Acme' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(cellCalls(fetchSpy)).toHaveLength(0);
+    fetchSpy.mockRestore();
+  });
+
+  it('Organization_WithTheFlagAndACellTokenSource_CallsTheCellWithItsOwnToken', async () => {
+    const authorizations: (string | null)[] = [];
+    server.use(
+      http.get('https://a.example.test/api/v1/orgs/1/channels', ({ request }) => {
+        authorizations.push(request.headers.get('Authorization'));
+        return HttpResponse.json({ channels: [], next: null });
+      }),
+    );
+    const cellTokens = vi.fn(() => Promise.resolve('cell-a-token'));
+    render(<App authClient={fakeAuthClient()} createApi={list} messagingEnabled cellTokens={cellTokens} />);
+
+    expect(await screen.findByRole('navigation')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(authorizations).toEqual(['Bearer cell-a-token']);
+    });
+    expect(cellTokens).toHaveBeenCalledWith('a');
+  });
+});
+
 describe('App', () => {
   it('Start_WhileSigningIn_ShowsProgress', () => {
     renderApp(undefined, fakeAuthClient({ start: () => new Promise(() => undefined) }));

@@ -1,6 +1,6 @@
 import { useInfiniteQuery, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { rememberSeq } from './seq-memory';
-import type { Message, MessagePage, MessagingApi } from './api';
+import type { Message, MessageCursor, MessagePage, MessagingApi } from './api';
 
 // Explicit cache keys, per organization and channel.
 export const channelsKey = (orgId: string) => ['orgs', orgId, 'channels'] as const;
@@ -8,9 +8,15 @@ export const membersKey = (orgId: string) => ['orgs', orgId, 'members'] as const
 export const messagesKey = (orgId: string, channelId: string) =>
   ['orgs', orgId, 'channels', channelId, 'messages'] as const;
 
-export type MessagePages = InfiniteData<MessagePage, number | undefined>;
+/** At most this many pages of a channel stay in memory; reading further back drops the newest ones. */
+export const MAX_MESSAGE_PAGES = 10;
 
-/** The channel's messages, newest page first; `fetchNextPage` loads the page before the oldest one. */
+export type MessagePages = InfiniteData<MessagePage, MessageCursor>;
+
+/**
+ * The channel's messages, newest page first: `fetchNextPage` loads the page before the oldest one. When pages
+ * were dropped (maxPages), `hasPreviousPage` is true and `fetchPreviousPage` loads the page after the newest one.
+ */
 export function useChannelMessages(api: MessagingApi, orgId: string, channelId: string) {
   return useInfiniteQuery({
     queryKey: messagesKey(orgId, channelId),
@@ -20,12 +26,21 @@ export function useChannelMessages(api: MessagingApi, orgId: string, channelId: 
       if (newest && pageParam === undefined) rememberSeq(orgId, channelId, newest.seq);
       return page;
     },
-    initialPageParam: undefined as number | undefined,
-    getNextPageParam: (last) => last.next ?? undefined,
+    initialPageParam: undefined as MessageCursor,
+    getNextPageParam: (last): MessageCursor => (last.next === null ? undefined : { before: last.next }),
+    // The first page is newer than the channel's newest message only when it is not the initial one.
+    getPreviousPageParam: (first, _all, firstParam): MessageCursor => {
+      const newest = first.messages[0];
+      return firstParam === undefined || !newest ? undefined : { after: newest.seq };
+    },
+    maxPages: MAX_MESSAGE_PAGES,
   });
 }
 
-/** Puts a message the server accepted into the newest page, unless it is already there (a refetch can be first). */
+/**
+ * Puts a message the server accepted into the newest page, unless it is already there. Only when the newest page
+ * is loaded: after pages were dropped the message is shown from the pending list until it is fetched.
+ */
 export function addMessageToCache(
   queryClient: QueryClient,
   orgId: string,
@@ -34,13 +49,14 @@ export function addMessageToCache(
 ): void {
   rememberSeq(orgId, channelId, message.seq);
   const key = messagesKey(orgId, channelId);
-  if (!queryClient.getQueryData(key)) {
-    return;
-  }
-
   queryClient.setQueryData<MessagePages>(key, (data) => {
     const [first, ...rest] = data?.pages ?? [];
-    if (!data || !first || data.pages.some((page) => page.messages.some(({ id }) => id === message.id))) {
+    if (
+      !data ||
+      !first ||
+      data.pageParams[0] !== undefined ||
+      data.pages.some((page) => page.messages.some(({ id }) => id === message.id))
+    ) {
       return data;
     }
 

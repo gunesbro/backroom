@@ -9,6 +9,7 @@ import { AuthProvider } from '@/features/auth';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { fakeAuthClient } from '@/testing/fakes';
 import { createMessagingApi, MessagingApiContext } from './api';
+import { messagesKey } from './queries';
 import { forgetSeqs, lastSeenSeq } from './seq-memory';
 import { Workspace } from './workspace';
 
@@ -143,24 +144,33 @@ function servePost(handler: (body: Posted['body']) => Response | Promise<Respons
   );
 }
 
-function renderWorkspace(locale: Locale = 'en') {
+type Org = { id: string; name: string; cell: { id: string; url: string } };
+const ORG_A: Org = { id: ORG, name: 'Acme', cell: { id: 'a', url: CELL } };
+
+function renderWorkspace(locale: Locale = 'en', organization: Org = ORG_A) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const ui = (current: Org) => (
     <LocaleProvider locale={locale}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider client={fakeAuthClient()}>
           <MessagingApiContext.Provider
             value={(cell) => createMessagingApi(cell.url, () => Promise.resolve('cell-token'))}
           >
-            <Workspace
-              organization={{ id: ORG, name: 'Acme', cell: { id: 'a', url: CELL } }}
-              onSwitch={vi.fn()}
-            />
+            <Workspace organization={current} onSwitch={vi.fn()} />
           </MessagingApiContext.Provider>
         </AuthProvider>
       </QueryClientProvider>
-    </LocaleProvider>,
+    </LocaleProvider>
   );
+  const result = render(ui(organization));
+  return {
+    ...result,
+    queryClient,
+    /** The same tree for another organization, as when the person switches. */
+    switchTo: (next: Org) => {
+      result.rerender(ui(next));
+    },
+  };
 }
 
 /** The log once its messages are in: scrolls to the end, as the browser does after the list sets its position. */
@@ -503,7 +513,7 @@ describe('Composer', () => {
 
     fireEvent.change(composer(), { target: { value: 'a'.repeat(4005) } });
 
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(screen.getByText(/characters over the limit/)).toHaveTextContent(
       '5 characters over the limit. Shorten the message to send it.',
     );
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
@@ -526,7 +536,127 @@ describe('Composer', () => {
     fireEvent.change(composer(), { target: { value: `  ${'a\r\n'.repeat(1900)}${'é'.repeat(2000)}  ` } });
 
     // 1,900 x (letter + one line feed) + 2,000 characters = 5,800, not 7,700 (CRLF as two, accents as two).
-    expect(screen.getByRole('status')).toHaveTextContent('1800 characters over the limit');
+    expect(screen.getByText(/characters over the limit/)).toHaveTextContent('1800 characters over the limit');
+  });
+});
+
+describe('Races and isolation', () => {
+  const messagesUrl = `${CELL}/api/v1/orgs/${ORG}/channels/:channelId/messages`;
+
+  it('Send_WhileARefetchIsInFlight_KeepsTheConfirmedMessage', async () => {
+    serveCell();
+    servePost(async (body) => {
+      await delay(30);
+      return HttpResponse.json(
+        { ...message(4, body.text, OWN_ID), clientMessageId: body.clientMessageId },
+        { status: 201 },
+      );
+    });
+    const { queryClient } = renderWorkspace();
+    const log = await openLog();
+
+    // A refetch that started before the answer and returns the page as it was.
+    server.use(
+      http.get(messagesUrl, async () => {
+        await delay(300);
+        return HttpResponse.json({ messages: [message(3), message(2), message(1)], next: null });
+      }),
+    );
+    void queryClient.invalidateQueries({ queryKey: messagesKey(ORG, GENERAL.id) });
+    fireEvent.change(composer(), { target: { value: 'sent during a refetch' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => {
+      expect(within(log).queryByText('Sending…')).not.toBeInTheDocument();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await waitFor(() => {
+      expect(queryClient.isFetching()).toBe(0);
+    });
+
+    expect(within(log).getAllByText('sent during a refetch')).toHaveLength(1);
+  });
+
+  it('ChannelSwitch_KeepsEachChannelsUnsentMessagesAndDraftApart', async () => {
+    serveCell({ counts: { [GENERAL.id]: 2, [RANDOM.id]: 2 } });
+    servePost(() => HttpResponse.json({ code: 'server.unexpected', traceId: 't' }, { status: 500 }));
+    renderWorkspace();
+    const general = await openLog();
+
+    fireEvent.change(composer(), { target: { value: 'fails in general' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await within(general).findByRole('button', { name: 'Discard' });
+    fireEvent.change(composer(), { target: { value: 'half-written draft' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'random' }));
+    const random = await openLog('Messages in #random');
+
+    expect(within(random).queryByText('fails in general')).not.toBeInTheDocument();
+    expect(within(random).queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument();
+    expect(composer('Message #random')).toHaveValue('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'general' }));
+    const again = await openLog();
+    expect(within(again).getByText('fails in general')).toBeInTheDocument();
+  });
+
+  it('OrganizationSwitch_IgnoresRequestsOfTheOrganizationLeft', async () => {
+    const ORG_B = '9d3f3c6e-6a49-4c1e-9d0a-3f1f0c2b7a22';
+    server.use(
+      http.get(`${CELL}/api/v1/orgs/${ORG}/channels`, () =>
+        HttpResponse.json({ channels: [GENERAL], next: null }),
+      ),
+      http.get(`${CELL}/api/v1/orgs/${ORG}/members`, () => HttpResponse.json({ members: [], next: null })),
+      http.get(messagesUrl, async () => {
+        await delay(250);
+        return HttpResponse.json({ messages: [message(1, 'organization A message')], next: null });
+      }),
+      http.get(`${CELL}/api/v1/orgs/${ORG_B}/channels`, () =>
+        HttpResponse.json({ channels: [{ ...GENERAL, id: 'b-general', name: 'bgeneral' }], next: null }),
+      ),
+      http.get(`${CELL}/api/v1/orgs/${ORG_B}/members`, () => HttpResponse.json({ members: [], next: null })),
+      http.get(`${CELL}/api/v1/orgs/${ORG_B}/channels/b-general/messages`, () =>
+        HttpResponse.json({ messages: [message(1, 'organization B message')], next: null }),
+      ),
+    );
+    const { switchTo } = renderWorkspace();
+    await screen.findByRole('log', { name: 'Messages in #general' });
+
+    switchTo({ id: ORG_B, name: 'Globex', cell: { id: 'a', url: CELL } });
+    const log = await screen.findByRole('log', { name: 'Messages in #bgeneral' });
+    await within(log).findByText('organization B message');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(screen.queryByText('organization A message')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Globex' })).toBeInTheDocument();
+  });
+
+  it('Send_WithTheButton_ReturnsFocusToTheField', async () => {
+    serveCell();
+    servePost((body) =>
+      HttpResponse.json(
+        { ...message(4, body.text, OWN_ID), clientMessageId: body.clientMessageId },
+        { status: 201 },
+      ),
+    );
+    renderWorkspace();
+    await openLog();
+
+    fireEvent.change(composer(), { target: { value: 'focus me back' } });
+    screen.getByRole('button', { name: 'Send' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(composer()).toHaveFocus();
+  });
+
+  it('MessageLog_IsNotLive_AndTheComposerShowsItsKeyboardHint', async () => {
+    serveCell();
+    renderWorkspace();
+    const log = await openLog();
+
+    expect(log).toHaveAttribute('aria-live', 'off');
+    expect(screen.getByText('Enter to send · Shift+Enter for a new line')).toBeInTheDocument();
+    expect(composer()).toHaveAccessibleDescription(/Enter to send/);
   });
 });
 
@@ -562,6 +692,7 @@ describe('Accessibility and language', () => {
     expect(await screen.findByRole('heading', { name: 'Kanallar' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Kanal ekle' }));
     expect(screen.getByRole('dialog', { name: 'Kanal oluştur' })).toBeInTheDocument();
+    expect(await screen.findByText('Enter gönderir · Shift+Enter yeni satır')).toBeInTheDocument();
     expect(screen.getByLabelText('Kanal adı')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'İptal' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Oluştur' })).toBeInTheDocument();

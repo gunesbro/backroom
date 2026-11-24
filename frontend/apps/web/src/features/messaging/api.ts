@@ -13,6 +13,8 @@ export type Message = {
   text: string;
   createdAt: string;
 };
+/** Where a page starts: the newest messages (none), earlier than a seq, or later than a seq. */
+export type MessageCursor = { before: number } | { after: number } | undefined;
 export type MessagePage = { messages: Message[]; next: number | null };
 export type Member = { accountId: string; displayName: string; email: string | null };
 export type MemberPage = { members: Member[]; next: string | null };
@@ -24,11 +26,11 @@ export const PAGE_SIZE = 50;
 export interface MessagingApi {
   listChannels: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<ChannelPage>;
   createChannel: (orgId: string, name: string) => Promise<Channel>;
-  /** Newest first; `before` is the `next` of the previous page. */
+  /** Always newest first: `before` pages back (the `next` of the previous page), `after` pages forward. */
   listMessages: (
     orgId: string,
     channelId: string,
-    before: number | undefined,
+    cursor: MessageCursor,
     signal?: AbortSignal,
   ) => Promise<MessagePage>;
   /** Idempotent by `clientMessageId`: a repeat answers with the stored message. */
@@ -38,7 +40,7 @@ export interface MessagingApi {
     input: { clientMessageId: string; text: string },
   ) => Promise<Message>;
   /** One page of members, to put names to authors. */
-  listMembers: (orgId: string, signal?: AbortSignal) => Promise<MemberPage>;
+  listMembers: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<MemberPage>;
 }
 
 export function createMessagingApi(cellUrl: string, getAccessToken: AccessTokenSource): MessagingApi {
@@ -53,17 +55,26 @@ export function createMessagingApi(cellUrl: string, getAccessToken: AccessTokenS
     },
     createChannel: (orgId, name) =>
       requestJson(`${org(orgId)}/channels`, getAccessToken, { method: 'POST', body: { name } }),
-    listMessages: (orgId, channelId, before, signal) => {
+    listMessages: async (orgId, channelId, cursor, signal) => {
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
-      if (before !== undefined) query.set('before', String(before));
-      return requestJson(`${channel(orgId, channelId)}/messages?${query.toString()}`, getAccessToken, {
-        signal,
-      });
+      if (cursor && 'before' in cursor) query.set('before', String(cursor.before));
+      if (cursor && 'after' in cursor) query.set('after', String(cursor.after));
+      const page = await requestJson<MessagePage>(
+        `${channel(orgId, channelId)}/messages?${query.toString()}`,
+        getAccessToken,
+        { signal },
+      );
+      // `after` answers oldest first; pages are kept newest first.
+      return cursor && 'after' in cursor ? { ...page, messages: page.messages.toReversed() } : page;
     },
     sendMessage: (orgId, channelId, input) =>
       requestJson(`${channel(orgId, channelId)}/messages`, getAccessToken, { method: 'POST', body: input }),
-    listMembers: (orgId, signal) =>
-      requestJson(`${org(orgId)}/members?limit=100`, getAccessToken, { signal }),
+    listMembers: (orgId, after, signal) =>
+      requestJson(
+        `${org(orgId)}/members?limit=100${after ? `&after=${encodeURIComponent(after)}` : ''}`,
+        getAccessToken,
+        { signal },
+      ),
   };
 }
 
@@ -73,7 +84,15 @@ export type Cell = { id: string; url: string };
 /** Builds the API of one cell; the app provides it, tests provide fakes or the real one against MSW. */
 export type MessagingApiFactory = (cell: Cell) => MessagingApi;
 
+/** A token for one cell (audience `cell-{id}`). Never the control plane's token: a cell must not receive it. */
+export type CellTokenSource = (cellId: string) => Promise<string>;
+
+/** Null while messaging is off (the feature flag, or no cell token source yet): then no cell is called. */
 export const MessagingApiContext = createContext<MessagingApiFactory | null>(null);
+
+export function useMessagingEnabled(): boolean {
+  return useContext(MessagingApiContext) !== null;
+}
 
 export function useMessagingApiFactory(): MessagingApiFactory {
   const factory = useContext(MessagingApiContext);

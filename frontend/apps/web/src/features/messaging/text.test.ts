@@ -35,3 +35,16 @@ describe('seq memory', () => {
     expect(lastSeenSeq('o', 'c500')).toBe(1);
   });
 });
+
+describe('normalizeMessageText trimming', () => {
+  it('NormalizeMessageText_WithDotNetWhitespaceAtTheEnds_TrimsItLikeTheServer', () => {
+    // NEL, line and paragraph separators, no-break space, ideographic space and vertical tab.
+    expect(normalizeMessageText('\u0085\u2028\u2029\u00a0\u3000\u000b a \u000b\u3000')).toBe('a');
+  });
+
+  it('NormalizeMessageText_WithAZeroWidthNoBreakSpaceAtTheEnds_KeepsIt', () => {
+    // JavaScript's trim() removes U+FEFF; .NET's Trim() does not, so the count must not either.
+    expect(normalizeMessageText('\uFEFFa\uFEFF')).toBe('\uFEFFa\uFEFF');
+    expect('\uFEFFa\uFEFF'.trim()).toBe('a');
+  });
+});

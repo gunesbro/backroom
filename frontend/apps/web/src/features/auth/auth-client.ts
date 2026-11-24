@@ -5,6 +5,8 @@ export type AuthUser = {
   name: string;
   /** The first name for greetings; the full name when unknown. */
   givenName: string;
+  /** The account id (the token's `sub`), when the sign-in client knows it; messages are attributed with it. */
+  accountId?: string | undefined;
 };
 
 /**

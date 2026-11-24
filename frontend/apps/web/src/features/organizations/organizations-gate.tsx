@@ -1,8 +1,8 @@
 import { Suspense, useCallback, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Heading, Spinner, Status } from '@backroom/ui';
+import { Alert, Button, Card, Heading, LinkButton, Spinner, Status } from '@backroom/ui';
 import { config } from '@/config';
-import { Workspace } from '@/features/messaging';
+import { useMessagingEnabled, Workspace } from '@/features/messaging';
 import { readItem, writeItem } from '@/shared/storage';
 import { useTranslate } from '@/shared/locale';
 import { useOrganizationsApi, type AccountOrganization } from './api';
@@ -156,7 +156,10 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-/** The organization's channels and messages (docs/design: Main), loaded when an organization is opened. */
+/**
+ * The organization's channels and messages (docs/design: Main), loaded when an organization is opened. Behind the
+ * messaging feature flag; with it off the organization shows only its name, as before step 7a.
+ */
 function OrganizationHome({
   organization,
   onSwitch,
@@ -165,6 +168,16 @@ function OrganizationHome({
   onSwitch: () => void;
 }) {
   const t = useTranslate(messages);
+  const messagingEnabled = useMessagingEnabled();
+  if (!messagingEnabled) {
+    return (
+      <Shell>
+        <Heading>{organization.name}</Heading>
+        <LinkButton onClick={onSwitch}>{t('yourOrganizations')}</LinkButton>
+      </Shell>
+    );
+  }
+
   return (
     <SignedInPage>
       <Suspense

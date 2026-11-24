@@ -19,7 +19,12 @@ import {
 } from '@/features/auth';
 import { hasPendingInvitation, InvitePage, saveInvitationCode } from '@/features/invitations';
 import { isLivekitSpikeEnabled, LIVEKIT_SPIKE_HASH, LivekitSpike } from '@/features/livekit-spike';
-import { createMessagingApi, MessagingApiContext, type MessagingApiFactory } from '@/features/messaging';
+import {
+  createMessagingApi,
+  MessagingApiContext,
+  type CellTokenSource,
+  type MessagingApiFactory,
+} from '@/features/messaging';
 import {
   createOrganizationsApi,
   OrganizationsApiContext,
@@ -98,13 +103,16 @@ function createAuthClient(): AuthClient {
 }
 
 type Services = {
-  createMessaging?: MessagingApiFactory | undefined;
+  /** Tokens for cells; not wired yet (the per-cell token change), so messaging stays off in the real app. */
+  cellTokens?: CellTokenSource | undefined;
+  /** Overrides the feature flag (tests). */
+  messagingEnabled?: boolean | undefined;
   authClient?: AuthClient | undefined;
   createApi?: ((getAccessToken: AccessTokenSource) => OrganizationsApi) | undefined;
 };
 
 // Application shell: language, server state, sign-in, then the organization. Tests pass fake services.
-export function App({ authClient, createApi, createMessaging }: Services = {}) {
+export function App({ authClient, createApi, cellTokens, messagingEnabled }: Services = {}) {
   const hash = useHash();
   const [auth] = useState(() => authClient ?? createAuthClient());
   const [queryClient] = useState(() => createQueryClient(auth.signIn));
@@ -121,26 +129,32 @@ export function App({ authClient, createApi, createMessaging }: Services = {}) {
     <LocaleProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider client={auth}>
-          <SignedIn createApi={createApi} createMessaging={createMessaging} />
+          <SignedIn createApi={createApi} cellTokens={cellTokens} messagingEnabled={messagingEnabled} />
         </AuthProvider>
       </QueryClientProvider>
     </LocaleProvider>
   );
 }
 
-function SignedIn({ createApi, createMessaging }: Pick<Services, 'createApi' | 'createMessaging'>) {
+function SignedIn({
+  createApi,
+  cellTokens,
+  messagingEnabled = config.messagingEnabled,
+}: Pick<Services, 'createApi' | 'cellTokens' | 'messagingEnabled'>) {
   const { getAccessToken } = useAuth();
   const api = useMemo(
     () => (createApi ?? ((tokens) => createOrganizationsApi(config.controlPlaneUrl, tokens)))(getAccessToken),
     [createApi, getAccessToken],
   );
 
-  // TODO(phase-1 step 7, per-cell tokens): a cell accepts only a token with its own audience (contract, "Audience per
-  // target"). Until the auth clients can ask for one (scope cell:{id}), the control-plane token is sent, which a real cell
-  // refuses; tests and development use fakes.
-  const messagingApi = useMemo<MessagingApiFactory>(
-    () => createMessaging ?? ((cell) => createMessagingApi(cell.url, getAccessToken)),
-    [createMessaging, getAccessToken],
+  // A cell gets only a token made for it (contract, "Audience per target"), never the control plane's. Without the
+  // flag or the token source there is no factory, and no cell is called.
+  const messagingApi = useMemo<MessagingApiFactory | null>(
+    () =>
+      messagingEnabled && cellTokens
+        ? (cell) => createMessagingApi(cell.url, () => cellTokens(cell.id))
+        : null,
+    [messagingEnabled, cellTokens],
   );
 
   const queryClient = useQueryClient();

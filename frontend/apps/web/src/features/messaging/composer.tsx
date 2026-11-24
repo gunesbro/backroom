@@ -1,4 +1,4 @@
-import { useId, useState, type KeyboardEvent, type SubmitEvent } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type SubmitEvent } from 'react';
 import { Button } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
 import { messages } from './messages';
@@ -18,6 +18,8 @@ export function Composer({
 }) {
   const t = useTranslate(messages);
   const counterId = useId();
+  const hintId = useId();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState('');
 
   const text = normalizeMessageText(value);
@@ -29,6 +31,8 @@ export function Composer({
     if (!canSend) return;
     onSend(text);
     setValue('');
+    // Sending with the button must not take the keyboard away from the field.
+    inputRef.current?.focus();
   };
 
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -49,9 +53,10 @@ export function Composer({
       }}
     >
       <textarea
+        ref={inputRef}
         className="bm-composer__input"
         aria-label={t('composerLabel', { name: channelName })}
-        aria-describedby={showCounter ? counterId : undefined}
+        aria-describedby={showCounter ? `${hintId} ${counterId}` : hintId}
         aria-invalid={over ? true : undefined}
         rows={2}
         value={value}
@@ -61,17 +66,20 @@ export function Composer({
         onKeyDown={keyDown}
       />
       <div className="bm-composer__bar">
-        {showCounter ? (
-          <p
-            id={counterId}
-            className={over ? 'bm-counter bm-counter--over' : 'bm-counter'}
-            role={over ? 'status' : undefined}
-          >
-            {over ? t('charactersOver', { count: -remaining }) : t('charactersLeft', { count: remaining })}
+        <div className="bm-composer__meta">
+          <p id={hintId} className="bm-composer__hint">
+            {t('composerHint')}
           </p>
-        ) : (
-          <span />
-        )}
+          {showCounter ? (
+            <p
+              id={counterId}
+              className={over ? 'bm-counter bm-counter--over' : 'bm-counter'}
+              role={over ? 'status' : undefined}
+            >
+              {over ? t('charactersOver', { count: -remaining }) : t('charactersLeft', { count: remaining })}
+            </p>
+          ) : null}
+        </div>
         <Button type="submit" variant="primary" disabled={!canSend}>
           {t('send')}
         </Button>

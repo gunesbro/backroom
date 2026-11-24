@@ -33,6 +33,8 @@ type Key =
   | 'discard'
   | 'charactersLeft'
   | 'charactersOver'
+  | 'composerHint'
+  | 'announceMessage'
   | 'you'
   | 'member';
 
@@ -68,6 +70,8 @@ export const messages: Messages<Key> = {
     discard: 'Discard',
     charactersLeft: '{count} characters left',
     charactersOver: '{count} characters over the limit. Shorten the message to send it.',
+    composerHint: 'Enter to send · Shift+Enter for a new line',
+    announceMessage: '{name}: {text}.',
     you: 'You',
     member: 'Member',
   },
@@ -102,6 +106,8 @@ export const messages: Messages<Key> = {
     discard: 'Sil',
     charactersLeft: '{count} karakter kaldı',
     charactersOver: 'Sınırı {count} karakter aşıyorsun. Göndermek için mesajı kısalt.',
+    composerHint: 'Enter gönderir · Shift+Enter yeni satır',
+    announceMessage: '{name}: {text}.',
     you: 'Sen',
     member: 'Üye',
   },
