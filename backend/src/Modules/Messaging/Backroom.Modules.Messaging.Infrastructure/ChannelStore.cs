@@ -26,9 +26,10 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         LIMIT $3
         """;
 
-    // The row lock this takes is held until the transaction ends.
+    // The row lock this takes is held until the transaction ends. A new message takes the next change number as its seq,
+    // so it is also the conversation's newest message (the right-hand sides read the row before the update).
     private const string NextSequenceSql =
-        "UPDATE messaging.conversations SET last_seq = last_seq + 1, last_message_at = $3 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING last_seq";
+        "UPDATE messaging.conversations SET change_seq = change_seq + 1, last_message_seq = change_seq + 1, last_message_at = $3 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING change_seq";
 
     public async Task<bool> AddAsync(NewChannel channel, CancellationToken cancellationToken)
     {

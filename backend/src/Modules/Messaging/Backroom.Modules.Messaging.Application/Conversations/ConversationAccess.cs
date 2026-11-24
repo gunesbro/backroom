@@ -4,9 +4,9 @@ namespace Backroom.Modules.Messaging.Application.Conversations;
 
 /// <summary>What membership decisions need about one conversation, as seen by one account.</summary>
 /// <param name="Kind">One of <see cref="ConversationKinds"/>.</param>
-/// <param name="LastSeq">The conversation's last message sequence number, read without a lock.</param>
+/// <param name="ChangeSeq">The conversation's change counter (the number of its latest change), read without a lock.</param>
 /// <param name="IsMember">Whether the account holds an open membership.</param>
-internal sealed record ConversationAccess(string Kind, bool Archived, long LastSeq, bool IsMember)
+internal sealed record ConversationAccess(string Kind, bool Archived, long ChangeSeq, bool IsMember)
 {
     public bool IsPublicChannel => string.Equals(Kind, ConversationKinds.PublicChannel, StringComparison.Ordinal);
 

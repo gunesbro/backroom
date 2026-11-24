@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Backroom.BuildingBlocks.Application.Identifiers;
@@ -18,8 +19,8 @@ public static class MessagingModule
         services.AddModuleDbContext<MessagingDbContext>(MessagingDbContext.Schema, organizationScoped: true);
 
     /// <summary>
-    /// Conversations (public channels, memberships) and plain-text messages. Needs the database session and Realtime's <c>ILiveEventPublisher</c>
-    /// (<c>AddRealtime</c>). The worker's relay publishes this module's outbox (only where the host runs <c>AddOutboxRelay</c>).
+    /// Conversations (public channels, memberships) and plain-text messages. Needs the database session, Realtime's <c>ILiveEventPublisher</c>
+    /// (<c>AddRealtime</c>) and the cell's <c>ICellEpoch</c> (<c>AddCellEpochFence</c>). The worker's relay publishes this module's outbox (only where the host runs <c>AddOutboxRelay</c>).
     /// </summary>
     public static IServiceCollection AddMessaging(this IServiceCollection services)
     {
@@ -35,6 +36,8 @@ public static class MessagingModule
         services.TryAddSingleton(TimeProvider.System);
         // Monotonic within the process, so messages sent in the same millisecond keep their order by id.
         services.TryAddSingleton<IIdGenerator>(provider => new UuidV7IdGenerator(provider.GetRequiredService<TimeProvider>()));
+        // Read once: a flag changes with a deployment, not while the host runs.
+        services.TryAddSingleton(provider => new MessageSync(bool.TryParse(provider.GetRequiredService<IConfiguration>()[MessageSync.Flag], out var enabled) && enabled));
         services.TryAddScoped<IChannelStore, ChannelStore>();
         services.TryAddScoped<IConversationStore, ConversationStore>();
         services.TryAddScoped<IConversationReadAccess, ConversationReadAccess>();

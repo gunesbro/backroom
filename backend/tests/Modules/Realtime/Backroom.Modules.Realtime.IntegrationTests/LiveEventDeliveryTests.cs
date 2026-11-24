@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using MessagePack;
+using Microsoft.Extensions.DependencyInjection;
 using Backroom.Modules.Permissions.Contracts;
 using Backroom.Modules.Realtime.Contracts;
 using Backroom.Testing.Keycloak;
@@ -36,6 +37,31 @@ public sealed class LiveEventDeliveryTests(PostgresDatabase database, KeycloakRe
         received.Message.AuthorAccountId.Should().Be(await AccountAsync(Alice));
         received.Message.Text.Should().Be("Hello <b>there</b> & \"you\"");
         received.Message.CreatedAt.Should().Be(sent["createdAt"]!.GetValue<DateTimeOffset>());
+    }
+
+    [Fact]
+    public async Task MessagePostedV2_PublishedOnNodeA_ReachesASubscriberOnNodeBWithItsNumbersAndTheEpochAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
+        var bob = await ConnectAsync(NodeB, Bob);
+        await bob.SubscribeConversationAsync(organizationId, channelId);
+        var message = new LiveMessageV2(Guid.CreateVersion7(), 4, 6, "text", Guid.NewGuid(), Guid.NewGuid(), "Hello", DateTimeOffset.UtcNow);
+
+        await NodeA.Services.GetRequiredService<ILiveEventPublisher>().PublishAsync(
+            new MessagePostedV2Payload(organizationId, channelId, message, 6, "12"), CancellationToken);
+
+        var received = await bob.NextMessageV2Async();
+        received.OrgId.Should().Be(organizationId);
+        received.ConversationId.Should().Be(channelId);
+        received.ChangeSeq.Should().Be(6);
+        received.Epoch.Should().Be("12");
+        received.Message.Id.Should().Be(message.Id);
+        received.Message.Seq.Should().Be(4);
+        received.Message.VersionSeq.Should().Be(6);
+        received.Message.Kind.Should().Be("text");
+        received.Message.Text.Should().Be("Hello");
     }
 
     [Fact]

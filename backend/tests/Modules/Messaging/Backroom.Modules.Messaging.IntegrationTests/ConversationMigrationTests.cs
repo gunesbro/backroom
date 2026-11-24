@@ -19,6 +19,7 @@ namespace Backroom.Modules.Messaging.IntegrationTests;
 public sealed class ConversationMigrationTests(PostgresDatabase database) : IAsyncLifetime
 {
     private const string Phase1Migration = "20261124120000_CreateChannelsAndMessages";
+    private const string BeforeChangeSequences = "20261125090000_AddConversationLastMessageAt";
 
     private static readonly Guid s_orgA = Guid.CreateVersion7();
     private static readonly Guid s_orgB = Guid.CreateVersion7();
@@ -79,7 +80,7 @@ public sealed class ConversationMigrationTests(PostgresDatabase database) : IAsy
     {
         await MigrateToAsync(null);
 
-        (await QueryAsync("SELECT id, org_id, kind, name, name_key, created_by, last_seq, archived_at IS NOT NULL, member_count FROM messaging.conversations ORDER BY created_at"))
+        (await QueryAsync("SELECT id, org_id, kind, name, name_key, created_by, change_seq, archived_at IS NOT NULL, member_count FROM messaging.conversations ORDER BY created_at"))
             .Should().BeEquivalentTo(
                 new object?[][]
                 {
@@ -150,6 +151,49 @@ public sealed class ConversationMigrationTests(PostgresDatabase database) : IAsy
         failure.MessageText.Should().Contain("would make them public");
         (await QueryAsync("SELECT count(*) FROM messaging.conversations")).Should().BeEquivalentTo(new object?[][] { [4L] });
         (await QueryAsync("SELECT count(*) FROM messaging.conversation_members")).Should().BeEquivalentTo(new object?[][] { [4L] });
+    }
+
+    [Fact]
+    public async Task ChangeSequences_Up_SplitsLastSeqAndBackfillsFromTheMessages_AndDownRestoresItAsync()
+    {
+        await MigrateToAsync(BeforeChangeSequences);
+        // A lost idempotent race left the counter ahead of the newest message.
+        await ExecuteAsSuperuserAsync($"UPDATE messaging.conversations SET last_seq = 5 WHERE id = '{s_general}'");
+
+        await MigrateToAsync(null);
+
+        (await QueryAsync("SELECT id, change_seq, last_message_seq FROM messaging.conversations ORDER BY created_at"))
+            .Should().BeEquivalentTo(
+                new object?[][] { [s_general, 5L, 3L], [s_archived, 0L, 0L], [s_elsewhere, 1L, 1L] },
+                options => options.WithStrictOrdering());
+        (await QueryAsync("SELECT count(*), count(*) FILTER (WHERE version_seq = seq) FROM messaging.messages"))
+            .Should().BeEquivalentTo(new object?[][] { [4L, 4L] });
+        (await QueryAsync("SELECT relname, relforcerowsecurity FROM pg_class WHERE relnamespace = 'messaging'::regnamespace AND relname IN ('conversations', 'messages') ORDER BY relname"))
+            .Should().BeEquivalentTo(new object?[][] { ["conversations", true], ["messages", true] }, options => options.WithStrictOrdering());
+
+        await MigrateToAsync(BeforeChangeSequences);
+
+        (await QueryAsync("SELECT id, last_seq FROM messaging.conversations ORDER BY created_at"))
+            .Should().BeEquivalentTo(
+                new object?[][] { [s_general, 5L], [s_archived, 0L], [s_elsewhere, 1L] },
+                options => options.WithStrictOrdering());
+        (await QueryAsync("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'messaging' AND column_name IN ('version_seq', 'last_message_seq', 'change_seq')"))
+            .Should().BeEquivalentTo(new object?[][] { [0L] });
+    }
+
+    [Fact]
+    public async Task ChangeSequences_Down_WhenATombstoneExists_IsRefusedAndKeepsEverythingAsync()
+    {
+        await MigrateToAsync(null);
+        await ExecuteAsSuperuserAsync($"""
+            UPDATE messaging.conversations SET change_seq = 4 WHERE id = '{s_general}';
+            UPDATE messaging.messages SET version_seq = 4, deleted_at = now(), text = NULL, blocks = NULL WHERE conversation_id = '{s_general}' AND seq = 2;
+            """);
+
+        var failure = await Assert.ThrowsAsync<PostgresException>(() => MigrateToAsync(BeforeChangeSequences));
+
+        failure.MessageText.Should().Contain("cannot be removed");
+        (await QueryAsync("SELECT count(*) FROM messaging.messages WHERE deleted_at IS NOT NULL AND version_seq = 4")).Should().BeEquivalentTo(new object?[][] { [1L] });
     }
 
     // Npgsql reads timestamptz as a UTC DateTime.

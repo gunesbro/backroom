@@ -57,7 +57,7 @@ public sealed class MessageOrderTests(PostgresDatabase database, KeycloakRealm k
         two["seq"]!.GetValue<long>().Should().Be(2);
         elsewhere["seq"]!.GetValue<long>().Should().Be(1, "every channel counts on its own");
         Publisher.Messages.Select(message => message.Message.Seq).Should().Equal(1, 2, 1);
-        (await QuerySingleAsync("SELECT last_seq FROM messaging.conversations WHERE id = $1", channelId))[0].Should().Be(2L);
+        (await QuerySingleAsync("SELECT change_seq FROM messaging.conversations WHERE id = $1", channelId))[0].Should().Be(2L);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class MessageOrderTests(PostgresDatabase database, KeycloakRealm k
         var repeat = await SendMessageAsync(organizationId, channelId, Alice, "once", clientMessageId);
 
         repeat["seq"]!.GetValue<long>().Should().Be(first["seq"]!.GetValue<long>());
-        (await QuerySingleAsync("SELECT last_seq FROM messaging.conversations WHERE id = $1", channelId))[0].Should().Be(1L, "a repeat takes no sequence number");
+        (await QuerySingleAsync("SELECT change_seq FROM messaging.conversations WHERE id = $1", channelId))[0].Should().Be(1L, "a repeat takes no sequence number");
     }
 
     [Fact]

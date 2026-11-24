@@ -61,7 +61,7 @@ internal sealed partial class MembershipService(
             return ConversationArchived;
         }
 
-        return await OpenAsync(organizationId, conversationId, accountId, MemberRoles.Member, conversation.LastSeq, accountId, cancellationToken);
+        return await OpenAsync(organizationId, conversationId, accountId, MemberRoles.Member, conversation.ChangeSeq, accountId, cancellationToken);
     }
 
     /// <summary>
