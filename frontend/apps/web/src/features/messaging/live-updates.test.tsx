@@ -118,7 +118,7 @@ function fakeApi(count = 3, extra: Partial<MessagingApi> = {}) {
 beforeAll(() => {
   // jsdom has no layout: the log is 400 px tall, a row 40 px, and scrollTop can be set.
   const tops = new WeakMap<Element, number>();
-  const isLog = (element: Element) => element.getAttribute('role') === 'log';
+  const isLog = (element: Element) => element.getAttribute('role') === 'feed';
   Object.defineProperties(HTMLElement.prototype, {
     offsetHeight: {
       configurable: true,
@@ -174,9 +174,9 @@ function renderLive(api: MessagingApi, realtime: RealtimeClient) {
 }
 
 async function openLog() {
-  const log = await screen.findByRole('log', { name: 'Messages in #general' });
+  const log = await screen.findByRole('feed', { name: 'Messages in #general' });
   await waitFor(() => {
-    expect(within(log).queryAllByRole('listitem').length).toBeGreaterThan(0);
+    expect(within(log).queryAllByRole('article').length).toBeGreaterThan(0);
   });
   fireEvent.scroll(log);
   return log;
@@ -184,7 +184,7 @@ async function openLog() {
 
 const texts = (log: HTMLElement) =>
   within(log)
-    .getAllByRole('listitem')
+    .getAllByRole('article')
     .map((item) => /message \d+/.exec(item.textContent)?.[0]);
 
 describe('Live updates in the open channel', () => {
@@ -341,16 +341,16 @@ describe('Live updates elsewhere', () => {
     await openLog();
     const nav = screen.getByRole('navigation');
     fireEvent.click(within(nav).getByRole('button', { name: 'random' }));
-    await screen.findByRole('log', { name: 'Messages in #random' });
+    await screen.findByRole('feed', { name: 'Messages in #random' });
     await screen.findByText('message 3');
     fireEvent.click(within(nav).getByRole('button', { name: 'general' }));
-    await screen.findByRole('log', { name: 'Messages in #general' });
+    await screen.findByRole('feed', { name: 'Messages in #general' });
 
     // A live event reaches the cached channel; another one is dropped.
     live.emit('MessagePosted', { orgId: ORG, channelId: RANDOM.id, message: message(4) });
     grow(5);
     fireEvent.click(within(nav).getByRole('button', { name: /random/ }));
-    const log = await screen.findByRole('log', { name: 'Messages in #random' });
+    const log = await screen.findByRole('feed', { name: 'Messages in #random' });
 
     await waitFor(() => {
       expect(texts(log)).toEqual(['message 1', 'message 2', 'message 3', 'message 4', 'message 5']);

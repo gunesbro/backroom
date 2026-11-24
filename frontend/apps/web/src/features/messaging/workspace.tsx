@@ -218,13 +218,17 @@ function ChannelView({
       ? []
       : pendingHere.flatMap((item) =>
           item.message && !known.has(item.message.id)
-            ? [{ key: item.message.id, message: item.message }]
+            ? [{ key: item.message.clientMessageId, message: item.message }]
             : [],
         );
     const unsent = pendingHere
       .filter((item) => item.status !== 'confirmed' && !knownClient.has(item.clientMessageId))
-      .map((item) => ({ key: `pending:${item.clientMessageId}`, pending: item }));
-    return [...confirmed.map((message) => ({ key: message.id, message })), ...overlay, ...unsent];
+      .map((item) => ({ key: item.clientMessageId, pending: item }));
+    return [
+      ...confirmed.map((message) => ({ key: message.clientMessageId, message })),
+      ...overlay,
+      ...unsent,
+    ];
   }, [confirmed, pendingHere, query.hasPreviousPage]);
 
   // Confirmed messages leave the pending list once a fetched page has them.

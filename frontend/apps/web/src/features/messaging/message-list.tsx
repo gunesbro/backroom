@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -29,8 +30,6 @@ const ESTIMATED_ROW_HEIGHT = 64;
 const FOLLOW_DISTANCE = 80;
 /** Earlier messages are asked for once the oldest drawn row is this close to the top of the list. */
 const LOAD_EARLIER_WITHIN = 3;
-/** The row's accessible name carries this many characters of the text. */
-const LABEL_EXCERPT = 80;
 const ROW_KEY_ATTRIBUTE = 'data-row-key';
 
 /**
@@ -82,6 +81,7 @@ export function MessageList({
   const [activeKey, setActiveKey] = useState<string>();
   const focusedKey = useRef<string>(undefined);
   const pendingFocus = useRef<string>(undefined);
+  const focusedIndex = useRef(0);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const rangeExtractor = useCallback((range: Range) => {
@@ -178,17 +178,38 @@ export function MessageList({
     focusedKey.current = key ?? undefined;
     if (key) setActiveKey(key);
   };
-  const onLogBlur = () => {
+  const onLogBlur = (event: FocusEvent<HTMLElement>) => {
+    // A row removed while it has focus can report a blur; it is the row's loss, not the person's move.
+    if (event.relatedTarget === null && !event.target.isConnected) return;
     focusedKey.current = undefined;
   };
+  // The focused row left the list (its page was dropped): focus goes to the row now in its place, not to the page.
+  useLayoutEffect(() => {
+    const key = focusedKey.current;
+    if (key === undefined) return;
+    const at = rows.findIndex((row) => row.key === key);
+    if (at >= 0) {
+      focusedIndex.current = at;
+      return;
+    }
+
+    const nearest = Math.min(focusedIndex.current, rows.length - 1);
+    const nearestKey = rows[nearest]?.key;
+    focusedKey.current = undefined;
+    if (nearestKey === undefined) return;
+    focusedIndex.current = nearest;
+    setActiveKey(nearestKey);
+    pendingFocus.current = nearestKey;
+    virtualizer.scrollToIndex(nearest);
+  }, [rows, virtualizer]);
   const onRowKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const key = (event.target as HTMLElement).getAttribute(ROW_KEY_ATTRIBUTE);
     if (key === null || event.altKey || event.ctrlKey || event.metaKey) return;
     const index = rows.findIndex((row) => row.key === key);
     const next =
-      event.key === 'ArrowUp'
+      event.key === 'ArrowUp' || event.key === 'PageUp'
         ? Math.max(index - 1, 0)
-        : event.key === 'ArrowDown'
+        : event.key === 'ArrowDown' || event.key === 'PageDown'
           ? Math.min(index + 1, rows.length - 1)
           : event.key === 'Home'
             ? 0
@@ -234,9 +255,8 @@ export function MessageList({
     <div
       ref={scrollRef}
       className="bm-log"
-      role="log"
+      role="feed"
       // The list is virtualized and long: a separate live region announces new messages.
-      aria-live="off"
       aria-label={t('messagesLabel', { name: channelName })}
       aria-busy={loadingEarlier || loadingNewer}
       onKeyDown={onRowKeyDown}
@@ -250,7 +270,7 @@ export function MessageList({
       }}
     >
       {loadingEarlier && <p className="bm-log__status">{t('loadingEarlier')}</p>}
-      <ol className="bm-rows" style={{ height: total }}>
+      <ol className="bm-rows" role="none" style={{ height: total }}>
         {items.map((item) => {
           const row = rows[item.index];
           if (!row) return null;
@@ -262,6 +282,7 @@ export function MessageList({
           return (
             <li
               key={item.key}
+              role="none"
               ref={virtualizer.measureElement}
               data-index={item.index}
               className="bm-row"
@@ -275,6 +296,7 @@ export function MessageList({
               <MessageRow
                 row={row}
                 tabStop={row.key === tabStopKey}
+                position={item.index + 1}
                 authorName={authorName}
                 ownAccountId={ownAccountId}
                 ownName={ownName}
@@ -328,6 +350,7 @@ function MessageActions() {
 const MessageRow = memo(function MessageRow({
   row,
   tabStop,
+  position,
   authorName,
   ownAccountId,
   ownName,
@@ -338,6 +361,8 @@ const MessageRow = memo(function MessageRow({
   row: Row;
   /** The list's one tab stop (roving tabindex); the other rows are reached by the arrow keys. */
   tabStop: boolean;
+  /** One-based place in the feed (aria-posinset); the size is unknown, as more pages load. */
+  position: number;
   authorName: (accountId: string) => string;
   ownAccountId: string | undefined;
   ownName: string;
@@ -350,6 +375,9 @@ const MessageRow = memo(function MessageRow({
   const [focused, setFocused] = useState(false);
   const [tapped, setTapped] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
+  const headId = useId();
+  // A press that focuses the row (mouse, finger) is not keyboard focus: it must not pin the action bar open.
+  const pressed = useRef(false);
   const t = useTranslate(messages);
   const pending = row.pending;
   const message = row.message;
@@ -359,29 +387,29 @@ const MessageRow = memo(function MessageRow({
   const name = mine ? ownName : authorName(authorId);
   const createdAt = pending?.createdAt ?? message?.createdAt ?? '';
   const text = pending?.text ?? message?.text ?? '';
-  const excerpt = text.replaceAll(/\s+/g, ' ').trim();
-  const label = t('messageLabel', {
-    name,
-    time: formatMessageTime(new Date(createdAt), locale, now),
-    text: excerpt.length > LABEL_EXCERPT ? `${excerpt.slice(0, LABEL_EXCERPT)}…` : excerpt,
-  });
   return (
     <div
       ref={rowRef}
       className={pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message'}
-      role="group"
-      aria-label={label}
+      role="article"
+      aria-labelledby={headId}
+      aria-posinset={position}
+      aria-setsize={-1}
       data-row-key={row.key}
       tabIndex={tabStop ? 0 : -1}
       // The action bar is built only for the row under the pointer, with focus inside, or tapped: not for every row.
-      onMouseEnter={() => {
-        setHovered(true);
+      onPointerEnter={(event) => {
+        if (event.pointerType === 'mouse') setHovered(true);
       }}
-      onMouseLeave={() => {
+      onPointerLeave={() => {
         setHovered(false);
       }}
+      onPointerDownCapture={() => {
+        pressed.current = true;
+      }}
       onFocus={() => {
-        setFocused(true);
+        if (!pressed.current) setFocused(true);
+        pressed.current = false;
       }}
       onBlur={(event) => {
         if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
@@ -389,16 +417,17 @@ const MessageRow = memo(function MessageRow({
         setTapped(false);
       }}
       onPointerUp={(event) => {
+        pressed.current = false;
         // A tap on touch or pen has no hover: it shows the bar, and a second tap on the message hides it.
-        if (event.pointerType === 'mouse' || (event.target as HTMLElement).closest('.bm-actions, button'))
+        if (event.pointerType === 'mouse' || (event.target as HTMLElement).closest('.bm-actions, button, a'))
           return;
         setTapped((value) => !value);
       }}
       onKeyDownCapture={(event) => {
         if (event.key !== 'Escape') return;
         setTapped(false);
-        if (event.target !== event.currentTarget) {
-          // From a bar button back to the row.
+        // From inside the action bar back to the row; Escape elsewhere is left alone.
+        if ((event.target as HTMLElement).closest('.bm-actions')) {
           event.stopPropagation();
           rowRef.current?.focus({ preventScroll: true });
         }
@@ -407,7 +436,7 @@ const MessageRow = memo(function MessageRow({
       {(hovered || focused || tapped) && !pending && <MessageActions />}
       <Avatar name={name} toneKey={authorId} shape="square" size="lg" />
       <div className="bm-message__body">
-        <p className="bm-message__head">
+        <p className="bm-message__head" id={headId}>
           <b>{name}</b>{' '}
           <time className="ph-muted" dateTime={createdAt}>
             {formatMessageTime(new Date(createdAt), locale, now)}
