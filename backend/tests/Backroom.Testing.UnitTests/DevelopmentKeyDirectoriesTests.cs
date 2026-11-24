@@ -29,8 +29,10 @@ public sealed class DevelopmentKeyDirectoriesTests
 
     [Theory]
     [InlineData("..")]
+    [InlineData("...")]
     [InlineData("a/b")]
-    [InlineData("a\b")]
+    [InlineData(@"a\b")]
+    [InlineData("a:b")]
     [InlineData("")]
     public void For_WithAnUnsafeSegment_Throws(string segment)
     {

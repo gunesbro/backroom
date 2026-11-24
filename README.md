@@ -93,6 +93,8 @@ A development certificate is recommended: `dotnet dev-certs https --trust` (Aspi
 
 Two cells roughly double the cell footprint (two .NET host pairs, six processes in all). On a small machine run one cell: `$env:Backroom__Cells = "1"` before `dotnet run`. The cells share one PostgreSQL server (roles are server-wide, so one set of role passwords), one Valkey (keys and channels are prefixed with the cell id) and one RabbitMQ (a virtual host per cell, created by the short-lived `rabbitmq-vhosts` container).
 
+Each cell keeps its key and registration marker in `%APPDATA%\Backroom\dev\<apphost-id>\cells\<cell-id>`. `<apphost-id>` is the prefix of this checkout's PostgreSQL volume in `docker volume ls` (for `backroom.apphost-24f7985b54-postgres-data` it is `backroom.apphost-24f7985b54`), so every checkout and worktree has its own folders. A checkout that ran cells before this layout kept them in `%APPDATA%\Backroom\cells\<cell-id>`: copy each of those folders to the new place, or delete this checkout's Docker volumes so the cells register again. Otherwise the worker reports `control-plane-link` as unhealthy, because the control plane refuses to register a cell it already registered with the old key.
+
 Passwords and the LiveKit secret are generated on first run and stored in the AppHost's user secrets (`dotnet user-secrets list --project backend/src/Aspire/Backroom.AppHost`). They never go into the repository.
 
 PostgreSQL, RabbitMQ and Keycloak apply their password only when their volume is first created. If you reset the user secrets, delete this project's Docker volumes too (`docker volume ls`), or those services will reject the new passwords.

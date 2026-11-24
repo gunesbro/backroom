@@ -71,6 +71,7 @@ internal sealed class CellCredentials(
             });
             using var http = httpClientFactory.CreateClient(HttpClientName);
             using var response = await http.PostAsync(new Uri(Issuer + "/protocol/openid-connect/token"), form, cancellationToken);
+            // Also a clock-skewed assertion (400 invalid_client, not reliably distinguishable); it clears at the next Welcome.
             if (response.StatusCode is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Unauthorized)
             {
                 throw new CellCredentialsRejectedException((int)response.StatusCode);
