@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using AwesomeAssertions;
 using Backroom.BuildingBlocks.Infrastructure.Maintenance;
+using Backroom.BuildingBlocks.IntegrationTests.Fencing;
 using Backroom.BuildingBlocks.IntegrationTests.Persistence;
 using Backroom.Testing.Postgres;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -53,6 +54,22 @@ public sealed class MaintenanceJobRunnerTests(PostgresDatabase database) : IAsyn
         handled.Should().Be(20);
         job.Batches.Should().Be(2);
         (await CountNotesAsync()).Should().Be(5);
+    }
+
+    [Fact]
+    public async Task RunOnce_WhileTheCellsWritesAreFenced_SkipsTheRunAsync()
+    {
+        await SeedAsync(3);
+        var job = new DeleteNotesJob(batchSize: 10);
+        var fence = new SwitchableFence { Open = false };
+        await using var runner = CreateRunner(job, fence: fence);
+
+        (await runner.RunOnceAsync(job, CancellationToken)).Should().Be(0);
+        job.Batches.Should().Be(0);
+        (await CountNotesAsync()).Should().Be(3);
+
+        fence.Open = true;
+        (await runner.RunOnceAsync(job, CancellationToken)).Should().Be(3);
     }
 
     [Fact]
@@ -255,7 +272,8 @@ public sealed class MaintenanceJobRunnerTests(PostgresDatabase database) : IAsyn
         int maxBatchesPerRun = 20,
         TimeSpan? maxStartDelay = null,
         TimeProvider? time = null,
-        string? connectionString = null)
+        string? connectionString = null,
+        SwitchableFence? fence = null)
     {
         var options = new MaintenanceJobOptions
         {
@@ -263,7 +281,7 @@ public sealed class MaintenanceJobRunnerTests(PostgresDatabase database) : IAsyn
             MaxBatchesPerRun = maxBatchesPerRun,
             MaxStartDelay = maxStartDelay ?? TimeSpan.FromSeconds(30),
         };
-        return new MaintenanceJobRunner([job], Options.Create(options), time ?? TimeProvider.System, NullLoggerFactory.Instance);
+        return new MaintenanceJobRunner([job], Options.Create(options), time ?? TimeProvider.System, NullLoggerFactory.Instance, fence);
     }
 
     /// <summary>Deletes notes in batches, the way a retention job does: LIMIT and SKIP LOCKED inside the batch's transaction.</summary>

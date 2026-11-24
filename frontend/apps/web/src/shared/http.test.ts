@@ -74,4 +74,56 @@ describe('requestJson', () => {
 
     await expect(requestJson('/api', token)).rejects.toMatchObject({ code: 'client.response_too_large' });
   });
+
+  it('Write_WhileTheCellsEpochIsUnconfirmed_IsRetriedAfterRetryAfterWithoutAnError', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('{"code":"cell.epoch_unconfirmed"}', { status: 503, headers: { 'Retry-After': '5' } }),
+        )
+        .mockResolvedValueOnce(new Response('{"id":"1"}', { status: 201 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = requestJson<{ id: string }>('/api', token, { method: 'POST', body: {} });
+      await vi.advanceTimersByTimeAsync(5000);
+
+      await expect(result).resolves.toEqual({ id: '1' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Write_WhenTheCellStaysFenced_ThrowsAfterAFewRetries', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn(() =>
+        Promise.resolve(
+          new Response('{"code":"cell.epoch_unconfirmed"}', { status: 503, headers: { 'Retry-After': '5' } }),
+        ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = requestJson('/api', token, { method: 'POST', body: {} }).catch(
+        (caught: unknown) => caught,
+      );
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      expect(await result).toMatchObject({ status: 503, code: 'cell.epoch_unconfirmed' });
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Request_WithAnotherServiceUnavailable_IsNotRetried', async () => {
+    const fetchMock = respond('{"code":"http.503"}', { status: 503, headers: { 'Retry-After': '1' } });
+
+    await expect(requestJson('/api', token, { method: 'POST', body: {} })).rejects.toMatchObject({
+      code: 'http.503',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

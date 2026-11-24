@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Backroom.BuildingBlocks.Infrastructure.Persistence;
 
 namespace Backroom.Modules.Messaging.Infrastructure.Migrations;
 
@@ -23,18 +24,14 @@ internal sealed class AddConversationLastMessageAt : Migration
             SET LOCAL statement_timeout = '10min';
 
             ALTER TABLE messaging.conversations ADD COLUMN last_message_at timestamptz;
+            """);
 
-            -- Row-level security would hide every row from the migrator, which owns the tables.
-            ALTER TABLE messaging.conversations NO FORCE ROW LEVEL SECURITY;
-            ALTER TABLE messaging.messages NO FORCE ROW LEVEL SECURITY;
-
+        // Row-level security is forced on the owner too, so the backfill goes through OrganizationDataSql.
+        migrationBuilder.OrganizationDataSql(MessagingDbContext.Schema, ["conversations", "messages"], """
             UPDATE messaging.conversations c
             SET last_message_at = newest.created_at
             FROM (SELECT conversation_id, max(created_at) AS created_at FROM messaging.messages GROUP BY conversation_id) AS newest
             WHERE c.id = newest.conversation_id;
-
-            ALTER TABLE messaging.conversations FORCE ROW LEVEL SECURITY;
-            ALTER TABLE messaging.messages FORCE ROW LEVEL SECURITY;
             """);
     }
 

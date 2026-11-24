@@ -19,8 +19,8 @@ namespace Backroom.Modules.Messaging.Infrastructure.Migrations;
 /// them.</item>
 /// </list>
 /// The data steps run as the migrator, which owns the tables; row-level security is forced on the owner too, so
-/// they lift <c>FORCE</c> inside the migration's transaction (the <c>ALTER TABLE</c> lock keeps every other session
-/// out until commit) and restore it before the end. <see cref="Down"/> refuses to run while any conversation other
+/// they go through <c>OrganizationDataSql</c>, which lifts <c>FORCE</c> inside the migration's transaction (the
+/// <c>ALTER TABLE</c> lock keeps every other session out until commit) and restores it. <see cref="Down"/> refuses to run while any conversation other
 /// than a public channel exists, because Phase 1's schema would make it public.
 /// </summary>
 [DbContext(typeof(MessagingDbContext))]
@@ -90,11 +90,11 @@ internal sealed class RenameChannelsToConversations : Migration
             -- A person's open conversations (the sidebar, the membership limit).
             CREATE INDEX conversation_members_account_idx ON messaging.conversation_members (org_id, account_id, conversation_id)
                 WHERE left_at IS NULL;
+            """);
 
-            -- Existing members: the creator and every author. Row-level security would hide every row from the owner.
-            ALTER TABLE messaging.conversations NO FORCE ROW LEVEL SECURITY;
-            ALTER TABLE messaging.messages NO FORCE ROW LEVEL SECURITY;
-
+        // Existing members: the creator and every author. Row-level security is forced on the owner too, so the data
+        // steps run through OrganizationDataSql, which lifts FORCE on the tables they touch and restores it.
+        migrationBuilder.OrganizationDataSql(MessagingDbContext.Schema, ["conversations", "messages"], """
             INSERT INTO messaging.conversation_members (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by)
             SELECT participant.org_id, participant.conversation_id, participant.account_id, 'member', min(participant.joined_at), c.last_seq, participant.account_id
             FROM (
@@ -109,9 +109,6 @@ internal sealed class RenameChannelsToConversations : Migration
             SET member_count = counted.members
             FROM (SELECT conversation_id, count(*) AS members FROM messaging.conversation_members GROUP BY conversation_id) AS counted
             WHERE c.id = counted.conversation_id;
-
-            ALTER TABLE messaging.conversations FORCE ROW LEVEL SECURITY;
-            ALTER TABLE messaging.messages FORCE ROW LEVEL SECURITY;
             """);
         migrationBuilder.EnableOrganizationRowLevelSecurity(MessagingDbContext.Schema, "conversation_members");
     }
