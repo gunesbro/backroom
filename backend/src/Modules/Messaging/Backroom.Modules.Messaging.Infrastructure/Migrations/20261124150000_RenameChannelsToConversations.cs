@@ -31,6 +31,11 @@ internal sealed class RenameChannelsToConversations : Migration
     {
         ArgumentNullException.ThrowIfNull(migrationBuilder);
         migrationBuilder.Sql("""
+            -- The renames and the backfill hold exclusive locks on conversations and messages until commit: give up
+            -- instead of queueing every send behind a long wait, and bound each statement (the backfill scans messages).
+            SET LOCAL lock_timeout = '5s';
+            SET LOCAL statement_timeout = '10min';
+
             ALTER TABLE messaging.channels RENAME TO conversations;
             ALTER TABLE messaging.conversations RENAME CONSTRAINT channels_pkey TO conversations_pkey;
             ALTER TABLE messaging.conversations RENAME CONSTRAINT channels_org_id_id_key TO conversations_org_id_id_key;
@@ -115,6 +120,9 @@ internal sealed class RenameChannelsToConversations : Migration
     {
         ArgumentNullException.ThrowIfNull(migrationBuilder);
         migrationBuilder.Sql("""
+            SET LOCAL lock_timeout = '5s';
+            SET LOCAL statement_timeout = '10min';
+
             ALTER TABLE messaging.conversations NO FORCE ROW LEVEL SECURITY;
             DO $$
             BEGIN
