@@ -85,7 +85,7 @@ Frontend and desktop rules:
 - The local cache (IndexedDB, SQLite) has a size limit and evicts old data.
 - Lists show sized thumbnails, never original images.
 
-Deploy phase (not yet): precompressed static assets or compression at the proxy (no response compression for HTTPS responses carrying secrets, because of BREACH), `immutable` caching for hashed `/assets/*` and `no-cache` for `index.html`, HTTP/2 and HTTP/3, Valkey `maxmemory` and eviction policy.
+Deploy phase (not yet): cell storage whose WAL flush p99 is at most 10 ms (ADR 0012; measured with the flush probe in `load-tests/README.md`), precompressed static assets or compression at the proxy (no response compression for HTTPS responses carrying secrets, because of BREACH), `immutable` caching for hashed `/assets/*` and `no-cache` for `index.html`, HTTP/2 and HTTP/3, Valkey `maxmemory` and eviction policy.
 
 ## Privacy rules (product rules, enforced by tests)
 
