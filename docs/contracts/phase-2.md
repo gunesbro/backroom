@@ -556,7 +556,7 @@ None at the moment.
 
 **2D Moderation and audit**
 
-30. Member removal, deactivation, reactivation; `MembershipChanged` statuses; connection closing. _(human review)_
+30. Member removal, deactivation, reactivation; `MembershipChanged` statuses; connection closing. The cell sends `MembershipChanged` upstream for every removal, and after an epoch bump (a restore or failover) it reconciles with the control plane's membership view before confirming the epoch, re-applying removals only (never re-adding members), so a removal lost in a restore is not undone (review of step 4). _(human review)_
 31. User groups and group mentions.
 32. Audit module and log view (names resolved at read time); invitation delivery status. _(human review)_
 33. Reports and review (metadata only). _(human review)_

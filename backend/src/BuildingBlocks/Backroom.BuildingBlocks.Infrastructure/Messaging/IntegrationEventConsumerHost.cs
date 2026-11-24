@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Backroom.BuildingBlocks.Application.Organizations;
+using Backroom.BuildingBlocks.Infrastructure.Fencing;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -47,6 +48,9 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
     /// <summary>Failed acknowledgements or republishes of one message before it is rejected to the dead-letter queue.</summary>
     internal const int MaxRequeues = 5;
 
+    /// <summary>How long a delivery waits before it is requeued while the cell's writes are fenced.</summary>
+    internal static readonly TimeSpan FencedPause = TimeSpan.FromSeconds(5);
+
     private const int MaxTrackedMessages = 10_000;
 
     private static readonly TimeSpan s_maxPause = TimeSpan.FromSeconds(30);
@@ -59,6 +63,7 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
     private readonly IntegrationEventConsumerOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<IntegrationEventConsumerHost> _logger;
+    private readonly ICellWriteFence? _fence;
     private readonly List<(IChannel Channel, string ConsumerTag)> _consumers = [];
     private readonly SemaphoreSlim _publishLock = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
@@ -76,7 +81,8 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
         IServiceScopeFactory scopeFactory,
         IOptions<IntegrationEventConsumerOptions> options,
         TimeProvider timeProvider,
-        ILogger<IntegrationEventConsumerHost> logger)
+        ILogger<IntegrationEventConsumerHost> logger,
+        ICellWriteFence? fence = null)
     {
         ArgumentNullException.ThrowIfNull(subscriptions);
         ArgumentNullException.ThrowIfNull(rabbitMq);
@@ -90,6 +96,7 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
         _options = options.Value;
         _timeProvider = timeProvider;
         _logger = logger;
+        _fence = fence;
 
         var duplicate = _subscriptions.GroupBy(s => s.Queue, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)
@@ -104,6 +111,7 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
         Requeue,
         RequeueTransient,
         Republish,
+        Fenced,
     }
 
     public override async Task StartAsync(CancellationToken cancellationToken)
@@ -342,6 +350,11 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
                         await PauseAsync(Track(_transientFailures, key));
                         await channel.BasicNackAsync(delivery.DeliveryTag, multiple: false, requeue: true, CancellationToken.None);
                         break;
+                    case OutcomeKind.Fenced:
+                        // Not handled and not acknowledged: the broker keeps it until the cell confirms its epoch.
+                        await PauseWhileFencedAsync();
+                        await channel.BasicNackAsync(delivery.DeliveryTag, multiple: false, requeue: true, CancellationToken.None);
+                        break;
                     case OutcomeKind.Requeue:
                         await channel.BasicNackAsync(delivery.DeliveryTag, multiple: false, requeue: true, CancellationToken.None);
                         break;
@@ -389,6 +402,24 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
     [SuppressMessage("Design", "CA1031", Justification = "Any handler failure is retried or dead-lettered; it must not stop the consumer.")]
     private async Task<Outcome> ProcessAsync(IntegrationEventSubscription subscription, BasicDeliverEventArgs delivery, CancellationToken cancellationToken)
     {
+        // After a restore or a failover the cell changes no state until it has confirmed its epoch (docs/adr/0011,
+        // "Cell epoch"); a failure to tell counts as fenced.
+        bool allowed;
+        try
+        {
+            allowed = _fence is null || await _fence.AllowsWritesAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new Outcome(OutcomeKind.Requeue);
+        }
+
+        if (!allowed)
+        {
+            LogFenced(_logger, subscription.Queue);
+            return new Outcome(OutcomeKind.Fenced);
+        }
+
         var properties = delivery.BasicProperties;
         if (!Guid.TryParse(properties.MessageId, out var eventId)
             || !Guid.TryParse(HeaderString(properties, MessagingTelemetry.OrganizationHeader), out var organizationId)
@@ -531,6 +562,18 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
         }
     }
 
+    private async Task PauseWhileFencedAsync()
+    {
+        try
+        {
+            await Task.Delay(FencedPause, _timeProvider, _stopping.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Stopping: requeue at once.
+        }
+    }
+
     private async Task PauseAsync(int failures)
     {
         var pause = TimeSpan.FromTicks(Math.Min(
@@ -620,6 +663,9 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Handling event {EventId} from queue {Queue} hit a transient {ExceptionType}; it is requeued without using a retry.")]
     private static partial void LogTransientFailure(ILogger logger, string queue, Guid eventId, string exceptionType);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "A delivery from queue {Queue} waits: the cell has not confirmed its epoch.")]
+    private static partial void LogFenced(ILogger logger, string queue);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Message {MessageId} from queue {Queue} moved to the dead-letter queue: {Reason}.")]
     private static partial void LogDeadLettered(ILogger logger, string queue, string? messageId, string reason);

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Backroom.BuildingBlocks.Infrastructure.Fencing;
 
 namespace Backroom.BuildingBlocks.Infrastructure.Maintenance;
 
@@ -24,13 +25,15 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
     private readonly ILogger<MaintenanceJobRunner> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly SemaphoreSlim _slots;
+    private readonly ICellWriteFence? _fence;
     private MaintenanceDataSource? _dataSource;
 
     public MaintenanceJobRunner(
         IEnumerable<IMaintenanceJob> jobs,
         IOptions<MaintenanceJobOptions> options,
         TimeProvider timeProvider,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        ICellWriteFence? fence = null)
     {
         ArgumentNullException.ThrowIfNull(jobs);
         ArgumentNullException.ThrowIfNull(options);
@@ -42,6 +45,7 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
         _timeProvider = timeProvider;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<MaintenanceJobRunner>();
+        _fence = fence;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -90,6 +94,14 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
     /// </summary>
     internal async Task<int> RunOnceAsync(IMaintenanceJob job, CancellationToken cancellationToken)
     {
+        // After a restore or a failover the cell changes no state until it has confirmed its epoch (docs/adr/0011,
+        // "Cell epoch"): the run is skipped and the job tries again at its next interval.
+        if (_fence is not null && !await _fence.AllowsWritesAsync(cancellationToken))
+        {
+            LogRunSkipped(_logger, job.Name);
+            return 0;
+        }
+
         _dataSource ??= new MaintenanceDataSource(_options, _loggerFactory);
         // The pool holds MaxPoolSize connections; the other jobs wait here instead of for a connection.
         await _slots.WaitAsync(cancellationToken);
@@ -197,6 +209,9 @@ public sealed partial class MaintenanceJobRunner : BackgroundService, IAsyncDisp
         var fraction = RandomNumberGenerator.GetInt32(0, 1_000_001) / 1_000_000d;
         return limit * fraction;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Maintenance job {Job} skipped its run: the cell has not confirmed its epoch.")]
+    private static partial void LogRunSkipped(ILogger logger, string job);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Maintenance job {Job} handled {Rows} rows in {Batches} batches.")]
     private static partial void LogRunFinished(ILogger logger, string job, int rows, int batches);

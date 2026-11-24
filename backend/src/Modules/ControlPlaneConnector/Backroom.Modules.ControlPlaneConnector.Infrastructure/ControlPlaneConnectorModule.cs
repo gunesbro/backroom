@@ -9,6 +9,7 @@ using Backroom.BuildingBlocks.Infrastructure.Messaging;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.ControlPlane.Contracts.V1;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Events;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Health;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Link;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Registration;
@@ -104,6 +105,9 @@ public static class ControlPlaneConnectorModule
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<InvitationAccepted>, InvitationAcceptedHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<SessionRevoked>, SessionRevokedHandler>());
         services.TryAddSingleton<FullSyncRunner>();
+        services.TryAddSingleton<CellEpochStore>();
+        // The worker's consumers and maintenance jobs wait for the confirmed epoch like the app role's writes.
+        services.AddCellEpochFence();
         services.TryAddSingleton<CellLinkWorker>();
         services.AddHostedService(provider => provider.GetRequiredService<CellLinkWorker>());
         return builder;

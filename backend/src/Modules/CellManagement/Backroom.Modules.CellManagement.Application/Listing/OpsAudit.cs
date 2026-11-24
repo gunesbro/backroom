@@ -23,13 +23,24 @@ internal sealed partial class OpsAudit(ILogger<OpsAudit> logger)
 
     public const string Forbidden = "denied.forbidden";
 
-    public void Record(Guid? accountId, string action, string result)
+    /// <summary>Records the event; <paramref name="cellId"/> names the cell the call acted on, when it has one.</summary>
+    public void Record(Guid? accountId, string action, string result, string? cellId = null)
     {
         var account = accountId?.ToString() ?? "unknown";
         var trace = Activity.Current?.TraceId.ToString() ?? "none";
-        LogAudit(logger, account, action, result, trace);
+        if (cellId is null)
+        {
+            LogAudit(logger, account, action, result, trace);
+        }
+        else
+        {
+            LogCellAudit(logger, account, action, cellId, result, trace);
+        }
     }
 
     [LoggerMessage(EventId = 20, Level = LogLevel.Information, Message = "Audit: account {AccountId} {Action} {Result} (trace {TraceId}).")]
     private static partial void LogAudit(ILogger logger, string accountId, string action, string result, string traceId);
+
+    [LoggerMessage(EventId = 21, Level = LogLevel.Information, Message = "Audit: account {AccountId} {Action} cell {CellId} {Result} (trace {TraceId}).")]
+    private static partial void LogCellAudit(ILogger logger, string accountId, string action, string cellId, string result, string traceId);
 }

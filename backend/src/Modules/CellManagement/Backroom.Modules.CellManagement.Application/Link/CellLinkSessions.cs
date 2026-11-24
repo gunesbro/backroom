@@ -30,6 +30,22 @@ internal sealed class CellLinkSessions(TimeProvider timeProvider)
         return session;
     }
 
+    /// <summary>
+    /// Ends the cell's stream in this instance after its epoch was incremented, so the cell fences its writes and
+    /// reconnects to learn the new epoch. Streams on other instances notice at their next heartbeat write.
+    /// </summary>
+    public void EndForEpochChange(string cellId)
+    {
+        CellLinkSession? current;
+        lock (_lock)
+        {
+            _sessions.TryGetValue(cellId, out current);
+        }
+
+        // Outside the lock: cancelling runs the stream's callbacks.
+        current?.ChangeEpoch();
+    }
+
     public bool IsConnected(string cellId)
     {
         lock (_lock)

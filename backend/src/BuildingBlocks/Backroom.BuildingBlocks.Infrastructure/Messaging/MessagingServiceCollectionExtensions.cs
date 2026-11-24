@@ -80,7 +80,8 @@ public static class MessagingServiceCollectionExtensions
             provider.GetRequiredService<IServiceScopeFactory>(),
             provider.GetRequiredService<IOptions<IntegrationEventConsumerOptions>>(),
             provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<ILogger<IntegrationEventConsumerHost>>()));
+            provider.GetRequiredService<ILogger<IntegrationEventConsumerHost>>(),
+            provider.GetService<Fencing.ICellWriteFence>()));
         return services.AddOptions<IntegrationEventConsumerOptions>().ValidateOnStart();
     }
 }
