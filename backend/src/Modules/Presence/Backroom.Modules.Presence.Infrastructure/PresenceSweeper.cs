@@ -24,6 +24,10 @@ internal sealed partial class PresenceSweeper(
 {
     private DateTimeOffset _lastRefresh = DateTimeOffset.MinValue;
 
+    // One sweep at a time per node: a sweep that started earlier would otherwise write connection expiries from its older clock
+    // after a newer sweep, and could make a live connection look expired.
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!options.Value.Enabled)
@@ -49,6 +53,7 @@ internal sealed partial class PresenceSweeper(
     internal async Task RunOnceAsync(CancellationToken cancellationToken)
     {
         var settings = options.Value;
+        await _gate.WaitAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         try
         {
@@ -71,6 +76,16 @@ internal sealed partial class PresenceSweeper(
             PresenceTelemetry.Failures.Add(1, new KeyValuePair<string, object?>("operation", "sweep"));
             LogSweepFailed(logger, exception.GetType().Name);
         }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public override void Dispose()
+    {
+        _gate.Dispose();
+        base.Dispose();
     }
 
     // A watch is renewed only for people who are still active members of its organization (one statement per organization and

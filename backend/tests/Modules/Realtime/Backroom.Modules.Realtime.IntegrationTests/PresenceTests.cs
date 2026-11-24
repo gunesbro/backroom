@@ -56,15 +56,14 @@ public sealed class PresenceTests(PostgresDatabase database, KeycloakRealm keycl
         var aliceClient = await ConnectAsync(NodeA, Alice);
         (await bob.NextPresenceAsync()).State.Should().Be("online");
 
-        // The node keeps the connection alive in Valkey; ten minutes pass without input.
-        for (var minute = 0; minute < 10; minute++)
+        // Ten minutes pass without input. Both nodes sweep every step, as their timers would: Alice's node keeps her connection
+        // alive, and Bob's node renews his watch at half its lifetime; without that the watch would end at minute 10, exactly when
+        // the idle event is published, and the event would reach nobody (the race that made this test depend on the timers).
+        for (var step = 0; step < 30; step++)
         {
             _time.Advance(TimeSpan.FromSeconds(20));
             await SweepAsync(NodeA);
-            _time.Advance(TimeSpan.FromSeconds(20));
-            await SweepAsync(NodeA);
-            _time.Advance(TimeSpan.FromSeconds(20));
-            await SweepAsync(NodeA);
+            await SweepAsync(NodeB);
         }
 
         (await bob.NextPresenceAsync()).State.Should().Be("idle");
@@ -73,6 +72,7 @@ public sealed class PresenceTests(PostgresDatabase database, KeycloakRealm keycl
         await aliceClient.ReportActivityAsync("active");
         _time.Advance(TimeSpan.FromSeconds(5));
         await SweepAsync(NodeB);
+        await SweepAsync(NodeA);
 
         (await bob.NextPresenceAsync()).State.Should().Be("online");
     }
