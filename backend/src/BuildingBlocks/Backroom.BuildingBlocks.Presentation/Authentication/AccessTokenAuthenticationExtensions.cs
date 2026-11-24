@@ -148,11 +148,13 @@ public static class AccessTokenAuthenticationExtensions
     /// <summary>The query parameter SignalR clients put the token in, because browsers cannot set headers on a WebSocket.</summary>
     public const string QueryTokenParameter = "access_token";
 
-    // Only on the one path, and only when no Authorization header came: everywhere else a token in a URL is refused.
+    // Only on the one path, only for the WebSocket request itself (negotiate uses the Authorization header) and only when
+    // no Authorization header came: everywhere else a token in a URL is refused.
     private static Task TakeQueryToken(MessageReceivedContext context, string path)
     {
         var request = context.Request;
         if (request.Path.StartsWithSegments(path, StringComparison.OrdinalIgnoreCase)
+            && request.HttpContext.WebSockets.IsWebSocketRequest
             && !request.Headers.ContainsKey("Authorization")
             && request.Query[QueryTokenParameter] is { Count: 1 } values
             && !string.IsNullOrEmpty(values[0]))

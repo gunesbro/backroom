@@ -20,8 +20,22 @@ public sealed class RealtimeOptions
     /// <summary>The largest message a client may send; the hub methods take two ids.</summary>
     public int MaxReceiveMessageSizeBytes { get; set; } = 4 * 1024;
 
-    /// <summary>The longest a publish waits for Valkey before the event is given up (a client catches up with a read).</summary>
-    public TimeSpan PublishTimeout { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>
+    /// The longest a live event publish waits for Valkey before the event is given up (a client catches up with a read).
+    /// It is short, because the sending request waits for it: while Valkey is down, a send costs this much and no more.
+    /// </summary>
+    public TimeSpan PublishTimeout { get; set; } = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>The longest any other Valkey command waits (the member-removal broadcast, which is retried when it fails).</summary>
+    public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Subscribe calls one connection may make per <see cref="SubscribeWindow"/>; the next one aborts the connection.</summary>
+    public int MaxSubscribeCallsPerWindow { get; set; } = 60;
+
+    public TimeSpan SubscribeWindow { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>Refused subscribe calls (not a member, no such channel) one connection may collect; the next one aborts it.</summary>
+    public int MaxRefusedSubscribesPerConnection { get; set; } = 10;
 
     /// <summary>Publishes in flight on one node; more are dropped instead of queued.</summary>
     public int MaxConcurrentPublishes { get; set; } = 256;

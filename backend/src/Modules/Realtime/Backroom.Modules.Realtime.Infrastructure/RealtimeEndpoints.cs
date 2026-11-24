@@ -24,6 +24,10 @@ public static class RealtimeEndpoints
         {
             connection.CloseOnAuthenticationExpiration = true;
 
+            // WebSockets only: the one transport that carries the token in the query string without the long-lived requests of
+            // the others, and the only one the clients need (a client without it cannot connect, and says so).
+            connection.Transports = HttpTransportType.WebSockets;
+
             // Clients send two ids at a time; the server sends a message at a time.
             connection.ApplicationMaxBufferSize = limits.MaxReceiveMessageSizeBytes;
             connection.TransportMaxBufferSize = 64 * 1024;

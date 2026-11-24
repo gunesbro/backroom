@@ -19,6 +19,7 @@ namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 [Authorize]
 internal sealed partial class RealtimeHub(
     ConnectionRegistry registry,
+    TimeProvider timeProvider,
     IOrganizationMembershipCheck membership,
     IChannelReadAccess channels,
     OrganizationContext organization,
@@ -30,6 +31,8 @@ internal sealed partial class RealtimeHub(
     public const string InvalidArgument = "realtime.invalid_argument";
     public const string SubscriptionLimit = "realtime.subscription_limit";
     public const string Unavailable = "realtime.unavailable";
+    public const string RateLimited = "realtime.rate_limited";
+    public const string TooManyRefusals = "realtime.too_many_refusals";
 
     public override Task OnConnectedAsync()
     {
@@ -131,6 +134,14 @@ internal sealed partial class RealtimeHub(
                 throw new HubException(Unavailable);
             }
 
+            // Every subscribe call counts, a repeat too: a client that keeps asking is cut off.
+            if (!state.TryCountCall(timeProvider.GetUtcNow(), options.Value.SubscribeWindow, options.Value.MaxSubscribeCallsPerWindow))
+            {
+                RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "rate_limited"));
+                Context.Abort();
+                throw new HubException(RateLimited);
+            }
+
             if (state.Contains(group))
             {
                 return;
@@ -145,6 +156,12 @@ internal sealed partial class RealtimeHub(
             if (!await MayJoinAsync(state.AccountId, organizationId, channelId, cancellationToken))
             {
                 RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "not_found"));
+                if (state.CountRefusal() >= options.Value.MaxRefusedSubscribesPerConnection)
+                {
+                    Context.Abort();
+                    throw new HubException(TooManyRefusals);
+                }
+
                 throw new HubException(NotFound);
             }
 

@@ -42,10 +42,14 @@ public static class RealtimeModule
                 options => options.MaxSubscriptionsPerConnection is > 0 and <= 1000
                     && options.MaxConnectionsPerAccount is > 0 and <= 100
                     && options.MaxReceiveMessageSizeBytes is >= 256 and <= 64 * 1024
-                    && options.MaxConcurrentPublishes is > 0 and <= 10_000,
+                    && options.MaxConcurrentPublishes is > 0 and <= 10_000
+                    && options.MaxSubscribeCallsPerWindow is > 0 and <= 10_000
+                    && options.MaxRefusedSubscribesPerConnection is > 0 and <= 10_000,
                 "The Realtime limits are out of range.")
             .Validate(
                 options => options.PublishTimeout > TimeSpan.Zero
+                    && options.CommandTimeout > TimeSpan.Zero
+                    && options.SubscribeWindow > TimeSpan.Zero
                     && options.KeepAliveInterval > TimeSpan.Zero
                     && options.ClientTimeoutInterval >= options.KeepAliveInterval * 2
                     && options.HandshakeTimeout > TimeSpan.Zero

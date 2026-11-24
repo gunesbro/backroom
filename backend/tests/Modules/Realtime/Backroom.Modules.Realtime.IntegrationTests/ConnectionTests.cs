@@ -135,4 +135,14 @@ public sealed class ConnectionTests(PostgresDatabase database, KeycloakRealm key
         listener.Total("backroom.realtime.publishes").Should().BeGreaterThanOrEqualTo(1);
         listener.Total("backroom.realtime.publish_failures").Should().Be(0);
     }
+
+    [Theory]
+    [InlineData(Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling)]
+    [InlineData(Microsoft.AspNetCore.Http.Connections.HttpTransportType.ServerSentEvents)]
+    public async Task Connect_WithATransportOtherThanWebSockets_IsRefusedAsync(Microsoft.AspNetCore.Http.Connections.HttpTransportType transport)
+    {
+        await using var client = HubClient.Create(NodeA, await TokenAsync(Alice), transport: transport);
+
+        await Assert.ThrowsAnyAsync<Exception>(client.StartAsync);
+    }
 }

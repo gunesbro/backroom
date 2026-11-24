@@ -43,10 +43,13 @@ internal sealed class ValkeyConnection(IOptions<ValkeyOptions> valkey, IOptions<
 
     private async Task<IConnectionMultiplexer> ConnectAsync()
     {
-        var timeout = realtime.Value.PublishTimeout;
+        var timeout = realtime.Value.CommandTimeout;
         var options = ConfigurationOptions.Parse(valkey.Value.ConnectionString);
         options.AbortOnConnectFail = false;
         options.AllowAdmin = false;
+
+        // A command on a connection that is down fails at once instead of waiting in a backlog.
+        options.BacklogPolicy = BacklogPolicy.FailFast;
         options.ClientName = "backroom-cell-" + realtime.Value.CellId;
         options.ChannelPrefix = RedisChannel.Literal("backroom:cell:" + realtime.Value.CellId + ":");
 

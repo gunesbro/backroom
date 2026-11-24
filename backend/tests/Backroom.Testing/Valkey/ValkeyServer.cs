@@ -12,7 +12,7 @@ namespace Backroom.Testing.Valkey;
 public sealed class ValkeyServer : IAsyncLifetime
 {
     /// <summary>The same version as the AppHost's Valkey (checked by <c>ValkeyVersionTests</c>).</summary>
-    public const string Version = "9.1";
+    public const string Version = "9.1.3";
 
     private const string Image = "valkey/valkey:" + Version;
     private const int ContainerPort = 6379;

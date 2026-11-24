@@ -52,55 +52,75 @@ internal sealed partial class ValkeyLiveEventPublisher : ILiveEventPublisher, ID
 
     private async Task PublishAsync(string eventName, string group, object payload, Guid organizationId, CancellationToken cancellationToken)
     {
-        var tag = new KeyValuePair<string, object?>("event", eventName);
         if (!_slots.Wait(0, CancellationToken.None))
         {
-            RealtimeTelemetry.PublishFailures.Add(1, tag, new KeyValuePair<string, object?>("reason", "saturated"));
+            RealtimeTelemetry.PublishFailures.Add(
+                1, new KeyValuePair<string, object?>("event", eventName), new KeyValuePair<string, object?>("reason", "saturated"));
             LogDropped(_logger, eventName, organizationId);
             return;
         }
 
         // The slot is released when the send ends, not when the caller stops waiting, so a stuck Valkey cannot pile up sends.
-        var send = SendAsync(eventName, group, payload, organizationId);
+        var attempt = new Attempt();
+        var send = SendAsync(attempt, eventName, group, payload, organizationId);
         try
         {
-            if (await send.WaitAsync(_options.PublishTimeout, _timeProvider, cancellationToken))
-            {
-                RealtimeTelemetry.Publishes.Add(1, tag);
-            }
+            await send.WaitAsync(_options.PublishTimeout, _timeProvider, cancellationToken);
         }
         catch (TimeoutException)
         {
-            RealtimeTelemetry.PublishFailures.Add(1, tag, new KeyValuePair<string, object?>("reason", "timeout"));
-            LogTimedOut(_logger, eventName, organizationId);
+            // Counted here; if the send fails later, it is not counted again.
+            if (attempt.TryReport())
+            {
+                RealtimeTelemetry.PublishFailures.Add(
+                    1, new KeyValuePair<string, object?>("event", eventName), new KeyValuePair<string, object?>("reason", "timeout"));
+                LogTimedOut(_logger, eventName, organizationId);
+            }
         }
         catch (OperationCanceledException)
         {
-            RealtimeTelemetry.PublishFailures.Add(1, tag, new KeyValuePair<string, object?>("reason", "cancelled"));
+            if (attempt.TryReport())
+            {
+                RealtimeTelemetry.PublishFailures.Add(
+                    1, new KeyValuePair<string, object?>("event", eventName), new KeyValuePair<string, object?>("reason", "cancelled"));
+            }
         }
     }
 
-    // Returns whether the event was handed to Valkey; never throws, so a send that outlives its caller faults nobody.
-    private async Task<bool> SendAsync(string eventName, string group, object payload, Guid organizationId)
+    // Never throws, so a send that outlives its caller faults nobody. Counts its own outcome unless the caller already did.
+    private async Task SendAsync(Attempt attempt, string eventName, string group, object payload, Guid organizationId)
     {
+        var tag = new KeyValuePair<string, object?>("event", eventName);
         try
         {
             await _hub.Clients.Group(group).SendAsync(eventName, payload, CancellationToken.None);
-            return true;
+            if (attempt.TryReport())
+            {
+                RealtimeTelemetry.Publishes.Add(1, tag);
+            }
         }
 #pragma warning disable CA1031 // A live event is best effort: whatever the backplane throws must not reach the caller.
         catch (Exception exception)
 #pragma warning restore CA1031
         {
-            RealtimeTelemetry.PublishFailures.Add(
-                1, new KeyValuePair<string, object?>("event", eventName), new KeyValuePair<string, object?>("reason", "error"));
-            LogFailed(_logger, eventName, exception.GetType().Name, organizationId);
-            return false;
+            if (attempt.TryReport())
+            {
+                RealtimeTelemetry.PublishFailures.Add(1, tag, new KeyValuePair<string, object?>("reason", "error"));
+                LogFailed(_logger, eventName, exception.GetType().Name, organizationId);
+            }
         }
         finally
         {
             _slots.Release();
         }
+    }
+
+    /// <summary>Whether the outcome of one publish has been counted: the caller (timeout) or the send, whichever is first.</summary>
+    private sealed class Attempt
+    {
+        private int _reported;
+
+        public bool TryReport() => Interlocked.Exchange(ref _reported, 1) == 0;
     }
 
     // The exception type only: its message could carry the payload.

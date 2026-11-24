@@ -34,14 +34,16 @@ internal sealed class HubClient : IAsyncDisposable
 
     public HubConnectionState State => _connection.State;
 
-    public static HubClient Create(CellNode node, string token, bool json = false)
+    public static HubClient Create(CellNode node, string token, bool json = false, HttpTransportType? transport = null)
     {
         ArgumentNullException.ThrowIfNull(node);
         var builder = new HubConnectionBuilder()
             .WithUrl(new Uri(node.Server.BaseAddress, "/hubs/realtime"), options =>
             {
-                options.Transports = HttpTransportType.WebSockets;
-                options.SkipNegotiation = true;
+                // Another transport negotiates first, with the token in the Authorization header like the JS client.
+                options.Transports = transport ?? HttpTransportType.WebSockets;
+                options.SkipNegotiation = transport is null;
+                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
                 options.HttpMessageHandlerFactory = _ => node.Server.CreateHandler();
                 options.WebSocketFactory = async (context, cancellationToken) =>
                     // A browser's WebSocket cannot set headers, so the token goes in the query string, as in the contract.

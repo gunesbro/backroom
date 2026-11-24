@@ -13,6 +13,6 @@ internal sealed class GroupRemovalBroadcast(ValkeyConnection valkey, IOptions<Re
     {
         var connection = await valkey.GetAsync(cancellationToken);
         var send = connection.GetSubscriber().PublishAsync(GroupRemovalChannel.Name, GroupRemovalChannel.Encode(organizationId, accountId));
-        await send.WaitAsync(options.Value.PublishTimeout, timeProvider, cancellationToken);
+        await send.WaitAsync(options.Value.CommandTimeout, timeProvider, cancellationToken);
     }
 }

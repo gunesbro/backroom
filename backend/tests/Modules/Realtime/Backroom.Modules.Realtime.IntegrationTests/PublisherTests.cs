@@ -140,15 +140,21 @@ public sealed class PublishFailureTests(PostgresDatabase database, KeycloakRealm
             Keycloak.Url,
             CellId,
             "127.0.0.1:1",
-            new Dictionary<string, string?> { ["Realtime:PublishTimeout"] = "00:00:01" },
+            settings: null,
             cancellationToken: CancellationToken);
         using var metrics = new MetricCounter();
 
+        // The first send warms up the node (JIT, connections); the second is the one that must be fast.
+        using var warmUp = await PostAsync(
+            broken, $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "warm up" });
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var response = await PostAsync(
             broken, $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "kept anyway" });
 
+        stopwatch.Stop();
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        metrics.Total("backroom.realtime.publish_failures").Should().Be(1);
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(500), "a down Valkey must not slow the send request");
+        metrics.Total("backroom.realtime.publish_failures").Should().BeGreaterThanOrEqualTo(1);
         broken.Logs.Entries.Should().Contain(entry => entry.Contains("Publishing the live event MessagePosted", StringComparison.Ordinal));
         broken.Logs.Entries.Should().NotContain(entry => entry.Contains("kept anyway", StringComparison.Ordinal));
     }

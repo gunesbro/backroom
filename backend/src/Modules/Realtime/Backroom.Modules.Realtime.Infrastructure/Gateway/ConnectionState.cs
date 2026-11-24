@@ -20,6 +20,26 @@ internal sealed class ConnectionState(string connectionId, Guid accountId)
 
     public SemaphoreSlim Gate { get; } = new(1, 1);
 
+    private DateTimeOffset _windowStart;
+    private int _calls;
+    private int _refusals;
+
+    /// <summary>Under the gate: counts a subscribe call in the current window; <see langword="false"/> when it is over the limit.</summary>
+    public bool TryCountCall(DateTimeOffset now, TimeSpan window, int max)
+    {
+        if (_calls == 0 || now - _windowStart >= window)
+        {
+            _windowStart = now;
+            _calls = 0;
+        }
+
+        _calls++;
+        return _calls <= max;
+    }
+
+    /// <summary>Under the gate: counts a refused subscribe call and returns how many this connection has had.</summary>
+    public int CountRefusal() => ++_refusals;
+
     /// <summary>Set (under the gate) when the connection has ended; nothing joins a group afterwards.</summary>
     public bool Closed { get; set; }
 
