@@ -62,7 +62,7 @@ const messageFormats = new Map<string, Intl.DateTimeFormat>();
 /** Building a formatter is costly and lists format many times, so each kind is built once. */
 function messageFormat(
   locale: Locale,
-  kind: 'day' | 'time' | 'dateTime',
+  kind: 'day' | 'time' | 'dateTime' | 'longDay',
   timeZone: string | undefined,
 ): Intl.DateTimeFormat {
   const key = `${locale}|${kind}|${timeZone ?? ''}`;
@@ -73,7 +73,9 @@ function messageFormat(
         ? { dateStyle: 'short' }
         : kind === 'time'
           ? { hour: 'numeric', minute: '2-digit' }
-          : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+          : kind === 'longDay'
+            ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }
+            : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
     format = new Intl.DateTimeFormat(FORMAT_TAGS[locale], {
       ...options,
       ...(timeZone === undefined ? {} : { timeZone }),
@@ -93,4 +95,34 @@ export function formatMessageTime(value: Date, locale: Locale, now: Date, timeZo
   return messageFormat(locale, day.format(value) === day.format(now) ? 'time' : 'dateTime', timeZone).format(
     value,
   );
+}
+
+export type MessageDay = {
+  /** Equal for two times on the same calendar day; for comparing, not for showing. */
+  key: string;
+  /** Today or yesterday, which the app names in words; otherwise undefined. */
+  relative: 'today' | 'yesterday' | undefined;
+  /** The day in full, e.g. "Saturday, November 21, 2026" or "21 Kasım 2026 Cumartesi". */
+  text: string;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The calendar day of a message, for the day dividers of a message list, in the person's time zone. Yesterday is
+ * the day 24 hours before now, so on the night a clock changes it can be off by an hour.
+ */
+export function formatMessageDay(value: Date, locale: Locale, now: Date, timeZone?: string): MessageDay {
+  const day = messageFormat(locale, 'day', timeZone);
+  const key = day.format(value);
+  return {
+    key,
+    relative:
+      key === day.format(now)
+        ? 'today'
+        : key === day.format(new Date(now.getTime() - DAY_MS))
+          ? 'yesterday'
+          : undefined,
+    text: messageFormat(locale, 'longDay', timeZone).format(value),
+  };
 }
