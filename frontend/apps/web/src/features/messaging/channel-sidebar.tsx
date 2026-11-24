@@ -27,6 +27,7 @@ export function ChannelSidebar({
   onSelect,
   onAdd,
   onSwitch,
+  onInvite,
   activity,
   connection,
 }: {
@@ -36,6 +37,8 @@ export function ChannelSidebar({
   onSelect: (channel: Channel) => void;
   onAdd: () => void;
   onSwitch: () => void;
+  /** Opens the invite dialog; undefined hides the entry (feature flag off). */
+  onInvite?: (() => void) | undefined;
   /** Channels with new messages since they were last open. */
   activity: ReadonlySet<string>;
   connection: ConnectionStatus;
@@ -96,6 +99,11 @@ export function ChannelSidebar({
           </LinkButton>
         )}
       </nav>
+      {onInvite && (
+        <button type="button" className="bm-add bm-invite" onClick={onInvite}>
+          <span aria-hidden="true">+</span> {t('invitePeople')}
+        </button>
+      )}
       <ConnectionNotice status={connection} />
       <LinkButton onClick={onSwitch}>{t('yourOrganizations')}</LinkButton>
     </aside>

@@ -22,16 +22,22 @@ export type WorkspaceOrganization = { id: string; name: string; cell: Cell };
  * The signed-in organization: the channel sidebar and the selected channel's messages (Phase 1, step 7a). Keyed by
  * the organization, so nothing of one (chosen channel, unsent messages, running requests) carries over to another.
  */
-export function Workspace(props: { organization: WorkspaceOrganization; onSwitch: () => void }) {
+export function Workspace(props: {
+  organization: WorkspaceOrganization;
+  onSwitch: () => void;
+  onInvite?: (() => void) | undefined;
+}) {
   return <OrganizationWorkspace key={props.organization.id} {...props} />;
 }
 
 function OrganizationWorkspace({
   organization,
   onSwitch,
+  onInvite,
 }: {
   organization: WorkspaceOrganization;
   onSwitch: () => void;
+  onInvite?: (() => void) | undefined;
 }) {
   const t = useTranslate(messages);
   const factory = useMessagingApiFactory();
@@ -78,6 +84,7 @@ function OrganizationWorkspace({
           setCreating(true);
         }}
         onSwitch={onSwitch}
+        onInvite={onInvite}
         activity={live.activity}
         connection={live.status}
       />

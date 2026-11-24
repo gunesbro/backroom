@@ -1,7 +1,8 @@
-import { Suspense, useCallback, useState, type ReactNode } from 'react';
+import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, Heading, LinkButton, Spinner, Status } from '@backroom/ui';
 import { config } from '@/config';
+import { InviteDialog, useInvitationsApiFactory, useInvitationsEnabled } from '@/features/invitations';
 import { useMessagingEnabled, Workspace } from '@/features/messaging';
 import { readItem, writeItem } from '@/shared/storage';
 import { useTranslate } from '@/shared/locale';
@@ -148,6 +149,24 @@ export function OrganizationsGate({
   );
 }
 
+/** The invite dialog of an organization, over its workspace. Rendered only with the feature flag on. */
+function OrganizationInvite({
+  organization,
+  onClose,
+}: {
+  organization: AccountOrganization;
+  onClose: () => void;
+}) {
+  const factory = useInvitationsApiFactory();
+  const api = useMemo(
+    () => factory({ id: organization.cellId, url: organization.cellUrl }),
+    [factory, organization.cellId, organization.cellUrl],
+  );
+  return (
+    <InviteDialog api={api} orgId={organization.id} organizationName={organization.name} onClose={onClose} />
+  );
+}
+
 function Shell({ children }: { children: ReactNode }) {
   return (
     <SignedInPage>
@@ -169,6 +188,8 @@ function OrganizationHome({
 }) {
   const t = useTranslate(messages);
   const messagingEnabled = useMessagingEnabled();
+  const [inviting, setInviting] = useState(false);
+  const invitationsEnabled = useInvitationsEnabled();
   if (!messagingEnabled) {
     return (
       <Shell>
@@ -195,7 +216,25 @@ function OrganizationHome({
             cell: { id: organization.cellId, url: organization.cellUrl },
           }}
           onSwitch={onSwitch}
+          onInvite={
+            invitationsEnabled
+              ? () => {
+                  setInviting(true);
+                }
+              : undefined
+          }
         />
+        {inviting && invitationsEnabled && (
+          // Its own boundary: the first load must not replace the workspace (and the focus in it) with a spinner.
+          <Suspense fallback={null}>
+            <OrganizationInvite
+              organization={organization}
+              onClose={() => {
+                setInviting(false);
+              }}
+            />
+          </Suspense>
+        )}
       </Suspense>
     </SignedInPage>
   );

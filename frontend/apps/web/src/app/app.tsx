@@ -19,7 +19,13 @@ import {
   useAuth,
   type AuthClient,
 } from '@/features/auth';
-import { hasPendingInvitation, InvitePage, saveInvitationCode } from '@/features/invitations';
+import {
+  createInvitationsApiFactory,
+  hasPendingInvitation,
+  InvitationsApiContext,
+  InvitePage,
+  saveInvitationCode,
+} from '@/features/invitations';
 import { isLivekitSpikeEnabled, LIVEKIT_SPIKE_HASH, LivekitSpike } from '@/features/livekit-spike';
 import {
   createMessagingApi,
@@ -114,12 +120,20 @@ type Services = {
   cellTokens?: CellTokenSource | undefined;
   /** Overrides the messaging feature flag (tests). */
   messagingEnabled?: boolean | undefined;
+  /** Overrides the invitation UI feature flag (tests). */
+  invitationsUiEnabled?: boolean | undefined;
   authClient?: AuthClient | undefined;
   createApi?: ((getAccessToken: AccessTokenSource) => OrganizationsApi) | undefined;
 };
 
 // Application shell: language, server state, sign-in, then the organization. Tests pass fake services.
-export function App({ authClient, createApi, cellTokens, messagingEnabled }: Services = {}) {
+export function App({
+  authClient,
+  createApi,
+  cellTokens,
+  messagingEnabled,
+  invitationsUiEnabled,
+}: Services = {}) {
   const hash = useHash();
   const [auth] = useState(() => authClient ?? createAuthClient());
   const [queryClient] = useState(() => createQueryClient(auth.signIn));
@@ -136,7 +150,12 @@ export function App({ authClient, createApi, cellTokens, messagingEnabled }: Ser
     <LocaleProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider client={auth}>
-          <SignedIn createApi={createApi} cellTokens={cellTokens} messagingEnabled={messagingEnabled} />
+          <SignedIn
+            createApi={createApi}
+            cellTokens={cellTokens}
+            messagingEnabled={messagingEnabled}
+            invitationsUiEnabled={invitationsUiEnabled}
+          />
         </AuthProvider>
       </QueryClientProvider>
     </LocaleProvider>
@@ -147,7 +166,8 @@ function SignedIn({
   createApi,
   cellTokens,
   messagingEnabled = config.messagingEnabled,
-}: Pick<Services, 'createApi' | 'cellTokens' | 'messagingEnabled'>) {
+  invitationsUiEnabled = config.invitationsUiEnabled,
+}: Pick<Services, 'createApi' | 'cellTokens' | 'messagingEnabled' | 'invitationsUiEnabled'>) {
   const { getAccessToken, getCellToken } = useAuth();
   const api = useMemo(
     () => (createApi ?? ((tokens) => createOrganizationsApi(config.controlPlaneUrl, tokens)))(getAccessToken),
@@ -160,6 +180,12 @@ function SignedIn({
   const messagingApi = useMemo<MessagingApiFactory | null>(
     () => (messagingEnabled ? (cell) => createMessagingApi(cell.url, () => cellTokenSource(cell.id)) : null),
     [messagingEnabled, cellTokenSource],
+  );
+
+  // Inviting needs the cell like messaging does, so it is on only when both flags are.
+  const invitationsApi = useMemo(
+    () => (messagingEnabled && invitationsUiEnabled ? createInvitationsApiFactory(cellTokenSource) : null),
+    [messagingEnabled, invitationsUiEnabled, cellTokenSource],
   );
 
   const realtime = useMemo(
@@ -195,7 +221,9 @@ function SignedIn({
     <OrganizationsApiContext.Provider value={api}>
       <MessagingApiContext.Provider value={messagingApi}>
         <RealtimeContext.Provider value={realtime}>
-          <OrganizationsGate onJoin={join} />
+          <InvitationsApiContext.Provider value={invitationsApi}>
+            <OrganizationsGate onJoin={join} />
+          </InvitationsApiContext.Provider>
         </RealtimeContext.Provider>
       </MessagingApiContext.Provider>
     </OrganizationsApiContext.Provider>

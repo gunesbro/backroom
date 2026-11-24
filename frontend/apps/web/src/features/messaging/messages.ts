@@ -5,6 +5,7 @@ import type { Messages } from '@backroom/i18n';
 type Key =
   | 'channels'
   | 'addChannel'
+  | 'invitePeople'
   | 'createChannelTitle'
   | 'channelName'
   | 'cancel'
@@ -46,6 +47,7 @@ export const messages: Messages<Key> = {
   en: {
     channels: 'Channels',
     addChannel: 'Add channel',
+    invitePeople: 'Invite people',
     createChannelTitle: 'Create channel',
     channelName: 'Channel name',
     cancel: 'Cancel',
@@ -86,6 +88,7 @@ export const messages: Messages<Key> = {
   tr: {
     channels: 'Kanallar',
     addChannel: 'Kanal ekle',
+    invitePeople: 'Kişileri davet et',
     createChannelTitle: 'Kanal oluştur',
     channelName: 'Kanal adı',
     cancel: 'İptal',

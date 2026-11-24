@@ -2,6 +2,7 @@
 import { lazy } from 'react';
 
 export {
+  cellOrigin,
   createMessagingApi,
   MessagingApiContext,
   useMessagingEnabled,

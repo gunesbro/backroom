@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_CONTROL_PLANE_URL?: string;
   readonly VITE_REGIONS?: string;
   readonly VITE_MESSAGING_ENABLED?: string;
+  readonly VITE_INVITATIONS_UI_ENABLED?: string;
   /** Set by vite.config.ts in tests when `CI` is set. */
   readonly BACKROOM_TEST_CI?: string;
 }
