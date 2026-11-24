@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Files' cell endpoints on a test server with real Keycloak, PostgreSQL and SeaweedFS (Docker). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Files\Backroom.Modules.Files.Infrastructure\Backroom.Modules.Files.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Files\Backroom.Modules.Files.Presentation\Backroom.Modules.Files.Presentation.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Messaging\Backroom.Modules.Messaging.Infrastructure\Backroom.Modules.Messaging.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Messaging\Backroom.Modules.Messaging.Presentation\Backroom.Modules.Messaging.Presentation.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Organization\Backroom.Modules.Organization.Infrastructure\Backroom.Modules.Organization.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Permissions\Backroom.Modules.Permissions.Infrastructure\Backroom.Modules.Permissions.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Backroom.Testing\Backroom.Testing.csproj" />
+  </ItemGroup>
+
+  <!-- The development realm, imported into a Keycloak container. -->
+  <ItemGroup>
+    <None Include="..\..\..\..\src\Aspire\Backroom.AppHost\keycloak-dev\backroom-realm.json" Link="keycloak\backroom-realm.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

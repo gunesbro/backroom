@@ -94,14 +94,28 @@ internal static class DevelopmentServices
         rabbitMq.WithDataVolume();
         keycloak.WithDataVolume();
 
-        // S3-compatible object storage. No identities are configured, so the S3 API accepts anonymous
-        // requests; it is published on localhost only.
+        // S3-compatible object storage (the Files module's IFileStorage). Its S3 API accepts only requests signed with
+        // the generated key pair (SeaweedFS's admin identity from the AWS_* variables), never anonymous ones; it is
+        // published on localhost only. Each cell creates its own bucket at startup (Files:Storage:CreateBucket).
+        var seaweedFsAccessKeyId = builder.AddParameter(
+            "seaweedfs-access-key-id",
+            new GenerateParameterDefault { MinLength = 20, Special = false },
+            secret: true,
+            persist: true);
+        var seaweedFsSecretAccessKey = builder.AddParameter(
+            "seaweedfs-secret-access-key",
+            new GenerateParameterDefault { MinLength = 40, Special = false },
+            secret: true,
+            persist: true);
         var seaweedFs = builder.AddContainer("seaweedfs", SeaweedFsImage, SeaweedFsImageTag);
         seaweedFs
             .WithArgs("server", "-dir=/data", "-s3", $"-s3.port={SeaweedFsContainerS3Port}")
+            .WithEnvironment("AWS_ACCESS_KEY_ID", seaweedFsAccessKeyId)
+            .WithEnvironment("AWS_SECRET_ACCESS_KEY", seaweedFsSecretAccessKey)
             .WithVolume(VolumeNameGenerator.Generate(seaweedFs, "data"), "/data")
             .WithHttpEndpoint(port: SeaweedFsS3Port, targetPort: SeaweedFsContainerS3Port, name: "s3")
-            .WithHttpHealthCheck("/", endpointName: "s3");
+            // Unsigned requests are refused, so the check accepts 403 as "up".
+            .WithHttpHealthCheck("/", statusCode: 403, endpointName: "s3");
 
         // Local LiveKit in dev mode. Media uses a single UDP port; --node-ip makes the advertised
         // ICE candidates reachable from the host through Docker's port mapping.
@@ -119,6 +133,9 @@ internal static class DevelopmentServices
             .WithEndpoint(port: LiveKitRtcUdpPort, targetPort: 7882, name: "rtc-udp", scheme: "udp", protocol: ProtocolType.Udp, isProxied: false)
             .WithHttpHealthCheck("/", endpointName: "http");
 
-        return resources;
+        return resources with
+        {
+            ObjectStorage = new DevelopmentObjectStorage(seaweedFs.GetEndpoint("s3"), seaweedFs, seaweedFsAccessKeyId, seaweedFsSecretAccessKey),
+        };
     }
 }

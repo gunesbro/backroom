@@ -23,6 +23,7 @@ public static class ErrorResults
         ErrorKind.NotFound => StatusCodes.Status404NotFound,
         ErrorKind.Conflict => StatusCodes.Status409Conflict,
         ErrorKind.RateLimited => StatusCodes.Status429TooManyRequests,
+        ErrorKind.ContentTooLarge => StatusCodes.Status413PayloadTooLarge,
         ErrorKind.Unexpected => StatusCodes.Status500InternalServerError,
         _ => throw new UnreachableException($"Unknown error kind {kind}."),
     };

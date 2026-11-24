@@ -46,6 +46,12 @@ public sealed class PermissionCheckerTests(PostgresDatabase database) : IAsyncLi
     [InlineData(SystemRoles.Member, SystemRoles.MembersInviteByEmail, true)]
     [InlineData(SystemRoles.Member, SystemRoles.MembersChooseRoleOnInvite, false)]
     [InlineData(SystemRoles.Member, SystemRoles.MembersManageInvitations, false)]
+    [InlineData(SystemRoles.Owner, SystemRoles.FilesUpload, true)]
+    [InlineData(SystemRoles.Owner, SystemRoles.FilesRemoveOthersPublic, true)]
+    [InlineData(SystemRoles.Admin, SystemRoles.FilesUpload, true)]
+    [InlineData(SystemRoles.Admin, SystemRoles.FilesRemoveOthersPublic, true)]
+    [InlineData(SystemRoles.Member, SystemRoles.FilesUpload, true)]
+    [InlineData(SystemRoles.Member, SystemRoles.FilesRemoveOthersPublic, false)]
     public async Task HasPermission_ForEachRole_FollowsTheContractTableAsync(string role, string permission, bool expected)
     {
         var (organizationId, accountId) = await OrganizationWithAccountAsync(role);
@@ -205,6 +211,49 @@ public sealed class PermissionCheckerTests(PostgresDatabase database) : IAsyncLi
         var can = await InOrganizationAsync(organizationId, checker => checker.CanGrantRoleAsync(Guid.CreateVersion7(), SystemRoles.Member, CancellationToken));
 
         can.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AddFilePermissionsMigration_ForAnExistingOrganization_GrantsTheFileKeysAndKeepsRowSecurityForcedAsync()
+    {
+        // An organization from before Phase 2: its roles lack the file permissions.
+        var (organizationId, admin) = await OrganizationWithAccountAsync(SystemRoles.Admin);
+        var member = Guid.CreateVersion7();
+        await InOrganizationAsync(organizationId, async (provisioning, _) =>
+        {
+            await provisioning.AssignRoleAsync(organizationId, member, SystemRoles.Member, CancellationToken);
+            return true;
+        });
+        await using (var superuser = new NpgsqlConnection(database.SuperuserConnectionString))
+        {
+            await superuser.OpenAsync(CancellationToken);
+            await using var delete = new NpgsqlCommand("DELETE FROM permissions.role_permissions WHERE org_id = $1 AND permission LIKE 'files.%'", superuser);
+            delete.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+            await delete.ExecuteNonQueryAsync(CancellationToken);
+        }
+
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.FilesUpload, CancellationToken))).Should().BeFalse();
+
+        // The migration's statement, as the migrator (the tables' owner) runs it, twice: it is idempotent.
+        await using (var migrator = new NpgsqlConnection(database.MigratorConnectionString))
+        {
+            await migrator.OpenAsync(CancellationToken);
+            for (var run = 0; run < 2; run++)
+            {
+                await using var transaction = await migrator.BeginTransactionAsync(CancellationToken);
+                await using var backfill = new NpgsqlCommand(Infrastructure.Migrations.AddFilePermissions.BackfillSql, migrator, transaction);
+                await backfill.ExecuteNonQueryAsync(CancellationToken);
+                await transaction.CommitAsync(CancellationToken);
+            }
+
+            await using var forced = new NpgsqlCommand(
+                "SELECT bool_and(relforcerowsecurity) FROM pg_class WHERE oid IN ('permissions.roles'::regclass, 'permissions.role_permissions'::regclass)", migrator);
+            (await forced.ExecuteScalarAsync(CancellationToken)).Should().Be(true);
+        }
+
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.FilesUpload, CancellationToken))).Should().BeTrue();
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.FilesRemoveOthersPublic, CancellationToken))).Should().BeFalse();
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(admin, SystemRoles.FilesRemoveOthersPublic, CancellationToken))).Should().BeTrue();
     }
 
     private async Task<(Guid OrganizationId, Guid AccountId)> OrganizationWithAccountAsync(string role)

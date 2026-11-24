@@ -8,6 +8,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md). **
 - `IPermissionsProvisioning` (Permissions.Contracts), called synchronously by Organization inside its transaction: `InitializeOrganizationAsync(orgId)` creates the system roles; `AssignRoleAsync(orgId, accountId, roleKey)`; `RemoveMemberAsync(orgId, accountId)`. Writes only this module's tables.
 - `IPermissionChecker.HasPermissionAsync(accountId, permission)` (Permissions.Contracts), in the organization of the current unit of work, and the endpoint filter `RequirePermission("channels.create-public")` (BuildingBlocks.Presentation, through `IOrganizationPermissionCheck`, so other modules need no reference here).
 - Phase 1 permission keys: `channels.create-public`, `members.invite-by-email`, `members.choose-role-on-invite`, `members.manage-invitations` (Owner, Admin). The rest arrive with the role screens in Phase 5.
+- Phase 2 keys so far: `files.upload` (Owner, Admin, Member) and `files.remove-others-public` (Owner, Admin); existing organizations get them from the migration `AddFilePermissions`, which lifts FORCE ROW LEVEL SECURITY for its one statement and restores it in the same transaction.
 - `IPermissionChecker.CanGrantRoleAsync(accountId, roleKey)`: true only if the role's permissions are a subset of the account's and the role is not Owner (used for invitations).
 
 ## Owns

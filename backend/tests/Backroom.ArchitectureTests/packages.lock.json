@@ -27,6 +27,11 @@
           "xunit.v3.mtp-v2": "[4.0.3]"
         }
       },
+      "AWSSDK.Core": {
+        "type": "Transitive",
+        "resolved": "4.0.103",
+        "contentHash": "DCOotOZU/uuGTJHyhdzDaISArck4hYC6Y9OzZM8/PI+G4AhtNaD1hszFG1Giwdpod0Sn7gxxlx6xUfcPKNeQ8Q=="
+      },
       "CycleDetection": {
         "type": "Transitive",
         "resolved": "2.0.0",
@@ -629,6 +634,8 @@
           "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
           "Backroom.Modules.ControlPlaneConnector.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Email.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Files.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Files.Presentation": "[1.0.0, )",
           "Backroom.Modules.Messaging.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Messaging.Presentation": "[1.0.0, )",
           "Backroom.Modules.Organization.Infrastructure": "[1.0.0, )",
@@ -744,6 +751,38 @@
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Email.Application": "[1.0.0, )",
           "MailKit": "[5.0.0, )"
+        }
+      },
+      "backroom.modules.files.application": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Application": "[1.0.0, )",
+          "Backroom.Modules.Files.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Contracts": "[1.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.15, )"
+        }
+      },
+      "backroom.modules.files.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Domain": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.files.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "AWSSDK.S3": "[4.0.104.12, )",
+          "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Files.Application": "[1.0.0, )",
+          "Microsoft.Extensions.Http": "[10.0.15, )"
+        }
+      },
+      "backroom.modules.files.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Files.Application": "[1.0.0, )",
+          "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
         }
       },
       "backroom.modules.identity.application": {
@@ -874,6 +913,15 @@
           "OpenTelemetry.Instrumentation.AspNetCore": "[1.21.0, )",
           "OpenTelemetry.Instrumentation.Http": "[1.21.0, )",
           "OpenTelemetry.Instrumentation.Runtime": "[1.21.0, )"
+        }
+      },
+      "AWSSDK.S3": {
+        "type": "CentralTransitive",
+        "requested": "[4.0.104.12, )",
+        "resolved": "4.0.104.12",
+        "contentHash": "z4rPjjQoPDuWtxk2utbO/I+xNEqA+ac7/cDjwd4KvFrYHfwatJ1IVwjQ7ukaSlSnqY5e9+Q6YHtu87LBJNj+SQ==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.103, 5.0.0)"
         }
       },
       "Google.Protobuf": {

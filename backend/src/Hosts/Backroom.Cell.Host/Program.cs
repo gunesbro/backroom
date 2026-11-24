@@ -2,6 +2,7 @@ using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.BuildingBlocks.Presentation.Cors;
 using Backroom.Cell.Host;
+using Backroom.Modules.Files.Presentation;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
 using Backroom.Modules.Realtime.Infrastructure;
@@ -55,6 +56,11 @@ if (role == CellRole.App)
 {
     app.MapOrganizationEndpoints();
     app.MapMessagingEndpoints();
+    if (app.Configuration.GetValue<bool>(FilesEndpoints.FilesFlag))
+    {
+        app.MapFilesEndpoints();
+    }
+
     app.MapRealtimeHub();
 }
 

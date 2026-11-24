@@ -17,6 +17,7 @@ public sealed class ErrorResultsTests
     [InlineData(ErrorKind.NotFound, StatusCodes.Status404NotFound)]
     [InlineData(ErrorKind.Conflict, StatusCodes.Status409Conflict)]
     [InlineData(ErrorKind.RateLimited, StatusCodes.Status429TooManyRequests)]
+    [InlineData(ErrorKind.ContentTooLarge, StatusCodes.Status413PayloadTooLarge)]
     [InlineData(ErrorKind.Unexpected, StatusCodes.Status500InternalServerError)]
     public void ToStatusCode_ForEachKind_ReturnsStatus(ErrorKind kind, int expected)
     {

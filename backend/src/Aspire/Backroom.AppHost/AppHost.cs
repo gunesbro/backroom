@@ -109,6 +109,21 @@ for (var i = 0; i < cells.Count; i++)
         .WaitFor(services.Valkey)
         .WithHttpHealthCheck("/health");
 
+    // Files (Phase 2, behind Features:Files): the app role signs uploads and downloads for the cell's own bucket. The
+    // browser reaches SeaweedFS on localhost, so the signed URLs name the same endpoint. An isolated run has no object
+    // storage, so the flag stays off there.
+    if (services.ObjectStorage is { } objectStorage)
+    {
+        cellApp
+            .WithEnvironment("Features__Files", "true")
+            .WithEnvironment("Files__Storage__ServiceUrl", objectStorage.S3Endpoint)
+            .WithEnvironment("Files__Storage__Bucket", DevelopmentObjectStorage.BucketFor(cell))
+            .WithEnvironment("Files__Storage__AccessKeyId", objectStorage.AccessKeyId)
+            .WithEnvironment("Files__Storage__SecretAccessKey", objectStorage.SecretAccessKey)
+            .WithEnvironment("Files__Storage__CreateBucket", "true")
+            .WaitFor(objectStorage.Container);
+    }
+
     // The cell's public URL is its app endpoint (the launch profile's port, or a random one in an isolated run), which the
     // web app learns from /api/v1/cells/shared and the organization data.
     controlPlane.WithEnvironment($"CellManagement__DevelopmentCells__{i}__PublicUrl", cellApp.GetEndpoint("http"));

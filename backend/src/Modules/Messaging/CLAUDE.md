@@ -19,6 +19,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (fl
 - Live events through `ILiveEventPublisher` (Realtime.Contracts) after commit: `MessagePosted` to the channel group, `ChannelCreated` to the organization group.
 - `IPermissionChecker` (Permissions.Contracts); membership comes from the organization context.
 - Publishes `IChannelReadAccess` (Contracts): whether an account may read a channel (Phase 1: an open public channel), used by Realtime's subscription check.
+- Publishes `IMessageFileAccess` (Contracts): whether an account may read a message that carries a file, asked by Files on every download of an attached file. Until attachments (Phase 2 step 22) no message carries files, so it answers false.
 
 ## Rules
 
