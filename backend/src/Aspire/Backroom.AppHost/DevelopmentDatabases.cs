@@ -65,7 +65,7 @@ internal sealed class DevelopmentDatabases
     /// <summary>
     /// Gives <paramref name="worker"/> the maintenance role's connection for its cross-organization jobs
     /// (docs/adr/0010). The role bypasses row-level security and holds only the column privileges job
-    /// migrations grant it, so only workers get it. No host calls this until the first job exists.
+    /// migrations grant it, so only workers get it.
     /// </summary>
     public void AddMaintenance(string databaseName, IResourceBuilder<ProjectResource> worker) =>
         worker.WithEnvironment("MaintenanceJobs__ConnectionString", ConnectionString(databaseName, MaintenanceRole, _maintenancePassword));

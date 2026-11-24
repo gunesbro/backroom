@@ -7,9 +7,8 @@ namespace Backroom.Modules.Organization.Infrastructure.Migrations;
 /// <summary>
 /// The scheduled invitation jobs (docs/contracts/phase-1.md, flow 3, step 8, and "Privacy and retention"): the
 /// time an invitation was marked expired (the retention of its email counts from it), one partial index per job
-/// holding only the rows that job still has to visit, and the relay role's privileges. The jobs work across all
-/// organizations, so they run as the relay role (BYPASSRLS, owns nothing), like the outbox relay and the link
-/// delivery; it gets only the columns the jobs read and change.
+/// holding only the rows that job still has to visit, and the relay role's privileges (the next migration, EraseInvitationEmailsByMarker,
+/// moves the jobs to the maintenance role, docs/adr/0010).
 /// </summary>
 [DbContext(typeof(OrganizationDbContext))]
 [Migration("20261115150000_IndexInvitationJobs")]

@@ -1,3 +1,4 @@
+using Backroom.BuildingBlocks.Infrastructure.Maintenance;
 using Backroom.BuildingBlocks.Infrastructure.Messaging;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure;
@@ -36,8 +37,9 @@ internal static class CellModules
             // Only the worker sends email; the startup check stops it unless the target is Mailpit (docs/adr/0008).
             // Its invitation emails link to the web origin, checked at startup.
             builder.Services.AddOrganizationInvitationLinks().BindConfiguration(InvitationLinkOptions.SectionName);
-            // Expires invitations and applies their retention across organizations, as the relay role.
-            builder.Services.AddOrganizationInvitationJobs().BindConfiguration(InvitationJobsOptions.SectionName);
+            // Cross-organization jobs run as the maintenance role (docs/adr/0010): invitation expiry and retention.
+            builder.Services.AddOrganizationInvitationJobs();
+            builder.Services.AddMaintenanceJobRunner().BindConfiguration(MaintenanceJobOptions.SectionName);
             builder.Services.AddEmail().BindConfiguration(EmailOptions.SectionName);
 
             // The modules registered their event handlers and outbox schemas above. Consumers before the relay,
