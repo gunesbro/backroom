@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\Modules\Permissions\Backroom.Modules.Permissions.Infrastructure\Backroom.Modules.Permissions.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Email\Backroom.Modules.Email.Infrastructure\Backroom.Modules.Email.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\ControlPlaneConnector\Backroom.Modules.ControlPlaneConnector.Infrastructure\Backroom.Modules.ControlPlaneConnector.Infrastructure.csproj" />
+    <InternalsVisibleTo Include="Backroom.Cell.Host.UnitTests" />
   </ItemGroup>
 
 </Project>

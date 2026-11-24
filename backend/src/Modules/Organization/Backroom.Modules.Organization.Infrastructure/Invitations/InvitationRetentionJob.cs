@@ -61,6 +61,8 @@ internal sealed partial class InvitationRetentionJob(TimeProvider timeProvider, 
              ORDER BY revoked_at LIMIT $2)) due
         """;
 
+    private int _batches;
+
     public string Name => JobName;
 
     public TimeSpan Interval => TimeSpan.FromMinutes(5);
@@ -72,12 +74,14 @@ internal sealed partial class InvitationRetentionJob(TimeProvider timeProvider, 
         ArgumentNullException.ThrowIfNull(connection);
         var now = timeProvider.GetUtcNow();
         var cutoff = now - Retention;
-        var erased = await EraseAsync(EraseExpiredSql, connection, transaction, cutoff, batchSize, now, cancellationToken);
-
-        // Together at most one batch, so the runner's "a short batch means nothing more is due" holds.
+        // Neither state may starve the other: the one that goes first alternates per batch. Together at most one
+        // batch, so the runner's "a short batch means nothing more is due" holds.
+        var revokedFirst = (Interlocked.Increment(ref _batches) & 1) == 0;
+        var (first, second) = revokedFirst ? (EraseRevokedSql, EraseExpiredSql) : (EraseExpiredSql, EraseRevokedSql);
+        var erased = await EraseAsync(first, connection, transaction, cutoff, batchSize, now, cancellationToken);
         if (erased < batchSize)
         {
-            erased += await EraseAsync(EraseRevokedSql, connection, transaction, cutoff, batchSize - erased, now, cancellationToken);
+            erased += await EraseAsync(second, connection, transaction, cutoff, batchSize - erased, now, cancellationToken);
         }
 
         if (erased > 0)

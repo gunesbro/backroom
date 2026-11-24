@@ -20,7 +20,7 @@ internal sealed class EraseInvitationEmailsByMarker : Migration
     /// <summary>Marks rows whose email was already erased: at the time they reached the state, otherwise now.</summary>
     internal const string BackfillSql = """
         UPDATE organization.invitations
-        SET email_erased_at = COALESCE(expired_at, revoked_at, now())
+        SET email_erased_at = COALESCE(CASE status WHEN 'expired' THEN expired_at WHEN 'revoked' THEN revoked_at END, now())
         WHERE email IS NULL AND email_erased_at IS NULL;
         """;
 

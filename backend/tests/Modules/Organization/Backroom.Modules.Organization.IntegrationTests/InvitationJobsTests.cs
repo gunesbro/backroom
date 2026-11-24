@@ -178,7 +178,6 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
 
         cleared.Should().Be(2);
 
-
         (await RowAsync(expiredOld)).Should().Match<(string Status, DateTimeOffset? ExpiredAt, string? Email)>(r => r.Status == "expired" && r.Email == null);
         (await RowAsync(revokedOld)).Status.Should().Be("revoked");
         (await RowAsync(revokedOld)).Email.Should().BeNull();
@@ -192,6 +191,26 @@ public sealed class InvitationJobsTests(PostgresDatabase database) : IAsyncLifet
         (await RunAsync(Retention(), CancellationToken)).Should().Be(1, "the young expired one is now 30 days old");
         (await RowAsync(expiredYoung)).Email.Should().BeNull();
     }
+
+    [Fact]
+    public async Task ApplyRetention_WithBothBacklogsLargerThanABatch_ErasesBothInOneRunAsync()
+    {
+        var expired = new List<Guid>();
+        var revoked = new List<Guid>();
+        for (var index = 0; index < 5; index++)
+        {
+            expired.Add(await AddAsync("expired", expiresAt: s_now.AddDays(-60), expiredAt: s_now.AddDays(-40).AddHours(index)));
+            revoked.Add(await AddAsync("revoked", expiresAt: s_now.AddDays(-60), revokedAt: s_now.AddDays(-40).AddHours(index)));
+        }
+
+        (await RunAsync(Retention(batchSize: 2), CancellationToken, maxBatches: 2)).Should().Be(4);
+
+        (await ErasedCountAsync(expired)).Should().BeGreaterThan(0, "revoked rows must not starve expired ones");
+        (await ErasedCountAsync(revoked)).Should().BeGreaterThan(0, "expired rows must not starve revoked ones");
+    }
+
+    private async Task<long> ErasedCountAsync(List<Guid> invitations) =>
+        await ScalarAsync<long>("SELECT count(*) FROM organization.invitations WHERE id = ANY($1) AND email_erased_at IS NOT NULL", invitations.ToArray());
 
     [Fact]
     public async Task ApplyRetention_WithMoreDueThanTheRunAllows_StopsAtTheLimitAsync()
