@@ -76,19 +76,21 @@ public static class MessagingEndpoints
         int? limit,
         ICurrentAccount account,
         MessageService messages,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var result = await messages.ListAsync(account.AccountId, conversationId, epoch, before, after, changedAfter, limit, cancellationToken);
         return IsEpochUnconfirmed(result)
-            ? EpochUnconfirmed()
+            ? EpochUnconfirmed(httpContext)
             : result.ToHttpResult(page => TypedResults.Ok(new MessagesResponse([.. page.Messages.Select(ToResponse)], page.Next, page.Epoch)));
     }
 
-    private static async Task<IResult> SendMessageAsync(Guid conversationId, SendMessageRequest request, ICurrentAccount account, MessageService messages, CancellationToken cancellationToken)
+    private static async Task<IResult> SendMessageAsync(
+        Guid conversationId, SendMessageRequest request, ICurrentAccount account, MessageService messages, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await messages.SendAsync(account.AccountId, conversationId, request.ClientMessageId, request.Text, cancellationToken);
         return IsEpochUnconfirmed(result)
-            ? EpochUnconfirmed()
+            ? EpochUnconfirmed(httpContext)
             : result.ToHttpResult(sent => sent.Created
                 ? TypedResults.Created((string?)null, ToResponse(sent.Message, sent.Epoch))
                 : TypedResults.Ok(ToResponse(sent.Message, sent.Epoch)));
@@ -98,12 +100,17 @@ public static class MessagingEndpoints
 
     /// <summary>
     /// No number can be handed out while the cell has no confirmed epoch (docs/adr/0011, "Cell epoch"): the same answer
-    /// as a fenced write, so clients retry after the worker has reconnected.
+    /// as a fenced write (<c>Retry-After</c>, never cached), so clients retry after the worker has reconnected.
     /// </summary>
-    private static ProblemHttpResult EpochUnconfirmed() => TypedResults.Problem(
-        statusCode: StatusCodes.Status503ServiceUnavailable,
-        detail: MessageService.EpochUnconfirmed.Description,
-        extensions: new Dictionary<string, object?>(StringComparer.Ordinal) { [ErrorResults.CodeExtension] = MessageService.EpochUnconfirmed.Code });
+    private static ProblemHttpResult EpochUnconfirmed(HttpContext httpContext)
+    {
+        httpContext.Response.Headers.RetryAfter = "5";
+        httpContext.Response.Headers.CacheControl = "no-store";
+        return TypedResults.Problem(
+            statusCode: StatusCodes.Status503ServiceUnavailable,
+            detail: MessageService.EpochUnconfirmed.Description,
+            extensions: new Dictionary<string, object?>(StringComparer.Ordinal) { [ErrorResults.CodeExtension] = MessageService.EpochUnconfirmed.Code });
+    }
 
     private static async Task<IResult> JoinAsync(Guid conversationId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
         (await memberships.JoinAsync(account.AccountId, conversationId, cancellationToken)).ToHttpResult();

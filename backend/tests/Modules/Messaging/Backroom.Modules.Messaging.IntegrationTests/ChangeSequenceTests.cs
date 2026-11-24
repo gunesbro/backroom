@@ -222,6 +222,7 @@ public sealed class ChangeSequenceTests(PostgresDatabase database, KeycloakRealm
             $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "not yet" });
 
         read.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        read.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromSeconds(5));
         (await ReadJsonAsync(read))["code"]!.GetValue<string>().Should().Be("cell.epoch_unconfirmed");
         send.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
         (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", channelId))[0].Should().Be(0L);
