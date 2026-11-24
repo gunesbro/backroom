@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Backroom.Modules.Files.Application.Uploads;
 using Backroom.Modules.Files.Infrastructure.Storage;
 using Backroom.Modules.Permissions.Contracts;
+using Backroom.Testing.ClamAv;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.SeaweedFs;
@@ -16,8 +17,8 @@ namespace Backroom.Modules.Files.IntegrationTests;
 /// </summary>
 [Collection(CellCollection.Name)]
 [Trait("Category", "Privacy")]
-public sealed class DownloadTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage)
-    : FilesTestBase(database, keycloak, storage)
+public sealed class DownloadTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage, ClamAvServer scanner)
+    : FilesTestBase(database, keycloak, storage, scanner)
 {
     [Fact]
     public async Task Download_WhenReady_RedirectsToASixtySecondSignedUrlServingAnAttachmentAsync()

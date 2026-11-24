@@ -14,6 +14,8 @@ internal static class DevelopmentServices
     public const string KeycloakImageTag = "26.8.1";
     public const string SeaweedFsImage = "chrislusf/seaweedfs";
     public const string SeaweedFsImageTag = "4.50";
+    public const string ClamAvImage = "clamav/clamav";
+    public const string ClamAvImageTag = "1.5.4";
     public const string LiveKitImage = "livekit/livekit-server";
     public const string LiveKitImageTag = "v1.13.11";
     public const string LiveKitApiKey = "backroom-dev";
@@ -24,6 +26,7 @@ internal static class DevelopmentServices
     public const int KeycloakPort = 8443;
     public const int SeaweedFsS3Port = 8333;
     public const int SeaweedFsContainerS3Port = 8333;
+    public const int ClamAvPort = 3310;
     public const int LiveKitHttpPort = 7880;
     public const int LiveKitRtcTcpPort = 7881;
     public const int LiveKitRtcUdpPort = 7882;
@@ -117,6 +120,17 @@ internal static class DevelopmentServices
             // Unsigned requests are refused, so the check accepts 403 as "up".
             .WithHttpHealthCheck("/", statusCode: 403, endpointName: "s3");
 
+        // ClamAV (clamd over TCP), the malware scanner behind IFileScanner; a separate process, so its license does not
+        // touch our code. It downloads its signatures on first start (a minute or two); until then scans fail and files
+        // stay unscanned. StreamMaxLength must cover the largest file (100 MB). Published on localhost only.
+        var clamAv = builder.AddContainer("clamav", ClamAvImage, ClamAvImageTag);
+        clamAv
+            .WithEnvironment("CLAMD_CONF_StreamMaxLength", "100M")
+            .WithEnvironment("CLAMD_CONF_MaxFileSize", "100M")
+            .WithEnvironment("CLAMD_CONF_MaxScanSize", "200M")
+            .WithVolume(VolumeNameGenerator.Generate(clamAv, "signatures"), "/var/lib/clamav")
+            .WithEndpoint(port: ClamAvPort, targetPort: ClamAvPort, name: "clamd", scheme: "tcp", isProxied: false);
+
         // Local LiveKit in dev mode. Media uses a single UDP port; --node-ip makes the advertised
         // ICE candidates reachable from the host through Docker's port mapping.
         var liveKitSecret = builder.AddParameter(
@@ -136,6 +150,7 @@ internal static class DevelopmentServices
         return resources with
         {
             ObjectStorage = new DevelopmentObjectStorage(seaweedFs.GetEndpoint("s3"), seaweedFs, seaweedFsAccessKeyId, seaweedFsSecretAccessKey),
+            FileScanner = clamAv,
         };
     }
 }

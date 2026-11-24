@@ -6,6 +6,7 @@ using Backroom.BuildingBlocks.Application.Persistence;
 using Backroom.BuildingBlocks.Domain.Errors;
 using Backroom.Modules.Files.Application.Uploads;
 using Backroom.Modules.Permissions.Contracts;
+using Backroom.Testing.ClamAv;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.SeaweedFs;
@@ -17,8 +18,8 @@ namespace Backroom.Modules.Files.IntegrationTests;
 /// fake clock. Starts run through the service in a unit of work that, like the endpoint, commits only on success.
 /// </summary>
 [Collection(CellCollection.Name)]
-public sealed class UploadBrakeTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage)
-    : FilesTestBase(database, keycloak, storage)
+public sealed class UploadBrakeTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage, ClamAvServer scanner)
+    : FilesTestBase(database, keycloak, storage, scanner)
 {
     private const long Megabyte = 1024 * 1024;
 

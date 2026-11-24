@@ -59,6 +59,9 @@ internal sealed partial class FileService(
     public static readonly Error UploadIncomplete =
         Error.Conflict("files.upload_incomplete", "The uploaded object is missing or its size differs from the declared size.");
 
+    public static readonly Error ScanPending =
+        Error.Conflict("files.scan_pending", "The file is being scanned and cannot be used yet.");
+
     public static readonly Error TypeMismatch =
         Error.Conflict("files.type_mismatch", "The uploaded content does not match the declared content type.");
 
@@ -120,8 +123,8 @@ internal sealed partial class FileService(
 
         if (file.Status != FileStatus.Pending)
         {
-            // A repeat after a lost answer gets the stored file; refused and removed uploads stay unknown.
-            return file.Status == FileStatus.Ready ? file : NotFound;
+            // A repeat after a lost answer gets the stored file (scanning, or already through the scan); refused and removed uploads stay unknown.
+            return file.Status is FileStatus.Scanning or FileStatus.Ready ? file : NotFound;
         }
 
         var storage = storageProvider.ForOrganization(organizationId);
@@ -157,23 +160,33 @@ internal sealed partial class FileService(
             return TypeMismatch;
         }
 
-        // The malware scan (step 23) puts the file in "scanning" here instead; ready waits for its answer.
-        var readyAt = StoredTime.Now(timeProvider);
-        if (!await files.MarkReadyAsync(organizationId, fileId, confirmed.ContentType, confirmed.Kind, readyAt, cancellationToken))
+        // The file is unusable until the worker's malware scan answers (flow 6, step 3): it stays scanning, and the
+        // scan never fails open.
+        if (!await files.MarkScanningAsync(organizationId, fileId, confirmed.ContentType, confirmed.Kind, cancellationToken))
         {
             // A concurrent completion won; answer with what it stored.
-            return await files.FindAsync(organizationId, fileId, cancellationToken) is { Status: FileStatus.Ready } stored ? stored : NotFound;
+            return await files.FindAsync(organizationId, fileId, cancellationToken) is { Status: FileStatus.Scanning or FileStatus.Ready } stored ? stored : NotFound;
         }
 
         LogCompleted(logger, fileId, organizationId, file.Size);
-        return file with { DetectedType = confirmed.ContentType, Kind = confirmed.Kind, Status = FileStatus.Ready };
+        return file with { DetectedType = confirmed.ContentType, Kind = confirmed.Kind, Status = FileStatus.Scanning };
     }
 
     /// <summary>A short-lived signed URL, after checking access again: every download asks anew, so revoked access is refused at once.</summary>
     public async Task<Result<FileDownload>> DownloadAsync(Guid accountId, Guid fileId, CancellationToken cancellationToken)
     {
         var organizationId = OrganizationId;
-        if (await files.FindAsync(organizationId, fileId, cancellationToken) is not { } file
+        var found = await files.FindAsync(organizationId, fileId, cancellationToken);
+        // The uploader may learn that the scan is still running; everyone else gets the usual answer.
+        if (found is { Status: FileStatus.Scanning } scanning
+            && scanning.UploaderAccountId == accountId
+            && await access.CanPostAsync(organizationId, scanning.ConversationId, accountId, cancellationToken))
+        {
+            LogDownloadRefused(logger, fileId, organizationId, accountId);
+            return ScanPending;
+        }
+
+        if (found is not { } file
             || !await access.CanDownloadAsync(organizationId, file, accountId, cancellationToken))
         {
             LogDownloadRefused(logger, fileId, organizationId, accountId);

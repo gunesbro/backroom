@@ -9,7 +9,10 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Npgsql;
+using Backroom.Modules.Files.Application.Storage;
+using Backroom.Modules.Files.Infrastructure.Scanning;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Application.Persistence;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
@@ -23,6 +26,7 @@ using Backroom.Modules.Organization.Infrastructure;
 using Backroom.Modules.Permissions.Contracts;
 using Backroom.Modules.Permissions.Infrastructure;
 using Backroom.Modules.Realtime.Contracts;
+using Backroom.Testing.ClamAv;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.SeaweedFs;
@@ -33,7 +37,7 @@ namespace Backroom.Modules.Files.IntegrationTests;
 /// A cell with Files, Messaging, Organization and Permissions on a test server, with real tokens, real PostgreSQL and
 /// row-level security, and real SeaweedFS. The logs are captured.
 /// </summary>
-public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage) : IAsyncLifetime
+public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage, ClamAvServer scanner) : IAsyncLifetime
 {
     protected const string Alice = "alice@example.test";
     protected const string Bob = "bob@example.test";
@@ -183,7 +187,7 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
     protected Task<HttpResponseMessage> DownloadAsync(Guid organizationId, Guid fileId, string username) =>
         GetAsync($"/api/v1/orgs/{organizationId}/files/{fileId}/download", username);
 
-    /// <summary>Starts, uploads and completes a file.</summary>
+    /// <summary>Starts, uploads, completes and scans a file: it is ready afterwards (the real scanner, as the worker runs it).</summary>
     protected async Task<Guid> UploadAsync(Guid organizationId, Guid channelId, string username, byte[] content, string contentType = "image/png", string name = "photo.png")
     {
         var upload = await StartAsync(organizationId, channelId, username, name, content.Length, contentType);
@@ -194,7 +198,27 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
 
         using var completed = await CompleteAsync(organizationId, upload.FileId, username);
         completed.EnsureSuccessStatusCode();
+        await RunScanJobAsync();
         return upload.FileId;
+    }
+
+    /// <summary>Runs the worker's scan job as the maintenance role until no file waits (ClamAV in its container, or at <paramref name="port"/>).</summary>
+    protected async Task RunScanJobAsync(int? port = null)
+    {
+        var options = Options.Create(new ClamAvOptions { Host = scanner.Host, Port = port ?? scanner.MappedPort, ScanTimeout = TimeSpan.FromSeconds(20) });
+        var job = new FileScanJob(Services.GetRequiredService<IFileStorageProvider>(), new ClamAvScanner(options), TimeProvider.System, new LoggerFactory([Logs]).CreateLogger<FileScanJob>());
+        await using var connection = new NpgsqlConnection(database.MaintenanceConnectionString);
+        await connection.OpenAsync(CancellationToken);
+        for (var batch = 0; batch < 50; batch++)
+        {
+            await using var transaction = await connection.BeginTransactionAsync(CancellationToken);
+            var handled = await job.RunBatchAsync(connection, transaction, CancellationToken);
+            await transaction.CommitAsync(CancellationToken);
+            if (handled == 0)
+            {
+                break;
+            }
+        }
     }
 
     /// <summary>Writes an object straight into the cell's bucket, bypassing the signed URL (as a store that ignored its conditions would).</summary>

@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Backroom.Testing.ClamAv;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.SeaweedFs;
@@ -8,8 +9,8 @@ namespace Backroom.Modules.Files.IntegrationTests;
 /// <summary>"No content in logs, traces or events" (docs/contracts/phase-2.md, "Privacy rules"): file names, content and signed URLs never reach a log.</summary>
 [Collection(CellCollection.Name)]
 [Trait("Category", "Privacy")]
-public sealed class LogPrivacyTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage)
-    : FilesTestBase(database, keycloak, storage)
+public sealed class LogPrivacyTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage, ClamAvServer scanner)
+    : FilesTestBase(database, keycloak, storage, scanner)
 {
     [Fact]
     public async Task UploadCompleteAndDownload_WhenLoggedAtTrace_NeverLogNamesContentOrSignaturesAsync()

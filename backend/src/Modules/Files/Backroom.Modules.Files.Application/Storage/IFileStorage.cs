@@ -23,6 +23,12 @@ internal interface IFileStorage
     /// <summary>Reads up to <paramref name="buffer"/>'s length from the start of the object; returns how many bytes were read.</summary>
     Task<int> ReadStartAsync(string key, Memory<byte> buffer, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Streams the whole object to <paramref name="consume"/> (never buffered whole) and returns its result; the stream is
+    /// closed afterwards. A missing object throws <see cref="FileNotFoundException"/>.
+    /// </summary>
+    Task<T> ReadAsync<T>(string key, Func<Stream, Task<T>> consume, CancellationToken cancellationToken);
+
     /// <summary>Deletes the object; deleting a missing one is not an error.</summary>
     Task DeleteAsync(string key, CancellationToken cancellationToken);
 }
