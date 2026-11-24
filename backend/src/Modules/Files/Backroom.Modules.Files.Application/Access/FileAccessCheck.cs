@@ -7,11 +7,11 @@ namespace Backroom.Modules.Files.Application.Access;
 /// Who may upload to a conversation and who may download a file (docs/contracts/phase-2.md, flow 6, steps 1 and 5),
 /// asked anew on every request. The endpoint has checked the organization membership.
 /// </summary>
-internal sealed class FileAccessCheck(IChannelReadAccess conversations, IMessageFileAccess messages)
+internal sealed class FileAccessCheck(IConversationReadAccess conversations, IMessageFileAccess messages)
 {
     /// <summary>
-    /// Whether the account may post in the conversation. Phase 1 conversations are open public channels, where every
-    /// member may post; the conversations of Phase 2 (step 1) bring their own answer through Messaging's contract.
+    /// Whether the account may post in the conversation: for now its read access (an open public channel, or an open
+    /// conversation it is a member of); a separate post right from Messaging replaces this when one exists.
     /// </summary>
     public Task<bool> CanPostAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
         conversations.CanReadAsync(organizationId, conversationId, accountId, cancellationToken);

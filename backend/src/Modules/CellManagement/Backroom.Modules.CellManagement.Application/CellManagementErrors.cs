@@ -17,6 +17,9 @@ internal static class CellManagementErrors
     public static readonly Error SharedCellLimit =
         Error.Conflict("cell_management.shared_cell_limit", "The number of shared cells is at its limit.");
 
+    public static readonly Error CellNotFound =
+        Error.NotFound("cell_management.cell_not_found", "There is no cell with this id.");
+
     public static readonly Error CellExists =
         Error.Conflict("cell_management.cell_exists", "A cell with this id already exists.");
 }

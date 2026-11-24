@@ -30,7 +30,7 @@ public sealed class CorsConfigurationTests
     public void Host_WhenBuildingThePipeline_AnswersCorsBeforeAuthentication(string host)
     {
         // A preflight carries no token; if authentication ran first it would be answered 401.
-        var program = File.ReadAllText(Path.Combine(RepositoryPaths.SourceDirectory, "Hosts", host, "Program.cs"));
+        var program = PipelineSource(host);
 
         var cors = program.IndexOf("app.UseWebOriginsCors()", StringComparison.Ordinal);
         var authentication = program.IndexOf("app.UseAuthentication()", StringComparison.Ordinal);
@@ -43,7 +43,7 @@ public sealed class CorsConfigurationTests
     public void CellHost_WhenBuildingThePipeline_MarksWebSocketUpgradesBeforeAuthentication()
     {
         // Authentication takes the hub's query token only for a WebSocket upgrade, which only the WebSocket middleware marks.
-        var program = File.ReadAllText(Path.Combine(RepositoryPaths.SourceDirectory, "Hosts", "Backroom.Cell.Host", "Program.cs"));
+        var program = PipelineSource("Backroom.Cell.Host");
 
         var cors = program.IndexOf("app.UseWebOriginsCors()", StringComparison.Ordinal);
         var webSockets = program.IndexOf("app.UseRealtimeWebSockets()", StringComparison.Ordinal);
@@ -76,4 +76,9 @@ public sealed class CorsConfigurationTests
         JsonValueKind.Object => element.EnumerateObject().Any(property => ContainsWildcard(property.Value)),
         _ => false,
     };
+
+    // The cell host builds its pipeline in CellApp (Program only picks the role); the control plane in Program.
+    private static string PipelineSource(string host) =>
+        File.ReadAllText(Path.Combine(
+            RepositoryPaths.SourceDirectory, "Hosts", host, host == "Backroom.Cell.Host" ? "CellApp.cs" : "Program.cs"));
 }

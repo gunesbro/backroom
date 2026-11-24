@@ -14,7 +14,7 @@ Contract: [docs/contracts/phase-2.md](../../../../docs/contracts/phase-2.md) (fl
 
 ## Publishes / depends on
 
-- Messaging.Contracts: `IChannelReadAccess` (may the account post in and read the conversation; Phase 1 public channels) and `IMessageFileAccess` (may the account read a message that carries the file; Messaging answers false until step 22).
+- Messaging.Contracts: `IConversationReadAccess` (may the account read, and for now post in, the conversation) and `IMessageFileAccess` (may the account read a message that carries the file; Messaging answers false until step 22).
 - Permissions: `files.upload` on upload start (`RequirePermission`).
 
 ## Rules

@@ -19,7 +19,7 @@ public static class FilesModule
 
     /// <summary>
     /// Uploads, completion and signed downloads over the cell's S3-compatible storage. Needs the database session and
-    /// Messaging's <c>IChannelReadAccess</c> and <c>IMessageFileAccess</c> (<c>AddMessaging</c>). The returned builder
+    /// Messaging's <c>IConversationReadAccess</c> and <c>IMessageFileAccess</c> (<c>AddMessaging</c>). The returned builder
     /// binds <see cref="S3StorageOptions"/>, checked at startup (<see cref="S3StorageOptionsValidator"/>): a missing
     /// key stops the service.
     /// </summary>

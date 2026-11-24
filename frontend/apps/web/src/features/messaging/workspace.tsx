@@ -344,8 +344,8 @@ function ChannelView({
       )}
       <Composer
         channelName={channel.name}
-        onSend={(text) => {
-          pending.send(channel.id, text);
+        onSend={(text, blocks) => {
+          pending.send(channel.id, text, blocks);
         }}
       />
     </>

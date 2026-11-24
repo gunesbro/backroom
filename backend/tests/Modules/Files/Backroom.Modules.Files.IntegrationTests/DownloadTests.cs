@@ -96,7 +96,7 @@ public sealed class DownloadTests(PostgresDatabase database, KeycloakRealm keycl
             allowed.StatusCode.Should().Be(HttpStatusCode.Redirect);
         }
 
-        await ExecuteAsync("UPDATE messaging.channels SET archived_at = now() WHERE id = $1", channelId);
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", channelId);
         // The same, still valid access token: access is checked again, not remembered.
         using var refused = await DownloadAsync(organizationId, fileId, Alice);
 

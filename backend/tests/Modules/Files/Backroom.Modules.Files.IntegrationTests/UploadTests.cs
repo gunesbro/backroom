@@ -161,7 +161,7 @@ public sealed class UploadTests(PostgresDatabase database, KeycloakRealm keycloa
     {
         var organizationId = await ProvisionForAsync(Alice);
         var archived = await CreateChannelAsync(organizationId, Alice);
-        await ExecuteAsync("UPDATE messaging.channels SET archived_at = now() WHERE id = $1", archived);
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", archived);
 
         using var unknown = await StartUploadAsync(organizationId, Alice, new { conversationId = Guid.CreateVersion7(), name = "a.txt", size = 10, contentType = "text/plain" });
         using var closed = await StartUploadAsync(organizationId, Alice, new { conversationId = archived, name = "a.txt", size = 10, contentType = "text/plain" });

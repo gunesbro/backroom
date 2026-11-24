@@ -4,6 +4,7 @@ using Backroom.BuildingBlocks.Application.Messaging;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Domain.Errors;
 using Backroom.Modules.Messaging.Application.Channels;
+using Backroom.Modules.Messaging.Application.Conversations;
 using Backroom.Modules.Messaging.Application.Live;
 using Backroom.Modules.Messaging.Contracts;
 using Backroom.Modules.Realtime.Contracts;
@@ -11,13 +12,17 @@ using Backroom.Modules.Realtime.Contracts;
 namespace Backroom.Modules.Messaging.Application.Messages;
 
 /// <summary>
-/// Plain-text messages in public channels (docs/contracts/phase-1.md, flow 4, steps 2 and 3). The endpoint has checked
-/// the membership; Phase 1 channels are public, so every active member may read and write every open channel. The
-/// message and its outbox row are written in the request unit of work; the live event is held until it commits.
+/// Plain-text messages (docs/contracts/phase-1.md, flow 4, steps 2 and 3). The endpoint has checked the organization
+/// membership; reading and writing also need read access to the conversation (<see cref="ConversationAccess.CanRead"/>:
+/// every active member for an open public channel, open members for every other kind), checked first, so nothing,
+/// not even an idempotent repeat, answers for a conversation the account cannot read. Phase 1's routes keep posting
+/// to public channels without joining them; the conversation routes (Phase 2 step 3) add that rule. The message and
+/// its outbox row are written in the request unit of work; the live event is held until it commits.
 /// </summary>
 internal sealed partial class MessageService(
     IMessageStore messages,
     IChannelStore channels,
+    IConversationStore conversations,
     IOutbox outbox,
     AfterCommitLiveEvents liveEvents,
     IIdGenerator ids,
@@ -43,6 +48,11 @@ internal sealed partial class MessageService(
         if (clientMessageId is not { } clientId || clientId == Guid.Empty || !MessageText.TryPrepare(text, out var prepared))
         {
             return MessageInvalid;
+        }
+
+        if (!await CanReadAsync(organizationId, channelId, authorAccountId, cancellationToken))
+        {
+            return ChannelNotFound;
         }
 
         // A repeat (a retry after a lost answer) is answered before any lock is taken. This and the unique index rely on
@@ -78,7 +88,7 @@ internal sealed partial class MessageService(
         return new SentMessage(new MessageEntry(message.Id, seq, clientId, authorAccountId, prepared, now), Created: true);
     }
 
-    public async Task<Result<MessagePage>> ListAsync(Guid channelId, long? before, long? after, int? limit, CancellationToken cancellationToken)
+    public async Task<Result<MessagePage>> ListAsync(Guid accountId, Guid channelId, long? before, long? after, int? limit, CancellationToken cancellationToken)
     {
         var pageSize = limit ?? DefaultPageSize;
         if (pageSize is < 1 or > MaxPageSize || (before is not null && after is not null) || before < 0 || after < 0)
@@ -86,7 +96,7 @@ internal sealed partial class MessageService(
             return PageInvalid;
         }
 
-        if (!await channels.ExistsAsync(OrganizationId, channelId, cancellationToken))
+        if (!await CanReadAsync(OrganizationId, channelId, accountId, cancellationToken))
         {
             return ChannelNotFound;
         }
@@ -99,6 +109,9 @@ internal sealed partial class MessageService(
             ? new MessagePage([.. found.Take(pageSize)], found[pageSize - 1].Seq)
             : new MessagePage(found, null);
     }
+
+    private async Task<bool> CanReadAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
+        await conversations.FindAsync(organizationId, conversationId, accountId, cancellationToken) is { CanRead: true };
 
     private Guid OrganizationId =>
         context.OrganizationId ?? throw new InvalidOperationException("The request has not entered an organization.");

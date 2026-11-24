@@ -12,10 +12,12 @@ import {
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
 import { Avatar, Icon, SoonButton, type IconName } from '@backroom/ui';
+import { config } from '@/config';
 import { useTranslate } from '@/shared/locale';
 import type { Message } from './api';
 import { messages } from './messages';
 import type { PendingMessage } from './pending-messages';
+import { MessageBody } from './rich-text/message-blocks';
 
 export type Row =
   | { key: string; message: Message; pending?: undefined }
@@ -458,7 +460,15 @@ const MessageRow = memo(function MessageRow({
           </time>
         </p>
         {/* Plain text, never markup: React escapes it; line breaks are kept by the style. */}
-        <p className={pending?.status === 'sending' ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>
+        {config.richTextEnabled ? (
+          <MessageBody
+            blocks={pending?.blocks ?? message?.blocks}
+            text={text}
+            sending={pending?.status === 'sending'}
+          />
+        ) : (
+          <p className={pending?.status === 'sending' ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>
+        )}
         {pending?.status === 'sending' && <p className="bm-message__state ph-muted">{t('sending')}</p>}
         {pending?.status === 'failed' && (
           <p className="bm-message__state bm-message__error">

@@ -4,28 +4,31 @@ using Backroom.Modules.Messaging.Application.Channels;
 
 namespace Backroom.Modules.Messaging.Infrastructure;
 
-/// <summary>Channels; row-level security limits every statement to the entered organization, and each query also names it so the indexes lead with it.</summary>
+/// <summary>
+/// Public channels (conversations of kind <c>public_channel</c>); row-level security limits every statement to the
+/// entered organization, and each query also names it so the indexes lead with it.
+/// </summary>
 internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
 {
+    // The conflict target is the partial unique index conversations_public_name_key_idx: open public channels only.
     private const string AddSql = """
-        INSERT INTO messaging.channels (id, org_id, name, name_key, created_by, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (org_id, name_key) WHERE archived_at IS NULL DO NOTHING
+        INSERT INTO messaging.conversations (id, org_id, kind, name, name_key, created_by, created_at)
+        VALUES ($1, $2, 'public_channel', $3, $4, $5, $6)
+        ON CONFLICT (org_id, name_key) WHERE kind = 'public_channel' AND archived_at IS NULL DO NOTHING
         """;
 
+    // Served by conversations_public_open_idx.
     private const string ListSql = """
         SELECT id, name, created_at
-        FROM messaging.channels
-        WHERE org_id = $1 AND archived_at IS NULL AND id > $2
+        FROM messaging.conversations
+        WHERE org_id = $1 AND kind = 'public_channel' AND archived_at IS NULL AND id > $2
         ORDER BY id
         LIMIT $3
         """;
 
-    private const string ExistsSql = "SELECT 1 FROM messaging.channels WHERE org_id = $1 AND id = $2 AND archived_at IS NULL";
-
     // The row lock this takes is held until the transaction ends.
     private const string NextSequenceSql =
-        "UPDATE messaging.channels SET last_seq = last_seq + 1 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING last_seq";
+        "UPDATE messaging.conversations SET last_seq = last_seq + 1 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING last_seq";
 
     public async Task<bool> AddAsync(NewChannel channel, CancellationToken cancellationToken)
     {
@@ -53,14 +56,6 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         }
 
         return channels;
-    }
-
-    public async Task<bool> ExistsAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken)
-    {
-        await using var command = new NpgsqlCommand(ExistsSql, session.Connection, session.Transaction);
-        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
-        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
-        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     public async Task<long?> NextSequenceAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken)

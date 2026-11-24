@@ -189,6 +189,48 @@ public sealed class CellLinkTests(PostgresDatabase database, KeycloakRealm keycl
         (await current.ResponseStream.MoveNext(CancellationToken)).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Heartbeat_AfterTheEpochChangedOnAnotherInstance_EndsTheStreamAsync()
+    {
+        await using var cell = await TestCell.RegisterAsync(_controlPlane, keycloak, CancellationToken);
+        using var call = await ConnectWelcomedAsync(cell);
+        // Another control-plane instance incremented it: this instance's sessions were not told.
+        await SqlAsync("UPDATE cell_management.cells SET epoch = epoch + 1 WHERE id = $1", cell.CellId);
+
+        _time.Advance(s_heartbeatWriteGap);
+        await call.RequestStream.WriteAsync(new ConnectRequest { Heartbeat = new Heartbeat { Version = "1" } }, CancellationToken);
+        var read = () => call.ResponseStream.MoveNext(CancellationToken);
+
+        var ended = (await read.Should().ThrowAsync<RpcException>()).Which;
+        ended.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+        ended.Status.Detail.Should().Be("cell.epoch_changed");
+    }
+
+    [Fact]
+    public async Task Heartbeat_AfterTheCellStoppedBeingRegistered_IsPermissionDeniedAsync()
+    {
+        await using var cell = await TestCell.RegisterAsync(_controlPlane, keycloak, CancellationToken);
+        using var call = await ConnectWelcomedAsync(cell);
+        await SqlAsync("UPDATE cell_management.cells SET status = 'pending' WHERE id = $1", cell.CellId);
+
+        _time.Advance(s_heartbeatWriteGap);
+        await call.RequestStream.WriteAsync(new ConnectRequest { Heartbeat = new Heartbeat { Version = "1" } }, CancellationToken);
+        var read = () => call.ResponseStream.MoveNext(CancellationToken);
+
+        (await read.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+    }
+
+    // CellLinkEndpoint.HeartbeatWriteInterval (20 s) and a little more, so the heartbeat is written.
+    private static readonly TimeSpan s_heartbeatWriteGap = TimeSpan.FromSeconds(21);
+
+    private async Task SqlAsync(string sql, string cellId)
+    {
+        await using var dataSource = NpgsqlDataSource.Create(database.SuperuserConnectionString);
+        await using var command = dataSource.CreateCommand(sql);
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cellId });
+        await command.ExecuteNonQueryAsync(CancellationToken);
+    }
+
     private static Metadata Bearer(string token) => new() { { "Authorization", "Bearer " + token } };
 
     private static async Task<RpcException> ReadFailureAsync(Task<bool> read) =>

@@ -10,22 +10,22 @@ namespace Backroom.Modules.Messaging.Infrastructure;
 internal sealed class MessageStore(DatabaseSession session) : IMessageStore
 {
     private const string AddSql = """
-        INSERT INTO messaging.messages (id, org_id, channel_id, seq, author_account_id, client_message_id, text, blocks, created_at)
+        INSERT INTO messaging.messages (id, org_id, conversation_id, seq, author_account_id, client_message_id, text, blocks, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (channel_id, author_account_id, client_message_id) DO NOTHING
+        ON CONFLICT (conversation_id, author_account_id, client_message_id) DO NOTHING
         """;
 
     private const string FindSql = """
         SELECT id, seq, client_message_id, author_account_id, text, created_at
         FROM messaging.messages
-        WHERE channel_id = $1 AND author_account_id = $2 AND client_message_id = $3
+        WHERE conversation_id = $1 AND author_account_id = $2 AND client_message_id = $3
         """;
 
-    // History: newest first, by sequence number (commit order). Served by the unique index (channel_id, seq) read backwards.
+    // History: newest first, by sequence number (commit order). Served by the unique index (conversation_id, seq) read backwards.
     private const string ListBeforeSql = """
         SELECT id, seq, client_message_id, author_account_id, text, created_at
         FROM messaging.messages
-        WHERE channel_id = $1 AND seq < $2 AND deleted_at IS NULL
+        WHERE conversation_id = $1 AND seq < $2 AND deleted_at IS NULL
         ORDER BY seq DESC
         LIMIT $3
         """;
@@ -34,7 +34,7 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
     private const string ListAfterSql = """
         SELECT id, seq, client_message_id, author_account_id, text, created_at
         FROM messaging.messages
-        WHERE channel_id = $1 AND seq > $2 AND deleted_at IS NULL
+        WHERE conversation_id = $1 AND seq > $2 AND deleted_at IS NULL
         ORDER BY seq
         LIMIT $3
         """;
