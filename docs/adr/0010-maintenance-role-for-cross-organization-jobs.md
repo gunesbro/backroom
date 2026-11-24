@@ -46,6 +46,7 @@ The control plane is out of scope: its invitation jobs run as its application ro
 - One more secret and connection pool per cell (2 connections by default).
 - The role bypasses RLS, so organization isolation for these jobs rests on their SQL and their grants, not on policies. This is why jobs only change state or delete data and never return rows to callers, and why the role's pool cannot be reached from request code.
 - Code touching this role is a human-review area (permissions).
+- Later addition (Phase 2 step 4, ADR 0011 "Cell epoch"): the relay role, which only the worker's link uses, also writes the cell's epoch confirmation (`control_plane_connector.cell_epoch`: `SELECT`, `INSERT`, and `UPDATE` of `epoch, confirmed, updated_at` only, never `cell_id`). The app role may only read that table, so request code cannot confirm its own epoch. The table holds no organization data, so the relay's bypass of RLS gives it nothing more there.
 
 ## Implementation
 

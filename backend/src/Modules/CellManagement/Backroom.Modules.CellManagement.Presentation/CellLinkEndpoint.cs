@@ -203,7 +203,14 @@ internal sealed partial class CellLinkEndpoint(
                     {
                         // An epoch incremented on another control-plane instance is noticed here (at most every 20 s
                         // to 30 s), so the cell fences its writes and reconnects to learn it.
-                        if (await registry.RecordHeartbeatAsync(cellId, reported, cancellationToken) != epoch)
+                        var current = await registry.RecordHeartbeatAsync(cellId, reported, cancellationToken);
+                        if (current is null)
+                        {
+                            LogRejected(logger, cellId, "cell no longer registered");
+                            throw new RpcException(new Status(StatusCode.PermissionDenied, "The cell is not registered."));
+                        }
+
+                        if (current != epoch)
                         {
                             LogEpochChanged(logger, cellId);
                             throw EpochChanged();

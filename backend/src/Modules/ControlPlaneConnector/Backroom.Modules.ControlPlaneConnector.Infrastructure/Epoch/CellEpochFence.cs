@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 using Npgsql;
+using Backroom.BuildingBlocks.Infrastructure.Fencing;
 
 namespace Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
 
@@ -24,7 +26,10 @@ public static class CellEpochFence
     /// <summary>The <c>Retry-After</c> of a fenced write: reconnecting takes a few seconds.</summary>
     internal const int RetryAfterSeconds = 5;
 
-    /// <summary>The app role's fence; needs the database session (<c>AddDatabaseSession</c>) and <c>Cell:Id</c>.</summary>
+    /// <summary>
+    /// The cell's <see cref="ICellWriteFence"/> (the app role's write fence, and in the worker its consumers and jobs);
+    /// needs the database session (<c>AddDatabaseSession</c>) and <c>Cell:Id</c>.
+    /// </summary>
     public static IServiceCollection AddCellEpochFence(this IServiceCollection services)
     {
         services.TryAddSingleton(TimeProvider.System);
@@ -33,7 +38,9 @@ public static class CellEpochFence
             provider.GetRequiredService<IConfiguration>()["Cell:Id"] is { Length: > 0 } cellId
                 ? cellId
                 : throw new InvalidOperationException("Cell:Id is required for the epoch fence."),
-            provider.GetRequiredService<TimeProvider>()));
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILogger<CellEpochGate>>()));
+        services.TryAddSingleton<ICellWriteFence>(provider => provider.GetRequiredService<CellEpochGate>());
         return services;
     }
 
@@ -43,12 +50,12 @@ public static class CellEpochFence
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(exemptPaths);
         var exempt = exemptPaths.Select(path => new PathString(path)).ToArray();
-        var gate = app.ApplicationServices.GetRequiredService<CellEpochGate>();
+        var fence = app.ApplicationServices.GetRequiredService<ICellWriteFence>();
         return app.Use(async (context, next) =>
         {
             if (IsWrite(context.Request.Method)
                 && !Array.Exists(exempt, path => context.Request.Path.StartsWithSegments(path, StringComparison.OrdinalIgnoreCase))
-                && await gate.ConfirmedEpochAsync(context.RequestAborted) is null)
+                && !await fence.AllowsWritesAsync(context.RequestAborted))
             {
                 await RefuseAsync(context);
                 return;

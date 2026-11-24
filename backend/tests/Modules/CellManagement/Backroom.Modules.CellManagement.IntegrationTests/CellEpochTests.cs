@@ -10,12 +10,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.ControlPlane.Contracts.V1;
 using Backroom.Modules.CellManagement.Application.Epoch;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Link;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 
@@ -140,7 +142,54 @@ public sealed class CellEpochTests(PostgresDatabase database, KeycloakRealm keyc
         (await insert.Should().ThrowAsync<PostgresException>()).Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege);
     }
 
-    private CellEpochService Epochs => _controlPlane.Services.GetRequiredService<CellEpochService>();
+    [Fact]
+    public async Task RelayRole_CannotChangeACellIdOfTheEpochTableAsync()
+    {
+        await using var dataSource = NpgsqlDataSource.Create(database.RelayConnectionString);
+        await using var command = dataSource.CreateCommand("UPDATE control_plane_connector.cell_epoch SET cell_id = 'other' WHERE cell_id = 'none'");
+
+        var update = () => command.ExecuteNonQueryAsync(CancellationToken);
+
+        (await update.Should().ThrowAsync<PostgresException>()).Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege);
+    }
+
+    [Theory]
+    [InlineData(0UL, null)]
+    [InlineData(1UL, 1L)]
+    [InlineData(ulong.MaxValue, null)]
+    public void Welcome_WithoutAUsableEpoch_ConfirmsNothing(ulong carried, long? expected) =>
+        CellLinkWorker.EpochOf(new Welcome { Epoch = carried }).Should().Be(expected);
+
+    [Fact]
+    public async Task Confirm_WhenInterrupted_LeavesTheEpochUnconfirmedAsync()
+    {
+        await using var cell = await TestCell.RegisterAsync(_controlPlane, keycloak, CancellationToken, database);
+        await using (var dataSource = NpgsqlDataSource.Create(database.SuperuserConnectionString))
+        {
+            await using var insert = dataSource.CreateCommand(
+                "INSERT INTO control_plane_connector.cell_epoch (cell_id, epoch, confirmed, updated_at) VALUES ($1, 1, true, now())");
+            insert.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cell.CellId });
+            await insert.ExecuteNonQueryAsync(CancellationToken);
+        }
+        using var interrupted = new CancellationTokenSource();
+        await interrupted.CancelAsync();
+
+        var confirm = () => cell.Link.ConfirmEpochAsync(cell.CellId, 2, interrupted.Token);
+
+        await confirm.Should().ThrowAsync<OperationCanceledException>();
+        (await StoredEpochAsync(cell.CellId)).Should().Be((1L, false));
+    }
+
+    [Fact]
+    public async Task Gate_WhenTheDatabaseCannotBeRead_FencesWritesAsync()
+    {
+        await using var unreachable = NpgsqlDataSource.Create("Host=127.0.0.1;Port=1;Username=nobody;Password=none;Database=none;Timeout=1");
+        using var gate = new CellEpochGate(unreachable, "any", TimeProvider.System, NullLogger<CellEpochGate>.Instance);
+
+        (await gate.AllowsWritesAsync(CancellationToken)).Should().BeFalse();
+    }
+
+    private CellEpochService Epochs =>_controlPlane.Services.GetRequiredService<CellEpochService>();
 
     private static async Task ShouldBeFencedAsync(HttpResponseMessage response)
     {

@@ -46,6 +46,9 @@ internal sealed partial class CellLinkWorker(
     internal static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan WelcomeTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long clearing the epoch confirmation may take (it runs even while the worker stops).</summary>
+    internal static readonly TimeSpan UnconfirmTimeout = TimeSpan.FromSeconds(5);
+
     /// <summary>The FullSync interval when Welcome names none the cell accepts (the contract: every 15 minutes).</summary>
     internal static readonly TimeSpan DefaultFullSyncInterval = TimeSpan.FromMinutes(15);
 
@@ -221,7 +224,7 @@ internal sealed partial class CellLinkWorker(
             // "Cell epoch"). A Welcome without one (an older control plane) confirms nothing.
             if (epoch is { } current)
             {
-                await epochs.ConfirmAsync(settings.CellId, current, stream.Token);
+                await ConfirmEpochAsync(settings.CellId, current, stream.Token);
             }
 
             _connected = true;
@@ -252,7 +255,8 @@ internal sealed partial class CellLinkWorker(
                 [heartbeats, sends, reads, fullSyncs], loop => loop.Exception?.InnerException is RpcException ended && IsEpochChanged(ended));
             if (epochChanged)
             {
-                await UnconfirmEpochAsync(settings.CellId, stoppingToken);
+                LogEpochChanged(logger, settings.CellId);
+                await UnconfirmEpochAsync(settings.CellId);
             }
 
             // The control plane ended the stream (seen by the reader, whichever loop failed first): only the
@@ -306,16 +310,33 @@ internal sealed partial class CellLinkWorker(
 
     // A failure is logged as an error: the app role keeps accepting writes on the old epoch until the next Welcome.
     [SuppressMessage("Design", "CA1031", Justification = "The stream error is rethrown by the caller; the next Welcome stores the new epoch anyway.")]
-    private async Task UnconfirmEpochAsync(string cellId, CancellationToken cancellationToken)
+    // Its own short timeout instead of the stopping token: a shutdown must not leave the fence open.
+    internal async Task UnconfirmEpochAsync(string cellId)
     {
         try
         {
-            await epochs.UnconfirmAsync(cellId, cancellationToken);
-            LogEpochChanged(logger, cellId);
+            using var timeout = new CancellationTokenSource(UnconfirmTimeout);
+            await epochs.UnconfirmAsync(cellId, timeout.Token);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception)
         {
             LogUnconfirmFailed(logger, cellId, exception.GetType().Name);
+        }
+    }
+
+    // A confirmation interrupted (the stream ended, for example because the epoch changed again meanwhile) may or may
+    // not have committed: clear it, so the cell never stays confirmed on an epoch it did not finish learning. The next
+    // Welcome confirms the current one.
+    internal async Task ConfirmEpochAsync(string cellId, long epoch, CancellationToken streamToken)
+    {
+        try
+        {
+            await epochs.ConfirmAsync(cellId, epoch, streamToken);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            await UnconfirmEpochAsync(cellId);
+            throw;
         }
     }
 
@@ -332,8 +353,12 @@ internal sealed partial class CellLinkWorker(
         var welcome = responses.Current.Welcome;
         var seconds = welcome.FullSyncIntervalSeconds;
         var interval = seconds is >= 60 and <= 86_400 ? TimeSpan.FromSeconds(seconds) : DefaultFullSyncInterval;
-        return (interval, welcome.Epoch is >= 1 and <= long.MaxValue ? (long)welcome.Epoch : null);
+        return (interval, EpochOf(welcome));
     }
+
+    /// <summary>The epoch <paramref name="welcome"/> carries, or <see langword="null"/> for none (0, an older control plane) or one out of range.</summary>
+    internal static long? EpochOf(Welcome welcome) =>
+        welcome.Epoch is >= 1 and <= long.MaxValue ? (long)welcome.Epoch : null;
 
     // The first FullSync runs at once, the next ones at the interval. A failed run is logged and tried again at the next
     // interval; it never ends the stream, because SessionRevoked messages are the main path and FullSync only repairs.

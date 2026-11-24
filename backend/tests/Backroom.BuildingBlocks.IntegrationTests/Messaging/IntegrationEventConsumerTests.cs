@@ -11,6 +11,7 @@ using Backroom.BuildingBlocks.Application.Messaging;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Application.Persistence;
 using Backroom.BuildingBlocks.Infrastructure.Messaging;
+using Backroom.BuildingBlocks.IntegrationTests.Fencing;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.BuildingBlocks.IntegrationTests.Persistence;
 using Backroom.Testing.Postgres;
@@ -32,6 +33,7 @@ public sealed class IntegrationEventConsumerTests(PostgresDatabase database, Rab
     private ServiceProvider _services = null!;
     private IntegrationEventConsumerHost _host = null!;
     private HandlerProbe _probe = null!;
+    private readonly SwitchableFence _fence = new();
     private IConnection _testConnection = null!;
     private IChannel _testChannel = null!;
     private readonly List<IAsyncDisposable> _disposables = [];
@@ -53,6 +55,7 @@ public sealed class IntegrationEventConsumerTests(PostgresDatabase database, Rab
             options.ClientName = "consumer-tests";
         });
         services.AddSingleton<HandlerProbe>();
+        services.AddSingleton<Backroom.BuildingBlocks.Infrastructure.Fencing.ICellWriteFence>(_fence);
         services.AddIntegrationEventHandler<NoteAdded, NoteAddedHandler>(NotesSchema.Schema);
         services.AddIntegrationEventConsumers().Configure(options =>
         {
@@ -122,6 +125,24 @@ public sealed class IntegrationEventConsumerTests(PostgresDatabase database, Rab
 
         _probe.Calls.Should().ContainSingle().Which.OrganizationId.Should().Be(s_organization);
         (await CountAsync("inbox", "event_id", noteAdded.EventId)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Event_WhileTheCellsWritesAreFenced_IsNeitherHandledNorLostAsync()
+    {
+        _fence.Open = false;
+        var noteAdded = NoteAdded.For(s_organization);
+
+        await PublishAsync(noteAdded);
+        await Task.Delay(TimeSpan.FromSeconds(1), CancellationToken);
+
+        _probe.CallsFor(noteAdded.EventId).Should().Be(0);
+        (await CountAsync("inbox", "event_id", noteAdded.EventId)).Should().Be(0);
+
+        // Requeued, not acknowledged: once the epoch is confirmed the event is handled.
+        _fence.Open = true;
+        await WaitUntilAsync(async () => await CountAsync("notes", "id", noteAdded.NoteId) == 1);
+        _probe.CallsFor(noteAdded.EventId).Should().Be(1);
     }
 
     [Fact]

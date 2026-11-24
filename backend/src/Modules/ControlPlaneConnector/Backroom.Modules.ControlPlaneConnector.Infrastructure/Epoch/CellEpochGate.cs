@@ -1,14 +1,19 @@
+using System.Diagnostics.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using Npgsql;
+using Backroom.BuildingBlocks.Infrastructure.Fencing;
 
 namespace Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
 
 /// <summary>
-/// Whether the app role may accept writes (docs/adr/0011, "Cell epoch"): only while the cell's stored epoch is
-/// confirmed. The answer comes from the cell's database (<c>control_plane_connector.cell_epoch</c>, written by the
-/// worker) and is kept for <see cref="CacheLifetime"/>, so a node runs at most one indexed lookup per interval
-/// however many writes it serves; one lookup at a time.
+/// Whether the cell may change state (docs/adr/0011, "Cell epoch"): only while its stored epoch is confirmed. The answer
+/// comes from the cell's database (<c>control_plane_connector.cell_epoch</c>, written by the worker) and is kept for
+/// <see cref="CacheLifetime"/>, so a node runs at most one indexed lookup per interval however many writes it serves;
+/// one lookup at a time. A failed lookup fences (fail closed) and is not kept. Used by the app role's write fence and,
+/// in the worker, by the integration-event consumers and the maintenance jobs.
 /// </summary>
-internal sealed class CellEpochGate(NpgsqlDataSource dataSource, string cellId, TimeProvider timeProvider) : IDisposable
+internal sealed partial class CellEpochGate(NpgsqlDataSource dataSource, string cellId, TimeProvider timeProvider, ILogger<CellEpochGate> logger)
+    : ICellWriteFence, IDisposable
 {
     /// <summary>How long an answer is kept; a confirmation cleared by the worker takes effect within this time.</summary>
     internal static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(2);
@@ -18,7 +23,11 @@ internal sealed class CellEpochGate(NpgsqlDataSource dataSource, string cellId, 
     private readonly SemaphoreSlim _lookup = new(1, 1);
     private volatile Answer? _answer;
 
+    public async ValueTask<bool> AllowsWritesAsync(CancellationToken cancellationToken) =>
+        await ConfirmedEpochAsync(cancellationToken) is not null;
+
     /// <summary>The confirmed epoch, or <see langword="null"/> while writes are fenced.</summary>
+    [SuppressMessage("Design", "CA1031", Justification = "Fail closed: a cell that cannot read its epoch must not change state.")]
     public async ValueTask<long?> ConfirmedEpochAsync(CancellationToken cancellationToken)
     {
         if (_answer is { } cached && cached.ExpiresAt > timeProvider.GetUtcNow())
@@ -41,6 +50,11 @@ internal sealed class CellEpochGate(NpgsqlDataSource dataSource, string cellId, 
             _answer = new Answer(epoch, timeProvider.GetUtcNow() + CacheLifetime);
             return epoch;
         }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            LogLookupFailed(logger, exception.GetType().Name);
+            return null;
+        }
         finally
         {
             _lookup.Release();
@@ -48,6 +62,9 @@ internal sealed class CellEpochGate(NpgsqlDataSource dataSource, string cellId, 
     }
 
     public void Dispose() => _lookup.Dispose();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the cell's epoch failed with {ExceptionType}; writes are fenced until it can be read.")]
+    private static partial void LogLookupFailed(ILogger logger, string exceptionType);
 
     private sealed record Answer(long? Epoch, DateTimeOffset ExpiresAt);
 }
