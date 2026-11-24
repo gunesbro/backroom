@@ -232,7 +232,7 @@ export async function createLocalStore<M extends MessageLike = MessageLike>(
         const storeKey = kvKey(cell, key);
         const header = headers.get(storeKey);
         if (!header) return undefined;
-        const value = (await backend.read(storeKey));
+        const value = await backend.read(storeKey);
         if (value === undefined) {
           await write([], [storeKey]);
           return undefined;
