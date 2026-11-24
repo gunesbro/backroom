@@ -102,10 +102,10 @@ The control plane is the source of the organization → cell mapping; the cell o
 ### 4. Create a channel and send a message
 
 1. Member → cell `POST /api/v1/orgs/{orgId}/channels { name }` (permission `channels.create-public`).
-2. Member → cell `POST /api/v1/orgs/{orgId}/channels/{channelId}/messages { clientMessageId, text }`. The server escapes the text, derives the stored blocks (a single paragraph in Phase 1) and never trusts client-supplied blocks.
+2. Member → cell `POST /api/v1/orgs/{orgId}/channels/{channelId}/messages { clientMessageId, text }`. The server validates the text and derives the stored blocks (a single paragraph in Phase 1) and never trusts client-supplied blocks. In the same transaction it takes the channel's next sequence number (`seq`).
 3. Messaging stores the message and the outbox row for `messaging.message-posted.v1` in one transaction.
 4. After commit, the live event goes to Valkey; the realtime gateway pushes `MessagePosted` to connections subscribed to that channel, on any app node.
-5. The second client renders it (target: p95 under 300 ms in the same region). Live events can be lost during a reconnect, so after reconnecting the client fetches `GET .../messages?after={lastSeenId}`.
+5. The second client renders it (target: p95 under 300 ms in the same region). Live events can be lost during a reconnect, so after reconnecting the client fetches `GET .../messages?after={lastSeenSeq}`.
 
 ### 5. Sign out
 
@@ -163,7 +163,7 @@ Groups are per conversation, so content only reaches people who may see it when 
 
 | Server → client | Group | Payload |
 | --- | --- | --- |
-| `MessagePosted` | channel | `orgId, channelId, message { id, clientMessageId, authorAccountId, text, createdAt }` |
+| `MessagePosted` | channel | `orgId, channelId, message { id, seq, clientMessageId, authorAccountId, text, createdAt }` |
 | `ChannelCreated` | organization | `orgId, channel { id, name, createdAt }` |
 | `SessionRevoked` | connection | `reason` (sent before the server closes the connection) |
 
@@ -208,7 +208,7 @@ Every route under `/api/v1/orgs/{orgId}` runs the membership check first, in the
 | `POST /api/v1/orgs/{orgId}/invitations/{invitationId}/resend` | the inviter (still holding `members.invite-by-email`), or `members.manage-invitations`; pending only; rate limited |
 | `GET /api/v1/orgs/{orgId}/channels` | member |
 | `POST /api/v1/orgs/{orgId}/channels` | `channels.create-public` |
-| `GET /api/v1/orgs/{orgId}/channels/{channelId}/messages?before={id}&after={id}&limit={n}` | member |
+| `GET /api/v1/orgs/{orgId}/channels/{channelId}/messages?before={seq}&after={seq}&limit={n}` | member; cursors are channel sequence numbers; each message carries `seq` |
 | `POST /api/v1/orgs/{orgId}/channels/{channelId}/messages` | member |
 
 ## Cell ↔ control plane link
@@ -255,8 +255,8 @@ Cell:
 - `organization.members (org_id, account_id, display_name, email, locale, status, version, joined_at)`
 - `organization.invitations (id, org_id, email, role, salt, key_version, code_version, code_hash, status, created_by, created_at, expires_at, registered_at, accepted_at, accepted_by, revoked_at, revoked_by)`, `organization.invitation_resends (id, org_id, invitation_id, resent_by, resent_at)` (for the limits; only the resender's account id; deleted 30 days after the resend)
 - `permissions.roles (id, org_id, key, is_system)`, `permissions.role_permissions (role_id, permission)`, `permissions.member_roles (org_id, account_id, role_id)`
-- `messaging.channels (id, org_id, name, created_by, created_at, archived_at)`
-- `messaging.messages (id, org_id, channel_id, author_account_id, client_message_id, text, blocks, created_at, edited_at, deleted_at)`, unique `(channel_id, author_account_id, client_message_id)`
+- `messaging.channels (id, org_id, name, name_key, created_by, created_at, archived_at, last_seq)`, unique `(org_id, id)`
+- `messaging.messages (id, org_id, channel_id, seq, author_account_id, client_message_id, text, blocks, created_at, edited_at, deleted_at)`, unique `(channel_id, author_account_id, client_message_id)` and `(channel_id, seq)`, foreign key `(org_id, channel_id)`
 - `email.deliveries (id, org_id, template, template_version, recipient_hash, provider_message_id, status, created_at, updated_at, reference_id, reference_version)`, no content (the reference is the ids the delivery is for, such as an invitation and its code version; at most one delivery per template and reference that is not `failed`), `status` is `pending` → `sent` | `failed` | `unknown`; `unknown` means the outcome was never recorded: a `pending` row older than one hour is closed as `unknown` by a maintenance job, never resent and never closed as `failed`, which would allow a second send; rows are deleted 90 days after `created_at`, whatever their status (maintenance job `email.delivery-retention`)
 - `{schema}.outbox` for each publishing module, `{schema}.inbox` for each consuming module
 
@@ -293,6 +293,9 @@ A member without the permission an endpoint requires gets `403 permissions.forbi
 9. Phase 1 messages are plain text; the rich text editor decision (TipTap or Lexical) stays open for Phase 2.
 10. Session lifetimes (30 days idle, 90 days total with "Remember me") and the desktop sign-in through the system browser with a loopback redirect and the OS secure store; the requirements set the start-time budget but not these.
 11. Sign-in requests the scopes of all shared cells, and of customer-run cells the device has used, because Keycloak cannot add a scope on refresh; each token request narrows to one audience. The alternatives were a control-plane token broker (token exchange; the control plane would sit in the path of every cell token) and requesting only the user's own cells (a second browser round trip on every first sign-in).
+12. Messaging details the contract left open. `clientMessageId` is a UUID chosen by the client; a repeat of the same `(channel, author, clientMessageId)` answers `200` with the stored message (the first send answers `201`), takes no sequence number and publishes nothing again. **No HTML escaping on the way in:** "escaped text" in the requirements means that no client-supplied markup or HTML is ever trusted, not that the stored text is HTML-escaped. `text` is the validated plain text (trimmed, NFC, no lone surrogates, no control characters except line breaks and tabs, line endings (` **Longer text (product decision):** when pasted or typed text exceeds 4,000 characters, the client offers to send it as a `.txt` file attachment (UTF-8, named after the first words of the text, with an optional short message), and the composer shows how far over the limit the text is; the server never accepts more than 4,000 characters in `text`. This needs the Files module, so it arrives with file uploads in Phase 2; until then the composer shows the limit and blocks the send.
+` and lone ``) converted to `
+`, 1 to 4,000 characters counted after that; `400 messaging.message_invalid`), used for notifications, search and fallback. `blocks` is derived by the server as structured rich-text JSON whose text nodes are plain strings: an array of block nodes `{ type, children }`; Phase 1 has one `paragraph` holding one `{ type: "text", text }`. Later rich text adds typed nodes without changing the shape: marks on text nodes (bold, italic, strike, code, link with `href`), inline `mention` nodes, and block types for lists, quotes and code blocks; readers skip types they do not know. Escaping happens only when a client renders (React text nodes do it, desktop included). Channel names follow Directory's `DisplayText` rule (NFC, trimmed, at most 80 user-perceived characters, a visible character required, no control or format characters except ZWNJ/ZWJ between characters) and are unique among open channels per organization, case-insensitively with the invariant culture (`409 messaging.channel_name_taken`). Page size 1 to 100 (default 50; otherwise `400 messaging.page_invalid`). `GET .../channels?after=&limit=` is keyset-paged by id, oldest first, and answers `{ channels, next }`. **Messages are ordered and paged by `seq`, not by id:** a UUIDv7 id is assigned before the commit and clocks differ between nodes, so a lower id can commit later and catch-up by id would miss it. Each send runs `UPDATE messaging.channels SET last_seq = last_seq + 1 ... RETURNING last_seq` in its transaction; the row lock it takes lasts until commit, so `seq` order is commit order and `after={lastSeenSeq}` never skips a message. Trade-off: sends to one channel are serialized from that statement to their commit (a short transaction: one insert and one outbox row), and different channels do not block each other; a rollback undoes the increment and leaves no gap, only a lost race on an idempotent repeat leaves one, and gaps are harmless, so clients never assume density. `GET .../messages` answers `{ messages, next }` with `seq` on each message: with `after` oldest first (reconnect catch-up), otherwise newest first (`before` pages back); `next` is the cursor (a `seq`) for the following page in the same direction, or `null`; `before` and `after` together, or a negative cursor, are refused. Live events are sent after the commit and only when the request succeeded; a failure to publish is logged with ids only and never fails the request.
 
 ## Order of implementation (one or more PRs each)
 

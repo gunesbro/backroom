@@ -550,9 +550,12 @@
           "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
           "Backroom.Modules.ControlPlaneConnector.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Email.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Presentation": "[1.0.0, )",
           "Backroom.Modules.Organization.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Organization.Presentation": "[1.0.0, )",
           "Backroom.Modules.Permissions.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Realtime.Infrastructure": "[1.0.0, )",
           "Backroom.ServiceDefaults": "[1.0.0, )"
         }
       },
@@ -588,6 +591,36 @@
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Email.Application": "[1.0.0, )",
           "MailKit": "[5.0.0, )"
+        }
+      },
+      "backroom.modules.messaging.application": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Application": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.15, )"
+        }
+      },
+      "backroom.modules.messaging.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Domain": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.messaging.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Application": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.messaging.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Application": "[1.0.0, )",
+          "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
         }
       },
       "backroom.modules.organization.application": {
@@ -630,6 +663,16 @@
         "dependencies": {
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.realtime.contracts": {
+        "type": "Project"
+      },
+      "backroom.modules.realtime.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.15, )"
         }
       },
       "backroom.servicedefaults": {

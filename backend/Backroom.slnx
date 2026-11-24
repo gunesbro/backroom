@@ -42,6 +42,16 @@
     <Project Path="src/Modules/Email/Backroom.Modules.Email.Application/Backroom.Modules.Email.Application.csproj" />
     <Project Path="src/Modules/Email/Backroom.Modules.Email.Infrastructure/Backroom.Modules.Email.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Messaging/">
+    <Project Path="src/Modules/Messaging/Backroom.Modules.Messaging.Application/Backroom.Modules.Messaging.Application.csproj" />
+    <Project Path="src/Modules/Messaging/Backroom.Modules.Messaging.Contracts/Backroom.Modules.Messaging.Contracts.csproj" />
+    <Project Path="src/Modules/Messaging/Backroom.Modules.Messaging.Infrastructure/Backroom.Modules.Messaging.Infrastructure.csproj" />
+    <Project Path="src/Modules/Messaging/Backroom.Modules.Messaging.Presentation/Backroom.Modules.Messaging.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Realtime/">
+    <Project Path="src/Modules/Realtime/Backroom.Modules.Realtime.Contracts/Backroom.Modules.Realtime.Contracts.csproj" />
+    <Project Path="src/Modules/Realtime/Backroom.Modules.Realtime.Infrastructure/Backroom.Modules.Realtime.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Organization/">
     <Project Path="src/Modules/Organization/Backroom.Modules.Organization.Application/Backroom.Modules.Organization.Application.csproj" />
     <Project Path="src/Modules/Organization/Backroom.Modules.Organization.Contracts/Backroom.Modules.Organization.Contracts.csproj" />
@@ -71,6 +81,9 @@
   </Folder>
   <Folder Name="/tests/Modules/Permissions/">
     <Project Path="tests/Modules/Permissions/Backroom.Modules.Permissions.IntegrationTests/Backroom.Modules.Permissions.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/Messaging/">
+    <Project Path="tests/Modules/Messaging/Backroom.Modules.Messaging.IntegrationTests/Backroom.Modules.Messaging.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/tests/Modules/Organization/">
     <Project Path="tests/Modules/Organization/Backroom.Modules.Organization.IntegrationTests/Backroom.Modules.Organization.IntegrationTests.csproj" />

@@ -19,3 +19,8 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 - Live events never go through RabbitMQ and never wait for it.
 - Payloads are versioned by event name (`MessagePosted`, later `MessagePosted.v2`), because clients may talk to cells on different versions.
 - Message text is in live events but never in logs; the `access_token` query parameter is redacted.
+
+## Status
+
+- Implemented (Phase 1 step 6.1): only the contract and a placeholder. `Backroom.Modules.Realtime.Contracts` has `ILiveEventPublisher` (`PublishAsync` for `MessagePostedPayload` and `ChannelCreatedPayload`), the payload records exactly as the contract lists them, and `LiveEventNames`. `Backroom.Modules.Realtime.Infrastructure.AddRealtime()` registers a no-op publisher (`TryAdd`, so a real one registered first wins). The Valkey backplane, the SignalR hub, group subscriptions, MessagePack attributes on the payloads, `ISessionRevocation` and the `member-removed` consumer arrive in step 6.2 and later and replace the no-op.
+- Modules call the publisher after their unit of work has committed and never let a failure reach the caller (Messaging's `AfterCommitLiveEvents`).
