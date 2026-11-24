@@ -1,0 +1,142 @@
+/* The organization menu and the account bar of the workspace (docs/design: Main, OrgNotif, Thread). */
+
+.bo-switcher {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-10);
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 var(--ph-space-8) 0 var(--ph-space-6);
+  border: 0;
+  border-radius: var(--ph-radius-lg);
+  background: transparent;
+  color: var(--ph-ink);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bo-switcher:hover,
+.bo-switcher[aria-expanded='true'] {
+  background: var(--ph-hover);
+}
+
+.bo-switcher__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bo-switcher__menu {
+  width: 316px;
+}
+
+.bo-account {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-4);
+  margin-top: var(--ph-space-8);
+  padding: var(--ph-space-6);
+  border: 1px solid var(--ph-line);
+  border-radius: var(--ph-radius-xl);
+  background: var(--ph-panel);
+}
+
+.bo-account > .ph-menu-anchor {
+  position: static;
+  flex: 1;
+}
+
+.bo-account__button {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-10);
+  padding: var(--ph-space-4);
+  border: 0;
+  border-radius: var(--ph-radius-md);
+  background: none;
+  color: var(--ph-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bo-account__button:hover,
+.bo-account__button[aria-expanded='true'] {
+  background: var(--ph-hover);
+}
+
+.bo-account {
+  position: relative;
+}
+
+.bo-account__menu {
+  left: 0;
+  width: 280px;
+}
+
+.bo-account__who {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.bo-account__who b,
+.bo-account__who small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bo-account__who b {
+  font-size: 13px;
+}
+
+.bo-account__who small {
+  font-size: 11px;
+  color: var(--ph-muted);
+}
+
+.bo-account__header {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-10);
+  padding: var(--ph-space-6) var(--ph-space-8) var(--ph-space-10);
+  margin-bottom: var(--ph-space-4);
+  border-bottom: 1px solid var(--ph-line);
+}
+
+.bo-account__tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ph-radius-md);
+  background: none;
+  color: var(--ph-muted);
+}
+
+.bo-switcher:focus-visible,
+.bo-account__button:focus-visible,
+.bo-account__tool:focus-visible {
+  outline: 2px solid var(--ph-accent);
+  outline-offset: -2px;
+}
+
+/* A narrow sidebar keeps the account and its menu; the tools of later phases give way. */
+@media (max-width: 899px) {
+  .bo-account .ph-soon {
+    display: none;
+  }
+}

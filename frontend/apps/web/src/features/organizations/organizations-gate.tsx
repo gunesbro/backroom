@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Heading, LinkButton, Spinner, Status } from '@backroom/ui';
+import { Alert, Button, Card, Heading, LinkButton, Page, Spinner, Status } from '@backroom/ui';
 import { config } from '@/config';
 import { InviteDialog, useInvitationsApiFactory, useInvitationsEnabled } from '@/features/invitations';
 import { useMessagingEnabled, Workspace } from '@/features/messaging';
@@ -13,6 +13,8 @@ import { Onboarding } from './onboarding';
 import { OrganizationList } from './organization-list';
 import { Provisioning } from './provisioning';
 import { SignedInPage } from './signed-in-page';
+import { AccountBar, OrganizationSwitcher } from './workspace-chrome';
+import './organizations.css';
 
 type View = 'auto' | 'list' | 'create';
 
@@ -131,8 +133,13 @@ export function OrganizationsGate({
     return (
       <OrganizationHome
         organization={chosen}
+        organizations={list}
+        onChoose={choose}
         onSwitch={() => {
           setView('list');
+        }}
+        onCreate={() => {
+          setView('create');
         }}
       />
     );
@@ -176,15 +183,22 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 /**
- * The organization's channels and messages (docs/design: Main), loaded when an organization is opened. Behind the
- * messaging feature flag; with it off the organization shows only its name.
+ * The organization's workspace (docs/design: Main), loaded when an organization is opened: the organization menu
+ * and the account sit in its top bar and sidebar. Behind the messaging feature flag; with it off the organization
+ * shows only its name.
  */
 function OrganizationHome({
   organization,
+  organizations,
+  onChoose,
   onSwitch,
+  onCreate,
 }: {
   organization: AccountOrganization;
+  organizations: readonly AccountOrganization[];
+  onChoose: (id: string) => void;
   onSwitch: () => void;
+  onCreate: () => void;
 }) {
   const t = useTranslate(messages);
   const messagingEnabled = useMessagingEnabled();
@@ -200,42 +214,50 @@ function OrganizationHome({
   }
 
   return (
-    <SignedInPage>
-      <Suspense
-        fallback={
+    <Suspense
+      fallback={
+        <Page>
           <Status>
             <Spinner />
             {t('loading')}
           </Status>
+        </Page>
+      }
+    >
+      <Workspace
+        organization={{
+          id: organization.id,
+          name: organization.name,
+          cell: { id: organization.cellId, url: organization.cellUrl },
+        }}
+        switcher={
+          <OrganizationSwitcher
+            current={organization}
+            organizations={organizations}
+            onChoose={onChoose}
+            onCreate={onCreate}
+            onInvite={
+              invitationsEnabled
+                ? () => {
+                    setInviting(true);
+                  }
+                : undefined
+            }
+          />
         }
-      >
-        <Workspace
-          organization={{
-            id: organization.id,
-            name: organization.name,
-            cell: { id: organization.cellId, url: organization.cellUrl },
-          }}
-          onSwitch={onSwitch}
-          onInvite={
-            invitationsEnabled
-              ? () => {
-                  setInviting(true);
-                }
-              : undefined
-          }
-        />
-        {inviting && invitationsEnabled && (
-          // Its own boundary: the first load must not replace the workspace (and the focus in it) with a spinner.
-          <Suspense fallback={null}>
-            <OrganizationInvite
-              organization={organization}
-              onClose={() => {
-                setInviting(false);
-              }}
-            />
-          </Suspense>
-        )}
-      </Suspense>
-    </SignedInPage>
+        account={<AccountBar />}
+      />
+      {inviting && invitationsEnabled && (
+        // Its own boundary: the first load must not replace the workspace (and the focus in it) with a spinner.
+        <Suspense fallback={null}>
+          <OrganizationInvite
+            organization={organization}
+            onClose={() => {
+              setInviting(false);
+            }}
+          />
+        </Suspense>
+      )}
+    </Suspense>
   );
 }

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import axe from 'axe-core';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -78,6 +79,154 @@ describe('App messaging', () => {
   });
 });
 
+describe('App workspace shell', () => {
+  const organizations = [organization('1', 'Acme'), organization('2', 'Globex')];
+
+  function renderShell(authClient = fakeAuthClient()) {
+    const cellRequests: string[] = [];
+    server.use(
+      http.get('https://a.example.test/api/v1/orgs/:org/channels', ({ request }) => {
+        cellRequests.push(request.url);
+        return HttpResponse.json({ channels: [], next: null });
+      }),
+      http.get('https://a.example.test/api/v1/orgs/:org/members', ({ request }) => {
+        cellRequests.push(request.url);
+        return HttpResponse.json({ members: [], next: null });
+      }),
+      http.get('https://a.example.test/api/v1/orgs/:org/invitations', ({ request }) => {
+        cellRequests.push(request.url);
+        return HttpResponse.json({ invitations: [], next: null });
+      }),
+    );
+    localStorage.setItem('ph.organizations.last', '1');
+    render(
+      <App
+        authClient={authClient}
+        createApi={() => fakeOrganizationsApi({ listMine: () => Promise.resolve(organizations) })}
+        messagingEnabled
+        invitationsUiEnabled
+      />,
+    );
+    return { authClient, cellRequests };
+  }
+
+  it('AccountMenu_SignOut_SignsOut', async () => {
+    const { authClient } = renderShell();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Alice Example: status and profile menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
+
+    expect(authClient.signOut).toHaveBeenCalledOnce();
+  });
+
+  it('AccountMenu_LaterPhaseItem_IsDisabledAndDoesNothing', async () => {
+    const { authClient } = renderShell();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Alice Example: status and profile menu' }));
+    const profile = screen.getByRole('menuitem', { name: 'Profile and account settings' });
+    fireEvent.click(profile);
+
+    expect(profile).toHaveAttribute('aria-disabled', 'true');
+    expect(profile).toHaveAccessibleDescription('Coming soon');
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(authClient.signOut).not.toHaveBeenCalled();
+  });
+
+  it('OrganizationMenu_ChoosingAnother_OpensIt', async () => {
+    renderShell();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Acme: switch organization' }));
+    expect(screen.getByRole('menuitemradio', { name: 'Acme' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Globex' }));
+
+    expect(await screen.findByRole('button', { name: 'Globex: switch organization' })).toBeInTheDocument();
+    expect(localStorage.getItem('ph.organizations.last')).toBe('2');
+  });
+
+  it('OrganizationMenu_Invite_OpensTheInviteDialog', async () => {
+    renderShell();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Acme: switch organization' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Invite people to Acme' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Invite people to Acme' })).toBeInTheDocument();
+  });
+
+  it('OrganizationMenu_Create_OpensTheSetUpScreen', async () => {
+    renderShell();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Acme: switch organization' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create organization' }));
+
+    expect(await screen.findByRole('heading', { name: 'Welcome, Alice' })).toBeInTheDocument();
+  });
+
+  it('OrganizationMenu_Keyboard_OpensMovesAndClosesWithEscape', async () => {
+    renderShell();
+    const button = await screen.findByRole('button', { name: 'Acme: switch organization' });
+
+    fireEvent.keyDown(button, { key: 'ArrowDown' });
+    const menu = screen.getByRole('menu');
+    const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
+    expect(items[0]).toHaveFocus();
+    fireEvent.keyDown(items[0] as HTMLElement, { key: 'ArrowDown' });
+    expect(items[1]).toHaveFocus();
+    fireEvent.keyDown(items[1] as HTMLElement, { key: 'End' });
+    expect(items.at(-1)).toHaveFocus();
+    fireEvent.keyDown(items.at(-1) as HTMLElement, { key: 'Escape' });
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  it('LaterPhaseControls_WhenClicked_StayDisabledAndSendNoRequests', async () => {
+    const { cellRequests } = renderShell();
+    await screen.findByRole('navigation');
+    await waitFor(() => {
+      expect(cellRequests.length).toBeGreaterThan(0);
+    });
+    const before = [...cellRequests];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const passive = Array.from(document.querySelectorAll<HTMLElement>('button[aria-disabled="true"]'));
+    expect(passive.length).toBeGreaterThan(10);
+    for (const control of passive) fireEvent.click(control);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(cellRequests).toEqual(before);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fetchSpy.mockRestore();
+  });
+
+  it('Shell_WithTheAccountMenuOpen_HasNoAxeViolations', async () => {
+    renderShell();
+    fireEvent.click(await screen.findByRole('button', { name: 'Alice Example: status and profile menu' }));
+
+    const results = await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } });
+
+    expect(
+      results.violations.map(
+        (violation) =>
+          `${violation.id}: ${violation.help} ${violation.nodes.map((node) => node.html).join(' | ')}`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('Shell_WithTheOrganizationMenuOpen_HasNoAxeViolations', async () => {
+    renderShell();
+    fireEvent.click(await screen.findByRole('button', { name: 'Acme: switch organization' }));
+
+    const results = await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } });
+
+    expect(
+      results.violations.map(
+        (violation) =>
+          `${violation.id}: ${violation.help} ${violation.nodes.map((node) => node.html).join(' | ')}`,
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe('App', () => {
   it('InvitePeople_FirstOpen_KeepsTheWorkspaceOnScreenAndReturnsFocusOnClose', async () => {
     server.use(
@@ -101,10 +250,12 @@ describe('App', () => {
         invitationsUiEnabled
       />,
     );
-    const opener = await screen.findByRole('button', { name: /Invite people/ });
+    // The invite entry is in the organization menu, which returns focus to its button when an item is chosen.
+    const opener = await screen.findByRole('button', { name: 'Acme: switch organization' });
     opener.focus();
-
     fireEvent.click(opener);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Invite people to Acme' }));
 
     // The dialog's code loads lazily; until it has, the workspace must stay where it is.
     expect(screen.getByRole('heading', { name: 'Channels' })).toBeInTheDocument();

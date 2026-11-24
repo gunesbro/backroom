@@ -4,7 +4,7 @@ import axe from 'axe-core';
 import { delay, http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { Locale } from '@backroom/i18n';
+import { formatMessageDay, type Locale } from '@backroom/i18n';
 import { AuthProvider } from '@/features/auth';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { fakeAuthClient } from '@/testing/fakes';
@@ -156,7 +156,7 @@ function renderWorkspace(locale: Locale = 'en', organization: Org = ORG_A) {
           <MessagingApiContext.Provider
             value={(cell) => createMessagingApi(cell.url, () => Promise.resolve('cell-token'))}
           >
-            <Workspace organization={current} onSwitch={vi.fn()} />
+            <Workspace organization={current} />
           </MessagingApiContext.Provider>
         </AuthProvider>
       </QueryClientProvider>
@@ -445,7 +445,10 @@ describe('Composer', () => {
       expect(within(log).queryByText('Sending…')).not.toBeInTheDocument();
     });
     expect(within(log).getAllByText(/hello/)).toHaveLength(1);
-    expect(within(log).getAllByText('You').length).toBeGreaterThan(0);
+    // Own messages carry the account's name and its initials (not "YO" from a "You" label).
+    expect(within(log).getAllByText('Alice Example').length).toBeGreaterThan(0);
+    expect(within(log).getAllByText('AE').length).toBeGreaterThan(0);
+    expect(within(log).queryByText('YO')).not.toBeInTheDocument();
     expect(posted).toHaveLength(1);
     expect(posted[0]?.body.text).toBe('hello\nworld');
     expect(posted[0]?.body.clientMessageId).toMatch(/^[0-9a-f-]{36}$/);
@@ -688,6 +691,67 @@ describe('Races and isolation', () => {
     expect(log).toHaveAttribute('aria-live', 'off');
     expect(screen.getByText('Enter to send · Shift+Enter for a new line')).toBeInTheDocument();
     expect(composer()).toHaveAccessibleDescription(/Enter to send/);
+  });
+});
+
+describe('Shell', () => {
+  it('Sidebar_CollapsingChannels_KeepsOnlyTheOpenChannel', async () => {
+    serveCell();
+    renderWorkspace();
+    const nav = await screen.findByRole('navigation');
+    await within(nav).findByRole('button', { name: 'random' });
+
+    const toggle = within(nav).getByRole('button', { name: 'Channels' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(nav).getByRole('button', { name: 'general' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('button', { name: 'random' })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole('button', { name: 'Add channel' })).not.toBeInTheDocument();
+  });
+
+  it('MessageList_MessagesOfOneDay_ShowOneDayDivider', async () => {
+    serveCell();
+    renderWorkspace();
+    const log = await openLog();
+    await within(log).findByText('message 3');
+
+    const day = formatMessageDay(new Date('2026-11-22T10:00:00Z'), 'en', new Date());
+    const label = day.relative === 'today' ? 'Today' : day.relative === 'yesterday' ? 'Yesterday' : day.text;
+    expect(within(log).getAllByText(label)).toHaveLength(1);
+  });
+
+  it('Composer_FormattingToolbar_HasOneTabStopAndMovesWithTheArrows', async () => {
+    serveCell();
+    renderWorkspace();
+    const toolbar = await screen.findByRole('toolbar', { name: 'Formatting' });
+    const buttons = within(toolbar).getAllByRole('button');
+
+    expect(buttons.map((button) => button.tabIndex)).toEqual([0, ...buttons.slice(1).map(() => -1)]);
+    expect(buttons[0]).toHaveAccessibleName('Bold');
+    expect(buttons[0]).toHaveAttribute('aria-disabled', 'true');
+    expect(buttons[0]).toHaveAccessibleDescription('Coming soon');
+    buttons[0]?.focus();
+    fireEvent.keyDown(buttons[0] as HTMLElement, { key: 'ArrowRight' });
+
+    expect(buttons[1]).toHaveFocus();
+    expect(buttons[1]?.tabIndex).toBe(0);
+    expect(buttons[0]?.tabIndex).toBe(-1);
+  });
+
+  it('Shell_InTurkish_UsesTheDesignTexts', async () => {
+    serveCell();
+    renderWorkspace('tr');
+
+    expect(await screen.findByRole('button', { name: 'Ara: mesaj, dosya, kişi, oda' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Odalar' })).toHaveAccessibleDescription('Yakında');
+    expect(screen.getByRole('heading', { name: 'Doğrudan mesajlar' })).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText('#general kanalına mesaj yaz…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gönder' })).toBeDisabled();
   });
 });
 

@@ -163,7 +163,6 @@ function renderLive(api: MessagingApi, realtime: RealtimeClient) {
             <RealtimeContext.Provider value={() => realtime}>
               <Workspace
                 organization={{ id: ORG, name: 'Acme', cell: { id: 'a', url: 'https://cell.example.test' } }}
-                onSwitch={vi.fn()}
               />
             </RealtimeContext.Provider>
           </MessagingApiContext.Provider>
