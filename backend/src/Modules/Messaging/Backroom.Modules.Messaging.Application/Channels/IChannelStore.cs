@@ -16,6 +16,7 @@ internal interface IChannelStore
     /// The conversation's next message sequence number, or <see langword="null"/> if there is no open conversation with
     /// that id; the caller has checked read access. The update holds the conversation row lock until the unit of work
     /// ends, so sequence order is commit order: sends to one conversation are serialized from here to their commit.
+    /// It also records <paramref name="sentAt"/> as the conversation's last message time.
     /// </summary>
-    Task<long?> NextSequenceAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken);
+    Task<long?> NextSequenceAsync(Guid organizationId, Guid channelId, DateTimeOffset sentAt, CancellationToken cancellationToken);
 }

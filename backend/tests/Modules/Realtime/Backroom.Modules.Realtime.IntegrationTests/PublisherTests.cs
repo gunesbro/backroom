@@ -149,10 +149,10 @@ public sealed class PublishFailureTests(PostgresDatabase database, KeycloakRealm
 
         // The first send warms up the node (JIT, connections); the second is the one that must be fast.
         using var warmUp = await PostAsync(
-            broken, $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "warm up" });
+            broken, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "warm up" });
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var response = await PostAsync(
-            broken, $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "kept anyway" });
+            broken, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "kept anyway" });
 
         stopwatch.Stop();
         response.StatusCode.Should().Be(HttpStatusCode.Created);

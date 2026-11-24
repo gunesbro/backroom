@@ -5,6 +5,10 @@ import type { Messages } from '@backroom/i18n';
 type Key =
   | 'channels'
   | 'addChannel'
+  | 'browseChannels'
+  | 'join'
+  | 'joinChannel'
+  | 'joined'
   | 'invitePeople'
   | 'createChannelTitle'
   | 'channelName'
@@ -31,6 +35,7 @@ type Key =
   | 'sendFailed'
   | 'messageInvalid'
   | 'channelGone'
+  | 'notAMember'
   | 'retry'
   | 'discard'
   | 'charactersLeft'
@@ -96,6 +101,10 @@ export const messages: Messages<Key> = {
   en: {
     channels: 'Channels',
     addChannel: 'Add channel',
+    browseChannels: 'Browse channels',
+    join: 'Join',
+    joinChannel: 'Join {name}',
+    joined: 'Joined',
     invitePeople: 'Invite people',
     createChannelTitle: 'Create channel',
     channelName: 'Channel name',
@@ -122,6 +131,7 @@ export const messages: Messages<Key> = {
     sendFailed: "Couldn't send.",
     messageInvalid: "This message can't be sent. Check the text.",
     channelGone: 'This channel is no longer available.',
+    notAMember: 'Join this channel to post in it.',
     retry: 'Try again',
     discard: 'Discard',
     charactersLeft: '{count} characters left',
@@ -186,6 +196,10 @@ export const messages: Messages<Key> = {
   tr: {
     channels: 'Kanallar',
     addChannel: 'Kanal ekle',
+    browseChannels: 'Kanallara göz at',
+    join: 'Katıl',
+    joinChannel: '{name} kanalına katıl',
+    joined: 'Katıldın',
     invitePeople: 'Kişileri davet et',
     createChannelTitle: 'Kanal oluştur',
     channelName: 'Kanal adı',
@@ -212,6 +226,7 @@ export const messages: Messages<Key> = {
     sendFailed: 'Gönderilemedi.',
     messageInvalid: 'Bu mesaj gönderilemiyor. Metni kontrol et.',
     channelGone: 'Bu kanal artık kullanılamıyor.',
+    notAMember: 'Bu kanala yazmak için önce katıl.',
     retry: 'Tekrar dene',
     discard: 'Sil',
     charactersLeft: '{count} karakter kaldı',

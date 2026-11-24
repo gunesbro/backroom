@@ -28,7 +28,7 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
 
     // The row lock this takes is held until the transaction ends.
     private const string NextSequenceSql =
-        "UPDATE messaging.conversations SET last_seq = last_seq + 1 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING last_seq";
+        "UPDATE messaging.conversations SET last_seq = last_seq + 1, last_message_at = $3 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING last_seq";
 
     public async Task<bool> AddAsync(NewChannel channel, CancellationToken cancellationToken)
     {
@@ -58,11 +58,12 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         return channels;
     }
 
-    public async Task<long?> NextSequenceAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken)
+    public async Task<long?> NextSequenceAsync(Guid organizationId, Guid channelId, DateTimeOffset sentAt, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(NextSequenceSql, session.Connection, session.Transaction);
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
+        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = sentAt });
         return await command.ExecuteScalarAsync(cancellationToken) is long seq ? seq : null;
     }
 }
