@@ -61,6 +61,17 @@ internal sealed partial class RealtimeHub(
             state.Bind(identity.SessionId, identity.IssuedAt, Context.Abort);
             if (await revocations.CheckAsync(identity.SessionId, identity.AccountId, identity.IssuedAt, Context.ConnectionAborted) == RevocationVerdict.Revoked)
             {
+                // The client finished its handshake before the node registered the connection, so the broadcast did not find it: tell it
+                // here, as the broadcast would have, before closing (the connection is closed even if the notice cannot be sent).
+                try
+                {
+                    await Clients.Caller.SendAsync(Contracts.LiveEventNames.SessionRevoked, new Contracts.SessionRevokedPayload(Contracts.SessionRevokedPayload.SessionEnded), Context.ConnectionAborted);
+                }
+                catch (OperationCanceledException)
+                {
+                    // The client is already gone.
+                }
+
                 Context.Abort();
             }
         }

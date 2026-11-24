@@ -117,6 +117,9 @@ public sealed class SessionRevocationTests(PostgresDatabase database, KeycloakRe
             clients.Add(await ConnectWithAsync(NodeA, Token(account, "s-burst")));
         }
 
+        // A client's StartAsync returns when its handshake is answered, which can be before the node has registered the connection
+        // (19 of 20 in most runs). The revocation must reach those too: the hub checks a connection right after registering it and
+        // tells it as the broadcast would have.
         var listener = NodeA.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<SessionRevocationListener>().Single();
         var now = DateTimeOffset.UtcNow;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
