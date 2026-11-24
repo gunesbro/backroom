@@ -9,7 +9,7 @@ public sealed class MessageTextTests
     [InlineData("plain", "plain")]
     [InlineData("  padded \n", "padded")]
     [InlineData("<a href=\"x\">&'</a>", "<a href=\"x\">&'</a>")]
-    [InlineData("one\r\ntwo\tthree", "one\r\ntwo\tthree")]
+    [InlineData("one\r\ntwo\rthree\tfour", "one\ntwo\nthree\tfour")]
     [InlineData("Ünïcödé ✓ 👍", "Ünïcödé ✓ 👍")]
     public void TryPrepare_WithAValidText_TrimsAndKeepsItRaw(string raw, string expected)
     {

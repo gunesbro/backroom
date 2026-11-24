@@ -32,14 +32,16 @@ internal static class MessageText
             return false;
         }
 
-        // Trim() and Normalize() are culture-independent. Composition only shortens a text, but bound the work first.
+        // Trim() and Normalize() are culture-independent. NFC can lengthen some strings, so the limit is checked after
+        // normalizing; the work is bounded first by a generous cap on the input.
         var trimmed = raw.Trim();
         if (trimmed.Length is 0 or > MaxLength * 4 || !TextRules.IsClean(trimmed, allowLayoutControls: true))
         {
             return false;
         }
 
-        var normalized = trimmed.Normalize(NormalizationForm.FormC);
+        // Line endings become line feeds, so a text reads the same everywhere.
+        var normalized = trimmed.Normalize(NormalizationForm.FormC).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
         if (normalized.Length > MaxLength)
         {
             return false;

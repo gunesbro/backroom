@@ -29,7 +29,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = (await ReadJsonAsync(response)).AsObject();
         body.Select(property => property.Key).Should().BeEquivalentTo(["id", "seq", "clientMessageId", "authorAccountId", "text", "createdAt"]);
-        const string Stored = "<b>Hi</b> & \"bye\" 'x'\r\nnext";
+        const string Stored = "<b>Hi</b> & \"bye\" 'x'\nnext";
         body["text"]!.GetValue<string>().Should().Be(Stored);
         body["clientMessageId"]!.GetValue<Guid>().Should().Be(clientMessageId);
         body["authorAccountId"]!.GetValue<Guid>().Should().Be(await AccountAsync(Alice));
