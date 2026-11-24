@@ -42,8 +42,28 @@ internal sealed class CreateFiles : Migration
                 -- Target of the composite foreign keys of later tables (thumbnails).
                 CONSTRAINT files_org_id_id_key UNIQUE (org_id, id),
                 CONSTRAINT files_storage_key_key UNIQUE (storage_key));
+
+            -- The upload brakes' starts per minute: the account's newest uploads.
+            CREATE INDEX files_uploader_created_idx ON files.files (org_id, uploader_account_id, created_at);
+
+            -- The upload brakes' bytes per UTC day (flow 6): one counter row per account and day and per organization
+            -- and day, so a check reads one row however many uploads there were. Declared sizes, counted at the start.
+            CREATE TABLE files.account_upload_days (
+                org_id uuid NOT NULL,
+                account_id uuid NOT NULL,
+                day date NOT NULL,
+                bytes bigint NOT NULL CHECK (bytes >= 0),
+                PRIMARY KEY (org_id, account_id, day));
+
+            CREATE TABLE files.upload_days (
+                org_id uuid NOT NULL,
+                day date NOT NULL,
+                bytes bigint NOT NULL CHECK (bytes >= 0),
+                PRIMARY KEY (org_id, day));
             """);
         migrationBuilder.EnableOrganizationRowLevelSecurity(FilesDbContext.Schema, "files");
+        migrationBuilder.EnableOrganizationRowLevelSecurity(FilesDbContext.Schema, "account_upload_days");
+        migrationBuilder.EnableOrganizationRowLevelSecurity(FilesDbContext.Schema, "upload_days");
         migrationBuilder.CreateOutboxTable(FilesDbContext.Schema);
     }
 }

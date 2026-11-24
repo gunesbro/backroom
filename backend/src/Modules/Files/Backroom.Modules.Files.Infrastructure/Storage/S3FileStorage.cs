@@ -146,7 +146,7 @@ internal sealed class S3FileStorage : IFileStorage, IDisposable
         // Bucket in the path: S3-compatible stores and local hosts have no per-bucket host names.
         ForcePathStyle = true,
         Timeout = settings.Timeout,
-        MaxErrorRetry = 2,
+        MaxErrorRetry = settings.MaxRetries,
         // Checksums only where the S3 API requires them: compatible stores do not all support the newer defaults, and
         // presigned uploads cannot carry them.
         RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,

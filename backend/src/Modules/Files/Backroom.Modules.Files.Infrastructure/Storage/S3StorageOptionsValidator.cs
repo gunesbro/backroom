@@ -43,9 +43,14 @@ internal sealed partial class S3StorageOptionsValidator(IHostEnvironment environ
             failures.Add("Files:Storage:CreateBucket is for development only; deployments provision their buckets.");
         }
 
-        if (options.Timeout <= TimeSpan.Zero || options.Timeout > TimeSpan.FromMinutes(1))
+        if (options.MaxRetries is < 0 or > 3)
         {
-            failures.Add("Files:Storage:Timeout must be between 0 and 1 minute.");
+            failures.Add("Files:Storage:MaxRetries must be between 0 and 3.");
+        }
+
+        if (options.Timeout <= TimeSpan.Zero || options.Timeout > TimeSpan.FromSeconds(30))
+        {
+            failures.Add("Files:Storage:Timeout must be between 0 and 30 seconds.");
         }
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);

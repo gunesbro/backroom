@@ -188,6 +188,22 @@ public sealed class UploadTests(PostgresDatabase database, KeycloakRealm keycloa
     }
 
     [Fact]
+    public async Task StartUpload_OverTheDailyLimit_Answers429WithRetryAfterAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        var channelId = await CreateChannelAsync(organizationId, Alice);
+        await ExecuteAsync(
+            "INSERT INTO files.account_upload_days (org_id, account_id, day, bytes) VALUES ($1, $2, $3, $4)",
+            organizationId, await AccountAsync(Alice), DateOnly.FromDateTime(DateTime.UtcNow), 10L * 1024 * 1024 * 1024);
+
+        using var response = await StartUploadAsync(organizationId, Alice, new { conversationId = channelId, name = "a.txt", size = 10, contentType = "text/plain" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await ErrorCodeAsync(response)).Should().Be("files.rate_limited");
+        response.Headers.RetryAfter!.Delta.Should().BePositive().And.BeLessThanOrEqualTo(TimeSpan.FromDays(1));
+    }
+
+    [Fact]
     public async Task StartUpload_AsAMember_IsAllowedByTheMemberRoleAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);

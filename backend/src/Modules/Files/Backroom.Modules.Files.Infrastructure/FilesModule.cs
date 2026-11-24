@@ -37,7 +37,12 @@ public static class FilesModule
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IIdGenerator>(provider => new UuidV7IdGenerator(provider.GetRequiredService<TimeProvider>()));
 
-        services.AddHttpClient(S3FileStorage.HttpClientName);
+        // The SDK retries and times out on its own (S3StorageOptions); the hosts' default resilience handler would
+        // multiply its attempts while a completion holds a pooled database connection.
+        // Experimental API (EXTEXP0001); if it changes, the completion budget in FileService still bounds the time.
+#pragma warning disable EXTEXP0001
+        services.AddHttpClient(S3FileStorage.HttpClientName).RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<S3StorageOptions>, S3StorageOptionsValidator>());
         services.TryAddSingleton<S3FileStorage>();
         services.TryAddSingleton<IFileStorageProvider, CellFileStorageProvider>();
@@ -45,6 +50,8 @@ public static class FilesModule
 
         services.TryAddScoped<IFileStore, FileStore>();
         services.TryAddScoped<FileAccessCheck>();
+        services.TryAddScoped<IUploadLimitStore, UploadLimitStore>();
+        services.TryAddScoped<UploadBrakes>();
         services.TryAddScoped<FileService>();
         return services.AddOptions<S3StorageOptions>().ValidateOnStart();
     }

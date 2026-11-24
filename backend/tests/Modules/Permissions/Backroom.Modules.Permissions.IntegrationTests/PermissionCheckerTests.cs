@@ -214,6 +214,7 @@ public sealed class PermissionCheckerTests(PostgresDatabase database) : IAsyncLi
     }
 
     [Fact]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "The SQL is the migration's own constant text.")]
     public async Task AddFilePermissionsMigration_ForAnExistingOrganization_GrantsTheFileKeysAndKeepsRowSecurityForcedAsync()
     {
         // An organization from before Phase 2: its roles lack the file permissions.
@@ -241,7 +242,7 @@ public sealed class PermissionCheckerTests(PostgresDatabase database) : IAsyncLi
             for (var run = 0; run < 2; run++)
             {
                 await using var transaction = await migrator.BeginTransactionAsync(CancellationToken);
-                await using var backfill = new NpgsqlCommand(Infrastructure.Migrations.AddFilePermissions.BackfillSql, migrator, transaction);
+                await using var backfill = new NpgsqlCommand(OrganizationDataMigrationExtensions.OrganizationDataSqlText(PermissionsDbContext.Schema, Infrastructure.Migrations.AddFilePermissions.Tables, Infrastructure.Migrations.AddFilePermissions.InsertSql), migrator, transaction);
                 await backfill.ExecuteNonQueryAsync(CancellationToken);
                 await transaction.CommitAsync(CancellationToken);
             }

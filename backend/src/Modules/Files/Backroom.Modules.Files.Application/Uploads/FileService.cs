@@ -16,6 +16,7 @@ internal sealed partial class FileService(
     IFileStore files,
     IFileStorageProvider storageProvider,
     FileAccessCheck access,
+    UploadBrakes brakes,
     IIdGenerator ids,
     IOrganizationContext context,
     TimeProvider timeProvider,
@@ -29,6 +30,12 @@ internal sealed partial class FileService(
 
     /// <summary>How long a download URL stays valid (flow 6, step 5; "Privacy rules": 60 seconds).</summary>
     public static readonly TimeSpan DownloadUrlLifetime = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// The most a completion spends on storage calls (size, first bytes, delete), retries included: it holds the unit of
+    /// work's pooled connection meanwhile, so a slow store fails the request instead of starving the pool.
+    /// </summary>
+    public static readonly TimeSpan CompletionStorageBudget = TimeSpan.FromSeconds(15);
 
     public static readonly Error UploadInvalid =
         Error.Validation("files.upload_invalid", "An upload needs a conversation and a size of at least 1 byte.");
@@ -84,8 +91,14 @@ internal sealed partial class FileService(
             return ConversationNotFound;
         }
 
-        // The file quota's reservation (flow 12, step 24) goes here, in this transaction and before the row is written.
         var now = StoredTime.Now(timeProvider);
+        if (await brakes.CountStartAsync(organizationId, accountId, declaredSize, now, cancellationToken) is { } limited)
+        {
+            LogRateLimited(logger, organizationId, accountId);
+            return limited;
+        }
+
+        // The file quota's reservation (flow 12, step 24) goes here, in this transaction and before the row is written.
         var fileId = ids.NewId();
         var file = new NewFile(fileId, organizationId, accountId, conversation, normalizedName, declaredSize, type.ContentType, type.Kind, StorageKey(organizationId, fileId), now);
         await files.AddAsync(file, cancellationToken);
@@ -112,7 +125,10 @@ internal sealed partial class FileService(
         }
 
         var storage = storageProvider.ForOrganization(organizationId);
-        var storedSize = await storage.GetSizeAsync(file.StorageKey, cancellationToken);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(CompletionStorageBudget);
+        var storageToken = budget.Token;
+        var storedSize = await storage.GetSizeAsync(file.StorageKey, storageToken);
         if (storedSize is null)
         {
             // Not uploaded yet: the upload can still be made while its URL is valid.
@@ -122,7 +138,7 @@ internal sealed partial class FileService(
         if (storedSize != file.Size)
         {
             // The object is removed, so the upload can be made again with the right content while its URL is valid.
-            await storage.DeleteAsync(file.StorageKey, cancellationToken);
+            await storage.DeleteAsync(file.StorageKey, storageToken);
             LogRefused(logger, fileId, organizationId, "size");
             return UploadIncomplete;
         }
@@ -133,10 +149,10 @@ internal sealed partial class FileService(
         }
 
         var head = new byte[(int)Math.Min(FileTypes.SniffLength, file.Size)];
-        var read = await storage.ReadStartAsync(file.StorageKey, head, cancellationToken);
+        var read = await storage.ReadStartAsync(file.StorageKey, head, storageToken);
         if (FileTypes.Confirm(declared, head.AsSpan(0, read)) is not { } confirmed)
         {
-            await storage.DeleteAsync(file.StorageKey, cancellationToken);
+            await storage.DeleteAsync(file.StorageKey, storageToken);
             LogRefused(logger, fileId, organizationId, "type");
             return TypeMismatch;
         }
@@ -189,6 +205,9 @@ internal sealed partial class FileService(
 
     [LoggerMessage(EventId = 3, Level = LogLevel.Information, Message = "Completion of upload {FileId} in organization {OrganizationId} refused: the {Check} check failed; the object was deleted.")]
     private static partial void LogRefused(ILogger logger, Guid fileId, Guid organizationId, string check);
+
+    [LoggerMessage(EventId = 6, Level = LogLevel.Information, Message = "Upload start refused by the upload limits in organization {OrganizationId} for account {AccountId}.")]
+    private static partial void LogRateLimited(ILogger logger, Guid organizationId, Guid accountId);
 
     [LoggerMessage(EventId = 4, Level = LogLevel.Debug, Message = "Download of file {FileId} in organization {OrganizationId} signed for account {AccountId}.")]
     private static partial void LogDownload(ILogger logger, Guid fileId, Guid organizationId, Guid accountId);

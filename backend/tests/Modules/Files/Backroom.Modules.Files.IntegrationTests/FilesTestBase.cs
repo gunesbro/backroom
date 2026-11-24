@@ -79,6 +79,7 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         builder.Services.AddPermissions();
         builder.Services.AddOrganization();
         builder.Services.AddSingleton<ILiveEventPublisher, NullLiveEventPublisher>();
+        ConfigureServices(builder.Services);
         builder.Services.AddMessaging();
         builder.Services.AddFiles().BindConfiguration("Files:Storage");
         // Development would throw on a bad query string before the filters; production answers through them.
@@ -99,6 +100,11 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         StorageClient.Dispose();
         await _cell.DisposeAsync();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Lets a test class replace services (such as the clock) before the modules add theirs.</summary>
+    protected virtual void ConfigureServices(IServiceCollection services)
+    {
     }
 
     protected async Task<Guid> AccountAsync(string username) => Guid.Parse(await keycloak.UserIdAsync(username));
