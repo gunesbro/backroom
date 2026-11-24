@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Back-channel logout, revoked sessions and their fan-out to cells on a test server with real PostgreSQL (Docker); one test class uses a real Keycloak. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\CellManagement\Backroom.Modules.CellManagement.Infrastructure\Backroom.Modules.CellManagement.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Directory\Backroom.Modules.Directory.Infrastructure\Backroom.Modules.Directory.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Identity\Backroom.Modules.Identity.Infrastructure\Backroom.Modules.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Identity\Backroom.Modules.Identity.Presentation\Backroom.Modules.Identity.Presentation.csproj" />
+    <ProjectReference Include="..\..\..\Backroom.Testing\Backroom.Testing.csproj" />
+  </ItemGroup>
+
+  <!-- The development realm, imported into a Keycloak container. -->
+  <ItemGroup>
+    <None Include="..\..\..\..\src\Aspire\Backroom.AppHost\keycloak-dev\backroom-realm.json" Link="keycloak\backroom-realm.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

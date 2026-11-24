@@ -199,7 +199,7 @@ public sealed class CellRegistrationTests(PostgresDatabase database, KeycloakRea
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void AssertOnlyCurrentUserHasAccess(string path)
     {
-        System.Security.AccessControl.FileSystemSecurity acl = Directory.Exists(path)
+        System.Security.AccessControl.FileSystemSecurity acl = System.IO.Directory.Exists(path)
             ? new DirectoryInfo(path).GetAccessControl()
             : new FileInfo(path).GetAccessControl();
         var identities = acl.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(System.Security.Principal.SecurityIdentifier))

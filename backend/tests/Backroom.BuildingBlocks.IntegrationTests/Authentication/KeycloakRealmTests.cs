@@ -79,6 +79,33 @@ public sealed class KeycloakRealmTests(KeycloakRealm realm) : IClassFixture<Keyc
         realm.ImportedRealm["smtpServer"]!["host"]!.GetValue<string>().Should().Be("localhost", "the placeholder is filled from the environment");
     }
 
+    [Theory]
+    [InlineData("web")]
+    [InlineData("desktop")]
+    [InlineData("ops")]
+    public void Client_WhenImported_IsToldToCallTheControlPlaneOnLogoutAndSendsTheSessionId(string clientId)
+    {
+        // Contract flow 5: Keycloak's back-channel logout reaches the control plane, whose URL the deployment fills in. The
+        // session id is required, so every logout token names the session the cells must revoke.
+        var attributes = realm.ImportedClients[clientId]["attributes"]!;
+
+        attributes["backchannel.logout.url"]!.GetValue<string>().Should().EndWith(
+            "/internal/keycloak/backchannel-logout", "the placeholder is filled from the environment with the control plane's address");
+        attributes["backchannel.logout.session.required"]!.GetValue<string>().Should().Be("true");
+        attributes["backchannel.logout.revoke.offline.tokens"]!.GetValue<string>().Should().Be("false", "there are no offline tokens");
+        realm.ImportedClients[clientId]["frontchannelLogout"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Realm_AccessTokenLifespan_IsNotLongerThanRevocationsAreKept()
+    {
+        // A revocation is kept for the longest access token lifetime plus the skew; a longer-lived token would outlive it.
+        TimeSpan.FromSeconds(realm.ImportedRealm["accessTokenLifespan"]!.GetValue<int>())
+            .Should().BeLessThanOrEqualTo(Backroom.Modules.Identity.Contracts.SessionRevocationPolicy.LongestAccessTokenLifetime);
+        Backroom.Modules.Identity.Contracts.SessionRevocationPolicy.ClockSkew
+            .Should().Be(AccessTokenAuthenticationExtensions.ClockSkew, "the cells tolerate this much clock difference when they check expiry");
+    }
+
     [Fact]
     public void Realm_WhenImported_HasTheContractSessionLifetimes()
     {

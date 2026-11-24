@@ -9,6 +9,7 @@ using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.Organization.Contracts;
 using Backroom.Modules.Realtime.Contracts;
 using Backroom.Modules.Realtime.Infrastructure.Gateway;
+using Backroom.Modules.Realtime.Infrastructure.Revocation;
 
 namespace Backroom.Modules.Realtime.Infrastructure;
 
@@ -53,7 +54,13 @@ public static class RealtimeModule
                     && options.KeepAliveInterval > TimeSpan.Zero
                     && options.ClientTimeoutInterval >= options.KeepAliveInterval * 2
                     && options.HandshakeTimeout > TimeSpan.Zero
-                    && options.ListenerRetryDelay > TimeSpan.Zero,
+                    && options.ListenerRetryDelay > TimeSpan.Zero
+                    && options.RevocationCacheTtl > TimeSpan.Zero && options.RevocationCacheTtl <= TimeSpan.FromMinutes(1)
+                    && options.RevocationStaleTolerance >= TimeSpan.Zero && options.RevocationStaleTolerance <= TimeSpan.FromMinutes(5)
+                    && options.RevocationCacheMaxEntries is >= 16 and <= 1_000_000
+                    && options.RevocationMaxRetention > TimeSpan.Zero && options.RevocationMaxRetention <= TimeSpan.FromHours(24)
+                    && options.RevocationCloseGrace >= TimeSpan.Zero && options.RevocationCloseGrace <= TimeSpan.FromSeconds(5)
+                    && options.RevocationOutageBackoff >= TimeSpan.Zero && options.RevocationOutageBackoff <= TimeSpan.FromMinutes(1),
                 "The Realtime timings are out of range (the client timeout must be at least twice the keep-alive interval).")
             .ValidateOnStart();
 
@@ -63,6 +70,12 @@ public static class RealtimeModule
         services.TryAddSingleton<GroupRemovalBroadcast>();
         services.TryAddSingleton<IUserIdProvider, AccountUserIdProvider>();
         services.TryAddSingleton<ILiveEventPublisher, ValkeyLiveEventPublisher>();
+
+        // Revoked sessions, in every role: the worker applies them (the connector), the app role checks tokens against them.
+        services.TryAddSingleton<IRevocationStore, ValkeyRevocationStore>();
+        services.TryAddSingleton<RevocationChecker>();
+        services.TryAddSingleton<SessionRevocationBroadcast>();
+        services.TryAddSingleton<ISessionRevocation, SessionRevocationService>();
 
         // Only MessagePack: the live events are binary and the JSON protocol is refused at the handshake (it stays
         // registered because SignalR always registers it, but no hub supports it).
@@ -94,6 +107,7 @@ public static class RealtimeModule
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddHostedService<GroupRemovalListener>();
+        services.AddHostedService<SessionRevocationListener>();
         return services;
     }
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Application.Persistence;
 using Backroom.Modules.Messaging.Contracts;
+using Backroom.Modules.Realtime.Infrastructure.Revocation;
 
 namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 
@@ -19,6 +20,7 @@ namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 [Authorize]
 internal sealed partial class RealtimeHub(
     ConnectionRegistry registry,
+    RevocationChecker revocations,
     TimeProvider timeProvider,
     IOrganizationMembershipCheck membership,
     IChannelReadAccess channels,
@@ -34,24 +36,34 @@ internal sealed partial class RealtimeHub(
     public const string RateLimited = "realtime.rate_limited";
     public const string TooManyRefusals = "realtime.too_many_refusals";
 
-    public override Task OnConnectedAsync()
+    public override async Task OnConnectedAsync()
     {
         if (!AccountUserIdProvider.TryGetAccountId(Context.User, out var accountId))
         {
             Context.Abort();
-            return Task.CompletedTask;
+            return;
         }
 
-        if (registry.TryAdd(Context.ConnectionId, accountId, options.Value.MaxConnectionsPerAccount) is null)
+        if (registry.TryAdd(Context.ConnectionId, accountId, options.Value.MaxConnectionsPerAccount) is not { } state)
         {
             RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "connection_limit"));
             LogConnectionRefused(logger, accountId);
             Context.Abort();
-            return Task.CompletedTask;
+            return;
         }
 
         RealtimeTelemetry.Connections.Add(1);
-        return Task.CompletedTask;
+
+        // What a revocation needs to find this connection. A revocation that arrived between the request's check and the
+        // registration is caught here (answered from the cache the check just filled; an unreadable store was refused already).
+        if (TokenIdentity.TryRead(Context.User, out var identity))
+        {
+            state.Bind(identity.SessionId, identity.IssuedAt, Context.Abort);
+            if (await revocations.CheckAsync(identity.SessionId, identity.AccountId, identity.IssuedAt, Context.ConnectionAborted) == RevocationVerdict.Revoked)
+            {
+                Context.Abort();
+            }
+        }
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)

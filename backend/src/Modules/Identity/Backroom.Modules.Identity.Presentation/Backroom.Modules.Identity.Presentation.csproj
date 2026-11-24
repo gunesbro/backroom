@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <InternalsVisibleTo Include="Backroom.Modules.Identity.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
+    <ProjectReference Include="..\Backroom.Modules.Identity.Application\Backroom.Modules.Identity.Application.csproj" />
+  </ItemGroup>
+
+</Project>

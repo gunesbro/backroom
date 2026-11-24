@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.ControlPlane.Contracts.V1;
 using Backroom.Modules.CellManagement.Contracts;
+using Backroom.Modules.Directory.Contracts;
 using Backroom.Modules.Directory.Application.Invitations;
 using Backroom.Modules.Directory.Application.Organizations;
 using Backroom.Modules.Directory.Infrastructure.Invitations;
@@ -26,6 +27,7 @@ public static class DirectoryModule
         services.TryAddScoped<OrganizationCreation>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ICellMessageOutcomeHandler<OrganizationProvisioned>, OrganizationProvisioningOutcome>());
         services.TryAddSingleton<ICellOrganizationScope, CellOrganizationScope>();
+        services.TryAddSingleton<IDirectoryQueries, DirectoryQueries>();
 
         // Invitations registered and revoked by cells. The email HMAC key is checked at startup: without it the control plane does not start.
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<InvitationEmailHmacOptions>, InvitationEmailHmacOptionsValidator>());
