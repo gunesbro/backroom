@@ -113,7 +113,10 @@ internal sealed partial class MessageService(
         if (!await messages.AddAsync(message, cancellationToken))
         {
             // Another send of the same client message id committed between the check above and the lock; the first stays
-            // (the sequence number taken here is left unused: sequences have gaps, clients never assume otherwise).
+            // (the change number taken here is left unused: sequences have gaps, clients never assume otherwise). The
+            // statement that took it also announced a newest message that was not stored: put that back, under the row
+            // lock this transaction still holds, so last_message_seq always names a stored message.
+            await channels.RestoreLastMessageAsync(organizationId, conversationId, cancellationToken);
             var existing = await messages.FindAsync(conversationId, authorAccountId, clientId, cancellationToken)
                 ?? throw new InvalidOperationException("The message exists by its unique index but could not be read.");
             return new SentMessage(existing, Created: false, epoch);

@@ -230,7 +230,10 @@ public sealed class ChangeSequenceTests(PostgresDatabase database, KeycloakRealm
         Publisher.Messages.Should().BeEmpty();
     }
 
+    // Privacy rule (docs/contracts/phase-2.md, "Privacy rules and their tests"): a deleted message answers with no
+    // author, client id or content, in any read.
     [Theory]
+    [Trait("Category", "Privacy")]
     [InlineData("")]
     [InlineData("after=0")]
     [InlineData("before=4")]
@@ -370,6 +373,62 @@ public sealed class ChangeSequenceTests(PostgresDatabase database, KeycloakRealm
         (await QuerySingleAsync("SELECT change_seq, last_message_seq FROM messaging.conversations WHERE id = $1", channelId))
             .Should().Equal(newest, newest);
         (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1 AND version_seq <> seq", channelId))[0].Should().Be(0L);
+    }
+
+    [Fact]
+    public async Task ConcurrentIdenticalSends_StoreOneMessage_AndTheNewestMessageStillNamesAStoredOneAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var first = await SendMessageAsync(organizationId, channelId, Alice, "first");
+        var clientMessageId = Guid.NewGuid();
+        var path = $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages";
+
+        // Hold the conversation row, so both sends pass the repeat check (nothing is stored yet) and then wait for the
+        // counter: the race in which the second one loses at the unique index after it has taken a change number.
+        Task<HttpResponseMessage>[] sends;
+        await using (var connection = new NpgsqlConnection(Database.SuperuserConnectionString))
+        {
+            await connection.OpenAsync(CancellationToken);
+            await using var transaction = await connection.BeginTransactionAsync(CancellationToken);
+            await using (var hold = new NpgsqlCommand("SELECT 1 FROM messaging.conversations WHERE id = $1 FOR UPDATE", connection, transaction))
+            {
+                hold.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
+                await hold.ExecuteScalarAsync(CancellationToken);
+            }
+
+            sends = [.. Enumerable.Range(0, 2).Select(_ => Task.Run(() => PostAsync(path, Alice, new { clientMessageId, text = "twice" })))];
+            var deadline = DateTime.UtcNow.AddSeconds(20);
+            while ((long)(await QuerySingleAsync(
+                "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE 'UPDATE messaging.conversations SET change_seq%'"))[0]! < 2)
+            {
+                DateTime.UtcNow.Should().BeBefore(deadline, "both sends should reach the conversation row lock");
+                await Task.Delay(20, CancellationToken);
+            }
+
+            await transaction.CommitAsync(CancellationToken);
+        }
+
+        var responses = await Task.WhenAll(sends);
+        var bodies = new List<JsonNode>();
+        foreach (var response in responses)
+        {
+            bodies.Add(await ReadJsonAsync(response));
+            response.Dispose();
+        }
+
+        responses.Select(response => response.StatusCode).Should().BeEquivalentTo([HttpStatusCode.Created, HttpStatusCode.OK]);
+        bodies[0]["id"]!.GetValue<Guid>().Should().Be(bodies[1]["id"]!.GetValue<Guid>());
+        var stored = await QuerySingleAsync("SELECT count(*), max(seq), max(created_at) FROM messaging.messages WHERE conversation_id = $1", channelId);
+        stored[0].Should().Be(2L, "the repeat stores nothing");
+        var conversation = await QuerySingleAsync("SELECT change_seq, last_message_seq, last_message_at FROM messaging.conversations WHERE id = $1", channelId);
+        conversation[0].Should().Be(3L, "the lost send's number stays unused: a gap");
+        conversation[1].Should().Be(stored[1], "the newest message is one that exists");
+        conversation[2].Should().Be(stored[2]);
+        bodies[0]["seq"]!.GetValue<long>().Should().Be((long)stored[1]!);
+        first["seq"]!.GetValue<long>().Should().Be(1);
+        Publisher.Messages.Should().HaveCount(2, "the first message and one of the two identical sends");
+        var caughtUp = await ReadJsonAsync(await GetAsync(MessagesPath(organizationId, channelId, "changed_after=0"), Alice));
+        Ids(caughtUp).Should().HaveCount(2);
     }
 
     private static string MessagesPath(Guid organizationId, Guid channelId, string? query = null) =>

@@ -13,7 +13,7 @@ namespace Backroom.Modules.Messaging.Infrastructure.Migrations;
 /// the old <c>last_seq</c>, except where a lost idempotent race left a gap at the end; hence the backfill from the
 /// messages.</item>
 /// <item><c>messages.version_seq</c>, the number of the message's latest change: its <c>seq</c> until it is edited,
-/// deleted or otherwise changed. Index <c>(conversation_id, version_seq)</c> serves <c>changed_after</c>.</item>
+/// deleted or otherwise changed. Unique index <c>(conversation_id, version_seq)</c> serves <c>changed_after</c>.</item>
 /// <item>Tombstones: a deleted message keeps its row (<c>id</c>, <c>seq</c>, <c>version_seq</c>, <c>deleted_at</c>)
 /// and loses its content, so <c>text</c> and <c>blocks</c> may be null exactly when <c>deleted_at</c> is set.</item>
 /// </list>
@@ -60,8 +60,9 @@ internal sealed class AddChangeSequences : Migration
             ALTER TABLE messaging.conversations ADD CONSTRAINT conversations_last_message_seq_check
                 CHECK (last_message_seq >= 0 AND last_message_seq <= change_seq);
 
-            -- Catch-up (changed_after): the messages of a conversation in the order of their latest change.
-            CREATE INDEX messages_conversation_version_seq_idx ON messaging.messages (conversation_id, version_seq);
+            -- Catch-up (changed_after): the messages of a conversation in the order of their latest change. Unique: a
+            -- change number belongs to one message, which makes version_seq a complete keyset.
+            CREATE UNIQUE INDEX messages_conversation_version_seq_idx ON messaging.messages (conversation_id, version_seq);
             """);
     }
 
