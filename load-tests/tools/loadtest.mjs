@@ -239,7 +239,9 @@ async function cleanup() {
   const admin = new KeycloakAdmin(fixture.keycloak, fixture.realm, process.env.KEYCLOAK_ADMIN_USER, process.env.KEYCLOAK_ADMIN_PASSWORD);
   let deleted = 0;
   await pool(fixture.users, config.concurrency, async (user) => {
-    deleted += await admin.deleteByEmail(user.email);
+    // Not "deleted += await ...": that reads the total before the await, so concurrent workers lose each other's counts.
+    const count = await admin.deleteByEmail(user.email);
+    deleted += count;
   });
   log(`deleted ${deleted} Keycloak users; the organizations stay in the cells (reset the stack's volumes to drop them)`);
 }
