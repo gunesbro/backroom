@@ -71,6 +71,10 @@ databases.Add("control_plane", controlPlaneMigrate, controlPlane);
 // all databases use the same role passwords. In production each cell has its own instances.
 var virtualHosts = builder.AddRabbitMqVirtualHosts(services.RabbitMq, cells);
 
+// Every migrate run creates or updates the server-wide roles, and PostgreSQL refuses concurrent updates of the same role
+// ("tuple concurrently updated"), so the runs go one after another: each cell's waits for the previous one.
+var previousMigrate = controlPlaneMigrate;
+
 foreach (var cell in cells)
 {
     var secrets = cellSecrets[cell.Id];
@@ -80,7 +84,8 @@ foreach (var cell in cells)
     var cellMigrate = builder.AddProject<Projects.Backroom_Cell_Host>(
             $"cell-{cell.Id}-migrate", options => options.ExcludeLaunchProfile = true)
         .WithEnvironment("Cell__Role", "migrate")
-        .WaitForCompletion(controlPlaneMigrate);
+        .WaitForCompletion(previousMigrate);
+    previousMigrate = cellMigrate;
 
     var cellApp = builder.AddProject<Projects.Backroom_Cell_Host>($"cell-{cell.Id}-app", launchProfileName: "app" + cell.LaunchProfileSuffix)
         .WithEnvironment("Cell__Id", cell.Id)
