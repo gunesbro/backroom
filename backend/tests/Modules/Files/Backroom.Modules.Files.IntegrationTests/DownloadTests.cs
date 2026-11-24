@@ -36,7 +36,9 @@ public sealed class DownloadTests(PostgresDatabase database, KeycloakRealm keycl
         var location = response.Headers.Location!;
         location.AbsolutePath.Should().Be($"/{Bucket}/{organizationId}/{fileId}");
         Uri.UnescapeDataString(location.ToString()).Should().NotContain("Gizli");
-        location.Query.Should().MatchRegex("X-Amz-Expires=(59|60)&");
+        // The expiry is truncated to whole seconds and the SDK counts from its own clock when it signs, so the URL
+        // lives 58 to 60 seconds; never longer than the contract's 60.
+        location.Query.Should().MatchRegex("X-Amz-Expires=(58|59|60)&");
 
         using var stored = await StorageClient.GetAsync(location, CancellationToken);
         stored.StatusCode.Should().Be(HttpStatusCode.OK);

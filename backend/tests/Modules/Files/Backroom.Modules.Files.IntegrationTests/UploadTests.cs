@@ -22,7 +22,7 @@ public sealed class UploadTests(PostgresDatabase database, KeycloakRealm keycloa
 
         upload.Url.AbsolutePath.Should().Be($"/{Bucket}/{organizationId}/{upload.FileId}");
         Uri.UnescapeDataString(upload.Url.ToString()).Should().NotContain("Quarterly");
-        upload.Url.Query.Should().Contain("X-Amz-Signature=").And.MatchRegex("X-Amz-Expires=(899|900)&");
+        upload.Url.Query.Should().Contain("X-Amz-Signature=").And.MatchRegex("X-Amz-Expires=(898|899|900)&"); // whole seconds, counted from the SDK's clock
         upload.Headers.Should().Contain("Content-Type", "application/pdf").And.Contain("If-None-Match", "*");
         upload.ExpiresAt.Should().BeCloseTo(DateTimeOffset.UtcNow.AddMinutes(15), TimeSpan.FromSeconds(30));
         var row = await ScalarAsync("SELECT status FROM files.files WHERE id = $1", upload.FileId);
