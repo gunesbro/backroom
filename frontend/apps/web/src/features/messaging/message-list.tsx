@@ -12,10 +12,12 @@ import {
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
 import { Avatar, Icon, SoonButton, type IconName } from '@backroom/ui';
+import { config } from '@/config';
 import { useTranslate } from '@/shared/locale';
 import type { Message } from './api';
 import { messages } from './messages';
 import type { PendingMessage } from './pending-messages';
+import { MessageBody } from './rich-text/message-blocks';
 
 export type Row =
   | { key: string; message: Message; pending?: undefined }
@@ -51,6 +53,7 @@ export function MessageList({
   locale,
   onRetry,
   onDiscard,
+  onJoin,
 }: {
   channelName: string;
   rows: readonly Row[];
@@ -68,6 +71,8 @@ export function MessageList({
   locale: Locale;
   onRetry: (clientMessageId: string) => void;
   onDiscard: (clientMessageId: string) => void;
+  /** Joins the channel and then sends the failed message again. */
+  onJoin: (clientMessageId: string) => void;
 }) {
   const t = useTranslate(messages);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -318,6 +323,7 @@ export function MessageList({
                 locale={locale}
                 onRetry={onRetry}
                 onDiscard={onDiscard}
+                onJoin={onJoin}
               />
             </li>
           );
@@ -372,6 +378,7 @@ const MessageRow = memo(function MessageRow({
   locale,
   onRetry,
   onDiscard,
+  onJoin,
 }: {
   row: Row;
   /** The list's one tab stop (roving tabindex); the other rows are reached by the arrow keys. */
@@ -384,6 +391,7 @@ const MessageRow = memo(function MessageRow({
   locale: Locale;
   onRetry: (clientMessageId: string) => void;
   onDiscard: (clientMessageId: string) => void;
+  onJoin: (clientMessageId: string) => void;
 }) {
   const now = new Date();
   const [hovered, setHovered] = useState(false);
@@ -458,15 +466,36 @@ const MessageRow = memo(function MessageRow({
           </time>
         </p>
         {/* Plain text, never markup: React escapes it; line breaks are kept by the style. */}
-        <p className={pending?.status === 'sending' ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>
+        {config.richTextEnabled ? (
+          <MessageBody
+            blocks={pending?.blocks ?? message?.blocks}
+            text={text}
+            sending={pending?.status === 'sending'}
+          />
+        ) : (
+          <p className={pending?.status === 'sending' ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>
+        )}
         {pending?.status === 'sending' && <p className="bm-message__state ph-muted">{t('sending')}</p>}
         {pending?.status === 'failed' && (
           <p className="bm-message__state bm-message__error">
             {pending.code === 'messaging.message_invalid'
               ? t('messageInvalid')
-              : pending.code === 'messaging.channel_not_found'
+              : pending.code === 'messaging.conversation_not_found'
                 ? t('channelGone')
-                : t('sendFailed')}{' '}
+                : pending.code === 'messaging.not_a_member'
+                  ? t('notAMember')
+                  : t('sendFailed')}{' '}
+            {pending.code === 'messaging.not_a_member' && (
+              <button
+                type="button"
+                className="ph-link"
+                onClick={() => {
+                  onJoin(pending.clientMessageId);
+                }}
+              >
+                {t('join')}
+              </button>
+            )}{' '}
             {pending.code !== 'messaging.message_invalid' && (
               <button
                 type="button"

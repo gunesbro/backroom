@@ -3,11 +3,14 @@ import { rememberSeq } from './seq-memory';
 import { useCallback } from 'react';
 import type { Message, MessageCursor, MessagePage, MessagingApi } from './api';
 
-// Explicit cache keys, per organization and channel.
-export const channelsKey = (orgId: string) => ['orgs', orgId, 'channels'] as const;
+// Explicit cache keys, per organization and conversation. The conversations list has its own segment so that
+// invalidating it never touches the messages of a conversation.
+export const conversationsKey = (orgId: string) => ['orgs', orgId, 'conversations', 'list'] as const;
+/** The public channels to browse, joined or not. */
+export const browseChannelsKey = (orgId: string) => ['orgs', orgId, 'channels'] as const;
 export const membersKey = (orgId: string) => ['orgs', orgId, 'members'] as const;
-export const messagesKey = (orgId: string, channelId: string) =>
-  ['orgs', orgId, 'channels', channelId, 'messages'] as const;
+export const messagesKey = (orgId: string, conversationId: string) =>
+  ['orgs', orgId, 'conversations', conversationId, 'messages'] as const;
 
 /** At most this many pages of a channel stay in memory; reading further back drops the newest ones. */
 export const MAX_MESSAGE_PAGES = 10;

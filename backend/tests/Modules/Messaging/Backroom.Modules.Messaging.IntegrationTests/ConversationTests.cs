@@ -127,7 +127,7 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         (await LeaveAsync(organizationId, channelId, Alice)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         (await MemberCountAsync(channelId)).Should().Be(0);
-        (await GetAsync($"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", Alice)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", Alice)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -191,13 +191,13 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
         var privateId = await InsertConversationAsync(organizationId, ConversationKinds.PrivateChannel, "Secret", Bob);
 
-        using var list = await GetAsync($"/api/v1/orgs/{organizationId}/channels/{privateId}/messages", Alice);
-        using var send = await PostAsync($"/api/v1/orgs/{organizationId}/channels/{privateId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "hi" });
+        using var list = await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{privateId}/messages", Alice);
+        using var send = await PostAsync($"/api/v1/orgs/{organizationId}/conversations/{privateId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "hi" });
         using var channels = await GetAsync($"/api/v1/orgs/{organizationId}/channels", Alice);
 
         list.StatusCode.Should().Be(HttpStatusCode.NotFound);
         send.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await ReadJsonAsync(send))["code"]!.GetValue<string>().Should().Be("messaging.channel_not_found");
+        (await ReadJsonAsync(send))["code"]!.GetValue<string>().Should().Be("messaging.conversation_not_found");
         (await ReadJsonAsync(channels))["channels"]!.AsArray().Should().BeEmpty("the public list never shows a private channel");
         (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", privateId))[0].Should().Be(0L);
     }
@@ -210,11 +210,11 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         var privateId = await InsertConversationAsync(organizationId, ConversationKinds.PrivateChannel, "Secret", Bob);
 
         await SendMessageAsync(organizationId, privateId, Bob, "members only");
-        using var list = await GetAsync($"/api/v1/orgs/{organizationId}/channels/{privateId}/messages", Bob);
+        using var list = await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{privateId}/messages", Bob);
         using var join = await JoinAsync(organizationId, privateId, Bob);
 
         list.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await ReadJsonAsync(list))["messages"]!.AsArray().Should().ContainSingle();
+        (await ReadJsonAsync(list))["items"]!.AsArray().Should().ContainSingle();
         join.StatusCode.Should().Be(HttpStatusCode.NoContent, "a member joining changes nothing");
     }
 

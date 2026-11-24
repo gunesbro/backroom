@@ -34,7 +34,7 @@ public sealed class MessagingTests(EndToEndEnvironment environment)
         var clientMessageId = Guid.NewGuid();
         var posted = await Api.PostAsync(
             environment.Http,
-            organization.Api($"channels/{channelId}/messages"),
+            organization.Api($"conversations/{channelId}/messages"),
             senderToken.Value,
             new { clientMessageId, text = "Hello from the end-to-end test" },
             CancellationToken);
@@ -48,9 +48,9 @@ public sealed class MessagingTests(EndToEndEnvironment environment)
 
         // A client that missed live events resumes after the last sequence number it saw.
         var catchUp = await Api.GetAsync(
-            environment.Http, organization.Api($"channels/{channelId}/messages?after={received.Message.Seq - 1}"), readerToken.Value, CancellationToken);
+            environment.Http, organization.Api($"conversations/{channelId}/messages?after={received.Message.Seq - 1}"), readerToken.Value, CancellationToken);
         catchUp.Status.Should().Be(HttpStatusCode.OK);
-        var first = catchUp.Json["messages"]!.AsArray()[0]!;
+        var first = catchUp.Json["items"]!.AsArray()[0]!;
         first["id"]!.GetValue<Guid>().Should().Be(received.Message.Id);
         first["seq"]!.GetValue<long>().Should().Be(received.Message.Seq);
     }

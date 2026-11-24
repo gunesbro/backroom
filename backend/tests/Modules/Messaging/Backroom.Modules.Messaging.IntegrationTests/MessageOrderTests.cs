@@ -33,11 +33,11 @@ public sealed class MessageOrderTests(PostgresDatabase database, KeycloakRealm k
         var second = await SendMessageAsync(organizationId, channelId, Alice, "committed second, lower id");
 
         var body = await ReadJsonAsync(await GetAsync(
-            $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages?after={first["seq"]!.GetValue<long>()}", Alice));
+            $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages?after={first["seq"]!.GetValue<long>()}", Alice));
 
         first["id"]!.GetValue<Guid>().CompareTo(second["id"]!.GetValue<Guid>()).Should().BePositive();
         second["seq"]!.GetValue<long>().Should().Be(first["seq"]!.GetValue<long>() + 1);
-        var caughtUp = body["messages"]!.AsArray();
+        var caughtUp = body["items"]!.AsArray();
         caughtUp.Should().ContainSingle();
         caughtUp[0]!["id"]!.GetValue<Guid>().Should().Be(lower, "paging by id would have skipped it");
     }
@@ -81,10 +81,10 @@ public sealed class MessageOrderTests(PostgresDatabase database, KeycloakRealm k
         var channelId = await CreateChannelAsync(organizationId, Alice, "General");
 
         var message = await SendMessageAsync(organizationId, channelId, Alice, "<b>x</b> & y");
-        var listed = await ReadJsonAsync(await GetAsync($"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", Alice));
+        var listed = await ReadJsonAsync(await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", Alice));
 
         message["text"]!.GetValue<string>().Should().Be("<b>x</b> & y");
-        listed["messages"]![0]!["text"]!.GetValue<string>().Should().Be("<b>x</b> & y");
+        listed["items"]![0]!["text"]!.GetValue<string>().Should().Be("<b>x</b> & y");
         var node = await QuerySingleAsync("SELECT blocks->0->'children'->0->>'text' FROM messaging.messages WHERE id = $1", message["id"]!.GetValue<Guid>());
         node[0].Should().Be("<b>x</b> & y");
         Publisher.Messages.Single().Message.Text.Should().Be("<b>x</b> & y");
@@ -98,10 +98,10 @@ public sealed class MessageOrderTests(PostgresDatabase database, KeycloakRealm k
         var channelId = await CreateChannelAsync(organizationId, Alice, "Iletisim");
 
         var sent = await SendMessageAsync(organizationId, channelId, Alice, "I i ı İ ISPARTA");
-        var listed = await ReadJsonAsync(await GetAsync($"/api/v1/orgs/{organizationId}/channels/{channelId}/messages?after=0", Alice));
+        var listed = await ReadJsonAsync(await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages?after=0", Alice));
 
         sent["text"]!.GetValue<string>().Should().Be("I i ı İ ISPARTA");
-        listed["messages"]![0]!["text"]!.GetValue<string>().Should().Be("I i ı İ ISPARTA");
+        listed["items"]![0]!["text"]!.GetValue<string>().Should().Be("I i ı İ ISPARTA");
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public sealed class MessageOrderTests(PostgresDatabase database, KeycloakRealm k
             try
             {
                 using var response = await PostAsync(
-                    $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "FAIL-AT-COMMIT" });
+                    $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", Alice, new { clientMessageId = Guid.NewGuid(), text = "FAIL-AT-COMMIT" });
                 status = response.StatusCode;
             }
 #pragma warning disable CA1031 // The test host may rethrow the unhandled exception instead of answering 500.

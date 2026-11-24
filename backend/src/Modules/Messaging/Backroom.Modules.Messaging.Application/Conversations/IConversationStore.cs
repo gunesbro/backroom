@@ -17,4 +17,10 @@ internal interface IConversationStore
 
     /// <summary>Closes the account's open membership and uncounts it; <see langword="false"/> if there was none.</summary>
     Task<bool> CloseMembershipAsync(Guid organizationId, Guid conversationId, Guid accountId, DateTimeOffset leftAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The account's open conversations (open membership, not archived, no threads) after the row <paramref name="afterSortAt"/>, <paramref name="afterId"/> in the order newest message first (creation time when there is none), then id descending,
+    /// at most <paramref name="count"/>.
+    /// </summary>
+    Task<IReadOnlyList<ConversationEntry>> ListForAccountAsync(Guid organizationId, Guid accountId, DateTimeOffset afterSortAt, Guid afterId, int count, CancellationToken cancellationToken);
 }

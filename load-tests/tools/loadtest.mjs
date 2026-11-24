@@ -146,7 +146,7 @@ async function provision() {
     }
     for (const channelId of org.channelIds) {
       for (let n = 0; n < config.seedMessages; n++) {
-        await api('POST', `${base}/channels/${channelId}/messages`, cell, { clientMessageId: crypto.randomUUID(), text: `seed ${n}` });
+        await api('POST', `${base}/conversations/${channelId}/messages`, cell, { clientMessageId: crypto.randomUUID(), text: `seed ${n}` });
       }
     }
 

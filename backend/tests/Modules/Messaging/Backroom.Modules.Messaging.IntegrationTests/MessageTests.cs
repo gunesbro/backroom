@@ -84,6 +84,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
     {
         var (organizationId, channelId) = await ChannelAsync();
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        (await PostAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/join", Bob, new { })).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var clientMessageId = Guid.NewGuid();
 
         using var fromAlice = await PostAsync(MessagesPath(organizationId, channelId), Alice, new { clientMessageId, text = "a" });
@@ -214,7 +215,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         using var closed = await PostAsync(MessagesPath(organizationId, archived), Alice, new { clientMessageId = Guid.NewGuid(), text = "hi" });
 
         unknown.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await ReadJsonAsync(unknown))["code"]!.GetValue<string>().Should().Be("messaging.channel_not_found");
+        (await ReadJsonAsync(unknown))["code"]!.GetValue<string>().Should().Be("messaging.conversation_not_found");
         closed.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE org_id = $1", organizationId))[0].Should().Be(0L);
         channelId.Should().NotBeEmpty();
@@ -229,10 +230,101 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         using var response = await PostAsync(MessagesPath(mine, foreignChannel), Alice, new { clientMessageId = Guid.NewGuid(), text = "hi" });
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.channel_not_found");
+        (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.conversation_not_found");
         (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE conversation_id = $1", foreignChannel))[0].Should().Be(0L);
     }
 
+    [Fact]
+    public async Task Send_WithoutJoiningAPublicChannel_IsForbiddenAndStoresNothingAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+
+        using var response = await PostAsync(MessagesPath(organizationId, channelId), Bob, new { clientMessageId = Guid.NewGuid(), text = "hi" });
+        using var read = await GetAsync(MessagesPath(organizationId, channelId), Bob);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.not_a_member");
+        read.StatusCode.Should().Be(HttpStatusCode.OK, "an open public channel is readable before joining");
+        await ShouldHaveStoredNothingAsync(organizationId, channelId);
+    }
+
+    [Fact]
+    public async Task PhaseOneChannelMessageRoutes_AreRemovedAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var path = $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages";
+
+        using var list = await GetAsync(path, Alice);
+        using var send = await PostAsync(path, Alice, new { clientMessageId = Guid.NewGuid(), text = "hi" });
+
+        list.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        send.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await ShouldHaveStoredNothingAsync(organizationId, channelId);
+    }
+
+    [Fact]
+    public async Task ListConversations_ListsOnlyTheCallersOpenMembershipsAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var other = await CreateChannelAsync(organizationId, Alice, "Other");
+        var bobBefore = await ReadJsonAsync(await GetAsync($"/api/v1/orgs/{organizationId}/conversations", Bob));
+        (await PostAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/join", Bob, new { })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var bobAfter = await ReadJsonAsync(await GetAsync($"/api/v1/orgs/{organizationId}/conversations", Bob));
+        var alice = await ReadJsonAsync(await GetAsync($"/api/v1/orgs/{organizationId}/conversations?limit=1", Alice));
+
+        bobBefore["items"]!.AsArray().Should().BeEmpty();
+        bobAfter["items"]!.AsArray().Select(item => item!["id"]!.GetValue<Guid>()).Should().Equal(channelId);
+        bobAfter["items"]![0]!["kind"]!.GetValue<string>().Should().Be("public_channel");
+        alice["items"]!.AsArray().Should().ContainSingle();
+        alice["next"]!.GetValue<string>().Should().NotBeNullOrEmpty();
+        other.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task ListConversations_WithAnInvalidPageSize_IsRejectedAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+
+        using var response = await GetAsync($"/api/v1/orgs/{organizationId}/conversations?limit=101", Alice);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ListConversations_OrdersByNewestMessageAndPagesByAnOpaqueCursorAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        var quiet = await CreateChannelAsync(organizationId, Alice, "Quiet");
+        var older = await CreateChannelAsync(organizationId, Alice, "Older");
+        var newer = await CreateChannelAsync(organizationId, Alice, "Newer");
+        await SendMessageAsync(organizationId, older, Alice, "one");
+        await SendMessageAsync(organizationId, newer, Alice, "two");
+        await SendMessageAsync(organizationId, older, Alice, "three");
+        var path = $"/api/v1/orgs/{organizationId}/conversations";
+
+        var first = await ReadJsonAsync(await GetAsync($"{path}?limit=2", Alice));
+        var second = await ReadJsonAsync(await GetAsync($"{path}?limit=2&after={Uri.EscapeDataString(first["next"]!.GetValue<string>())}", Alice));
+
+        first["items"]!.AsArray().Select(item => item!["id"]!.GetValue<Guid>()).Should().Equal(older, newer);
+        second["items"]!.AsArray().Select(item => item!["id"]!.GetValue<Guid>()).Should().Equal(quiet);
+        second["next"].Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("not-a-cursor")]
+    [InlineData("AAAA")]
+    [InlineData("!!!")]
+    public async Task ListConversations_WithAMalformedCursor_IsRejectedAsync(string cursor)
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+
+        using var response = await GetAsync($"/api/v1/orgs/{organizationId}/conversations?after={cursor}", Alice);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.cursor_invalid");
+    }
     [Fact]
     public async Task Send_AsSomeoneElse_IsNotFoundAndStoresNothingAsync()
     {
@@ -280,7 +372,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         Ids(body).Should().Equal(Enumerable.Reverse(ids));
         body["next"].Should().BeNull();
-        body["messages"]![0]!.AsObject().Select(property => property.Key)
+        body["items"]![0]!.AsObject().Select(property => property.Key)
             .Should().BeEquivalentTo(["id", "seq", "clientMessageId", "authorAccountId", "text", "createdAt"]);
     }
 
@@ -333,9 +425,9 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var body = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?limit=100", Alice));
         var defaultPage = await ReadJsonAsync(await GetAsync(MessagesPath(organizationId, channelId), Alice));
 
-        body["messages"]!.AsArray().Should().HaveCount(100);
+        body["items"]!.AsArray().Should().HaveCount(100);
         body["next"].Should().NotBeNull();
-        defaultPage["messages"]!.AsArray().Should().HaveCount(50);
+        defaultPage["items"]!.AsArray().Should().HaveCount(50);
     }
 
     [Theory]
@@ -390,7 +482,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         unknown.StatusCode.Should().Be(HttpStatusCode.NotFound);
         foreign.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await ReadJsonAsync(foreign))["code"]!.GetValue<string>().Should().Be("messaging.channel_not_found");
+        (await ReadJsonAsync(foreign))["code"]!.GetValue<string>().Should().Be("messaging.conversation_not_found");
         (await foreign.Content.ReadAsStringAsync(CancellationToken)).Should().NotContain("elsewhere secret");
     }
 
@@ -514,8 +606,8 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.message_invalid");
     }
 
-    private static string MessagesPath(Guid organizationId, Guid channelId) => $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages";
+    private static string MessagesPath(Guid organizationId, Guid channelId) => $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages";
 
     private static List<Guid> Ids(JsonNode body) =>
-        [.. body["messages"]!.AsArray().Select(message => message!["id"]!.GetValue<Guid>())];
+        [.. body["items"]!.AsArray().Select(message => message!["id"]!.GetValue<Guid>())];
 }

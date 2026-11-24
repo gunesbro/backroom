@@ -288,42 +288,4 @@ public sealed class OpsCellListTests(PostgresDatabase database, KeycloakRealm ke
         public Task<IReadOnlyDictionary<string, int>> CountByCellAsync(IReadOnlyCollection<string> cellIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyDictionary<string, int>>(cellIds.Where(counts.ContainsKey).ToDictionary(id => id, id => counts[id], StringComparer.Ordinal));
     }
-
-    private sealed class AuditLogs : ILoggerProvider
-    {
-        private readonly List<string> _messages = [];
-
-        public IReadOnlyList<string> Messages
-        {
-            get
-            {
-                lock (_messages)
-                {
-                    return [.. _messages];
-                }
-            }
-        }
-
-        public ILogger CreateLogger(string categoryName) => new Collector(this);
-
-        public void Dispose()
-        {
-        }
-
-        private sealed class Collector(AuditLogs owner) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state)
-                where TState : notnull => null;
-
-            public bool IsEnabled(LogLevel logLevel) => true;
-
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                lock (owner._messages)
-                {
-                    owner._messages.Add(formatter(state, exception));
-                }
-            }
-        }
-    }
 }

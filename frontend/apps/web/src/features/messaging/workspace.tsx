@@ -13,7 +13,8 @@ import { rowKey } from './row-key';
 import { messages } from './messages';
 import { NewMessageAnnouncer } from './new-message-announcer';
 import { usePendingMessages } from './pending-messages';
-import { channelsKey, membersKey, oldestFirst, useChannelMessages } from './queries';
+import { BrowseChannelsDialog } from './browse-channels-dialog';
+import { conversationsKey, membersKey, oldestFirst, useChannelMessages } from './queries';
 import { useLiveUpdates } from './use-live-updates';
 import './messaging.css';
 
@@ -50,6 +51,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
   const channels = useChannels(api, orgId);
   const [chosen, setChosen] = useState<Channel | undefined>();
   const [creating, setCreating] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const selected = chosen ?? channels.channels[0];
   const pending = usePendingMessages(api, orgId);
   const { user } = useAuth();
@@ -100,6 +102,9 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
             onAdd={() => {
               setCreating(true);
             }}
+            onBrowse={() => {
+              setBrowsing(true);
+            }}
             activity={live.activity}
             connection={live.status}
           />
@@ -115,6 +120,22 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
           )}
         </main>
       </div>
+      {browsing && (
+        <BrowseChannelsDialog
+          api={api}
+          orgId={orgId}
+          joinedIds={channelIds}
+          onClose={() => {
+            setBrowsing(false);
+          }}
+          onJoined={(channel) => {
+            void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
+            clearActivity(channel.id);
+            setChosen(channel);
+            setBrowsing(false);
+          }}
+        />
+      )}
       {creating && (
         <CreateChannelDialog
           api={api}
@@ -123,7 +144,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
             setCreating(false);
           }}
           onCreated={(channel) => {
-            void queryClient.invalidateQueries({ queryKey: channelsKey(orgId) });
+            void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
             setChosen(channel);
             setCreating(false);
           }}
@@ -133,15 +154,15 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
   );
 }
 
-/** The organization's channels, oldest first, paged by the server's `next`. */
+/** The person's own conversations, oldest first, paged by the server's `next`. */
 function useChannels(api: MessagingApi, orgId: string): ChannelsState {
   const query = useInfiniteQuery({
-    queryKey: channelsKey(orgId),
-    queryFn: ({ pageParam, signal }) => api.listChannels(orgId, pageParam, signal),
+    queryKey: conversationsKey(orgId),
+    queryFn: ({ pageParam, signal }) => api.listConversations(orgId, pageParam, signal),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
   });
-  const channels = useMemo(() => query.data?.pages.flatMap((page) => page.channels) ?? [], [query.data]);
+  const channels = useMemo(() => query.data?.pages.flatMap((page) => page.conversations) ?? [], [query.data]);
   const { refetch, fetchNextPage } = query;
   return {
     channels,
@@ -276,6 +297,21 @@ function ChannelView({
     },
     [discardMessage, channel.id],
   );
+  // A send refused because the person has not joined the channel: join it, then send the same message again. A failed
+  // join leaves the message as it is, so the action can be tried again.
+  const queryClient = useQueryClient();
+  const join = useCallback(
+    (clientMessageId: string) => {
+      api
+        .joinConversation(orgId, channel.id)
+        .then(() => {
+          void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
+          retryMessage(channel.id, clientMessageId);
+        })
+        .catch(() => undefined);
+    },
+    [api, orgId, channel.id, queryClient, retryMessage],
+  );
 
   return (
     <>
@@ -302,7 +338,7 @@ function ChannelView({
       {query.isError && !query.data && (
         <div className="bm-stack">
           <Alert>
-            {query.error instanceof ApiError && query.error.code === 'messaging.channel_not_found'
+            {query.error instanceof ApiError && query.error.code === 'messaging.conversation_not_found'
               ? t('channelGone')
               : t('generic')}
           </Alert>
@@ -333,6 +369,7 @@ function ChannelView({
             locale={locale}
             onRetry={retry}
             onDiscard={discard}
+            onJoin={join}
           />
           <NewMessageAnnouncer
             rows={rows}
@@ -344,8 +381,8 @@ function ChannelView({
       )}
       <Composer
         channelName={channel.name}
-        onSend={(text) => {
-          pending.send(channel.id, text);
+        onSend={(text, blocks) => {
+          pending.send(channel.id, text, blocks);
         }}
       />
     </>

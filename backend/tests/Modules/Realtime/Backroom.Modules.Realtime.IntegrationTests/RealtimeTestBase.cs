@@ -103,10 +103,18 @@ public abstract class RealtimeTestBase(PostgresDatabase database, KeycloakRealm 
         return JsonNode.Parse(await response.Content.ReadAsStringAsync(CancellationToken))!["id"]!.GetValue<Guid>();
     }
 
+    /// <summary>Joins a public conversation; joining one the account is in succeeds.</summary>
+    internal async Task JoinAsync(CellNode node, Guid organizationId, Guid conversationId, string username)
+    {
+        using var response = await PostAsync(node, $"/api/v1/orgs/{organizationId}/conversations/{conversationId}/join", username, new { });
+        response.EnsureSuccessStatusCode();
+    }
+
     internal async Task<JsonNode> SendMessageAsync(CellNode node, Guid organizationId, Guid channelId, string username, string text)
     {
+        await JoinAsync(node, organizationId, channelId, username);
         using var response = await PostAsync(
-            node, $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", username, new { clientMessageId = Guid.NewGuid(), text });
+            node, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", username, new { clientMessageId = Guid.NewGuid(), text });
         response.EnsureSuccessStatusCode();
         return JsonNode.Parse(await response.Content.ReadAsStringAsync(CancellationToken))!;
     }

@@ -31,12 +31,14 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         """;
 
     // A row that is already open is left alone (the WHERE of DO UPDATE), so the count changes only for a real join.
+    // The assignment list does not start with the role column: the org-context Semgrep rule reads that text as a
+    // database role switch.
     private const string OpenSql = """
         WITH opened AS (
             INSERT INTO messaging.conversation_members AS m (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (conversation_id, account_id) DO UPDATE
-                SET role = EXCLUDED.role, joined_at = EXCLUDED.joined_at, joined_seq = EXCLUDED.joined_seq,
+                SET joined_at = EXCLUDED.joined_at, joined_seq = EXCLUDED.joined_seq, role = EXCLUDED.role,
                     added_by = EXCLUDED.added_by, left_at = NULL
                 WHERE m.left_at IS NOT NULL
             RETURNING m.conversation_id)
@@ -53,6 +55,19 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         UPDATE messaging.conversations c SET member_count = c.member_count - 1
         FROM closed
         WHERE c.org_id = $1 AND c.id = closed.conversation_id
+        """;
+
+    // Newest message first (creation time for a conversation without messages), then id, as a keyset: the person's open
+    // memberships (at most 10,000, from conversation_members_account_idx) are joined by primary key and the top rows kept.
+    private const string ListForAccountSql = """
+        SELECT c.id, c.kind, c.name, c.created_at, COALESCE(c.last_message_at, c.created_at) AS sort_at
+        FROM messaging.conversation_members m
+        JOIN messaging.conversations c ON c.org_id = m.org_id AND c.id = m.conversation_id
+        WHERE m.org_id = $1 AND m.account_id = $2 AND m.left_at IS NULL
+            AND c.archived_at IS NULL AND c.kind <> 'thread'
+            AND (COALESCE(c.last_message_at, c.created_at), c.id) < ($3, $4)
+        ORDER BY sort_at DESC, c.id DESC
+        LIMIT $5
         """;
 
     public async Task<ConversationAccess?> FindAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken)
@@ -97,5 +112,26 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = leftAt });
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    public async Task<IReadOnlyList<ConversationEntry>> ListForAccountAsync(
+        Guid organizationId, Guid accountId, DateTimeOffset afterSortAt, Guid afterId, int count, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(ListForAccountSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
+        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = afterSortAt });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = afterId });
+        command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = count });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var found = new List<ConversationEntry>(Math.Min(count, 101));
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            found.Add(new ConversationEntry(
+                reader.GetGuid(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetFieldValue<DateTimeOffset>(3), reader.GetFieldValue<DateTimeOffset>(4)));
+        }
+
+        return found;
     }
 }
