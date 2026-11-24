@@ -6,12 +6,17 @@ export {
   type RealtimeListener,
   type RealtimeOptions,
 } from './client';
+export { MAX_WATCHED_ACCOUNTS } from './events';
 export type {
+  ActivityState,
   ChannelCreated,
   ConnectionStatus,
+  CustomStatus,
   LiveMessage,
   MembershipChanged,
   MessagePosted,
+  PresenceChanged,
+  PresenceState,
   RealtimeEventName,
   RealtimeEvents,
   SessionRevoked,

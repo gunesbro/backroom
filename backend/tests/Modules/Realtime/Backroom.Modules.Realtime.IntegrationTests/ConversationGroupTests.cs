@@ -133,7 +133,8 @@ public sealed class ConversationGroupTests(PostgresDatabase database, KeycloakRe
         await bobOnB.SubscribeOrganizationAsync(organizationId);
 
         await ExecuteAsync("UPDATE organization.members SET status = 'removed' WHERE org_id = $1 AND account_id = $2", organizationId, await AccountAsync(Bob));
-        await new MemberRemovedConsumer(NodeA.Services.GetRequiredService<GroupRemovalBroadcast>())
+        await new MemberRemovedConsumer(
+            NodeA.Services.GetRequiredService<GroupRemovalBroadcast>(), NodeA.Services.GetRequiredService<Backroom.Modules.Presence.Contracts.IPresenceMemberships>())
             .HandleAsync(new MemberRemoved(Guid.CreateVersion7(), organizationId, DateTimeOffset.UtcNow, await AccountAsync(Bob), 2), CancellationToken);
         await WaitForSubscriptionsAsync(Bob, expected: 0);
 

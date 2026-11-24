@@ -19,6 +19,7 @@ internal sealed class HubClient : IAsyncDisposable
     private readonly Channel<MessagePostedPayload> _messages = Channel.CreateUnbounded<MessagePostedPayload>();
     private readonly Channel<ChannelCreatedPayload> _channels = Channel.CreateUnbounded<ChannelCreatedPayload>();
     private readonly Channel<SessionRevokedPayload> _revoked = Channel.CreateUnbounded<SessionRevokedPayload>();
+    private readonly Channel<PresenceChangedPayload> _presence = Channel.CreateUnbounded<PresenceChangedPayload>();
     private readonly Channel<string> _probes = Channel.CreateUnbounded<string>();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -28,6 +29,7 @@ internal sealed class HubClient : IAsyncDisposable
         connection.On<MessagePostedPayload>(LiveEventNames.MessagePosted, payload => _messages.Writer.TryWrite(payload));
         connection.On<ChannelCreatedPayload>(LiveEventNames.ChannelCreated, payload => _channels.Writer.TryWrite(payload));
         connection.On<SessionRevokedPayload>(LiveEventNames.SessionRevoked, payload => _revoked.Writer.TryWrite(payload));
+        connection.On<PresenceChangedPayload>(LiveEventNames.PresenceChanged, payload => _presence.Writer.TryWrite(payload));
         connection.On<string>(ProbeEvent, payload => _probes.Writer.TryWrite(payload));
         connection.Closed += _ =>
         {
@@ -82,6 +84,14 @@ internal sealed class HubClient : IAsyncDisposable
     public Task SubscribeConversationAsync(Guid organizationId, Guid conversationId) => _connection.InvokeAsync("SubscribeConversation", organizationId, conversationId);
 
     public Task UnsubscribeConversationAsync(Guid organizationId, Guid conversationId) => _connection.InvokeAsync("UnsubscribeConversation", organizationId, conversationId);
+
+    public Task WatchPresenceAsync(Guid organizationId, params Guid[] accountIds) => _connection.InvokeAsync("WatchPresence", organizationId, accountIds);
+
+    public Task ReportActivityAsync(string state) => _connection.InvokeAsync("ReportActivity", state);
+
+    public Task<PresenceChangedPayload> NextPresenceAsync() => ReadAsync(_presence.Reader);
+
+    public bool HasUnreadPresence => _presence.Reader.TryPeek(out _);
 
     public Task<MessagePostedPayload> NextMessageAsync() => ReadAsync(_messages.Reader);
 

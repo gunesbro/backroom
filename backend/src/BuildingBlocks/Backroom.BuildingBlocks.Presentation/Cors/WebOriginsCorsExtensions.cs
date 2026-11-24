@@ -16,7 +16,8 @@ public static class WebOriginsCorsExtensions
     /// <summary>How long browsers may cache a preflight answer.</summary>
     public static readonly TimeSpan PreflightMaxAge = TimeSpan.FromSeconds(600);
 
-    private static readonly string[] s_methods = ["GET", "POST", "DELETE"];
+    // PUT for whole replacements such as the own status (docs/contracts/phase-2.md, "Control plane").
+    private static readonly string[] s_methods = ["GET", "POST", "PUT", "DELETE"];
 
     // Authorization and Content-Type for the API; the two SignalR headers for the hub's negotiate request.
     private static readonly string[] s_requestHeaders = ["Authorization", "Content-Type", "X-Requested-With", "x-signalr-user-agent"];

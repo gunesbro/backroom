@@ -17,6 +17,8 @@ using Backroom.Modules.Messaging.Infrastructure;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Infrastructure;
 using Backroom.Modules.Permissions.Infrastructure;
+using Backroom.Modules.Presence.Infrastructure;
+using Backroom.Modules.Presence.Presentation;
 using Backroom.Modules.Realtime.Infrastructure;
 using Backroom.Testing.Postgres;
 
@@ -117,6 +119,9 @@ internal sealed class CellNode : IAsyncDisposable
         builder.Services.AddRealtime();
         builder.Services.AddRealtimeGateway();
         builder.Services.AddMessaging();
+        builder.Services.AddPresence();
+        builder.Services.AddPresenceTracking();
+        builder.Services.AddPresenceEndpoints();
         builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 
         var app = builder.Build();
@@ -124,7 +129,9 @@ internal sealed class CellNode : IAsyncDisposable
         app.UseAuthentication();
         app.UseRevokedSessionCheck();
         app.UseAuthorization();
+        app.UseRateLimiter();
         app.MapMessagingEndpoints();
+        app.MapPresenceEndpoints();
         app.MapRealtimeHub();
         await app.StartAsync(cancellationToken);
         return new CellNode(app, logs, kestrel);

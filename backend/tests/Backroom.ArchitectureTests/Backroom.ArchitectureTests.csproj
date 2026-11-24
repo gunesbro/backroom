@@ -25,6 +25,8 @@
     <ProjectReference Include="..\..\src\Modules\Email\Backroom.Modules.Email.Application\Backroom.Modules.Email.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Email\Backroom.Modules.Email.Infrastructure\Backroom.Modules.Email.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\ControlPlaneConnector\Backroom.Modules.ControlPlaneConnector.Infrastructure\Backroom.Modules.ControlPlaneConnector.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Presence\Backroom.Modules.Presence.Infrastructure\Backroom.Modules.Presence.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Presence\Backroom.Modules.Presence.Presentation\Backroom.Modules.Presence.Presentation.csproj" />
   </ItemGroup>
 
 </Project>

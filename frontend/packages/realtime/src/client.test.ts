@@ -408,4 +408,103 @@ describe('backoffWithJitter', () => {
     expect(hubs[1]?.stopped).toBe(false);
     expect(client.status()).toBe('connected');
   });
+  it('WatchPresence_ReplacesTheSetAndIsReplayedAfterAReconnect', async () => {
+    const { client, hubs, retries } = setup();
+    client.watchPresence('o1', ['a', 'b', 'a']);
+    client.start();
+    await flush();
+    client.watchPresence('o1', ['c']);
+    await flush();
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    expect(hubs[0]?.invoked).toEqual(['WatchPresence o1 a,b', 'WatchPresence o1 c']);
+    expect(hubs[1]?.invoked).toEqual(['WatchPresence o1 c']);
+  });
+
+  it('WatchPresence_WithMoreThanTheLimit_SendsTheFirst200', async () => {
+    const { client, hubs } = setup();
+    client.start();
+    await flush();
+    client.watchPresence(
+      'o1',
+      Array.from({ length: 250 }, (_, index) => `id${String(index)}`),
+    );
+    await flush();
+
+    const args = hubs[0]?.invoke.mock.calls[0]?.[2] as string[];
+    expect(args).toHaveLength(200);
+  });
+
+  it('WatchPresence_WithAnEmptyList_StopsWatchingAndIsNotReplayed', async () => {
+    const { client, hubs, retries } = setup();
+    client.watchPresence('o1', ['a']);
+    client.start();
+    await flush();
+    client.watchPresence('o1', []);
+    await flush();
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    expect(hubs[0]?.invoked).toEqual(['WatchPresence o1 a', 'WatchPresence o1 ']);
+    expect(hubs[1]?.invoked).toEqual([]);
+  });
+
+  it('WatchPresence_WhenItsOrganizationIsRefused_IsDroppedFromTheReplay', async () => {
+    const { client, hubs, retries } = setup();
+    client.subscribeOrganization('o1');
+    client.watchPresence('o1', ['a']);
+    client.start();
+    hubs[0]?.invoke.mockRejectedValueOnce(new Error('realtime.not_found'));
+    await flush();
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    expect(hubs[0]?.invoke).toHaveBeenCalledTimes(1);
+    expect(hubs[1]?.invoked).toEqual([]);
+  });
+
+  it('WatchPresence_WhenRefused_IsNotAskedAgain', async () => {
+    const { client, hubs, retries } = setup();
+    client.start();
+    await flush();
+    hubs[0]?.invoke.mockRejectedValueOnce(new Error('realtime.not_found'));
+    client.watchPresence('o2', ['a']);
+    await flush();
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    expect(hubs[1]?.invoked).toEqual([]);
+  });
+
+  it('ReportActivity_WhenConnected_InvokesTheHubAndIsNotReplayed', async () => {
+    const { client, hubs, retries } = setup();
+    client.reportActivity('idle');
+    client.start();
+    await flush();
+    client.reportActivity('idle');
+    await flush();
+    hubs[0]?.drop();
+    retries.shift()?.();
+    await flush();
+
+    expect(hubs[0]?.invoked).toEqual(['ReportActivity idle']);
+    expect(hubs[1]?.invoked).toEqual([]);
+  });
+
+  it('PresenceChanged_ReachesItsListeners', async () => {
+    const { client, hubs } = setup();
+    const seen: unknown[] = [];
+    client.on('PresenceChanged', (payload) => seen.push(payload));
+    client.start();
+    await flush();
+    const payload = { orgId: 'o1', accountId: 'a', state: 'idle', dndUntil: null, customStatus: null };
+    hubs[0]?.emit('PresenceChanged', payload);
+
+    expect(seen).toEqual([payload]);
+  });
 });

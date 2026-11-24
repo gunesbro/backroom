@@ -33,6 +33,11 @@ export const config = {
    */
   invitationsUiEnabled: import.meta.env.VITE_INVITATIONS_UI_ENABLED === 'true',
   /**
+   * Feature flag: the status menu and presence (Phase 2 step 28), with the servers' `Features:Presence`. Activity is
+   * reported only to cells messaging connects to. On in development.
+   */
+  presenceEnabled: import.meta.env.VITE_PRESENCE_ENABLED === 'true',
+  /**
    * Feature flag: the rich text composer (Phase 2 step 6): Lexical editor, formatting toolbar, blocks. Off: the plain
    * textarea. Off in development too (.env.development) until the server-side step 6 PR accepts client blocks.
    */

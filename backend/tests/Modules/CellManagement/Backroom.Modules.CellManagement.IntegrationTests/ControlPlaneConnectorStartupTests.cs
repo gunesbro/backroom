@@ -87,6 +87,7 @@ public sealed class ControlPlaneConnectorStartupTests : IDisposable
         builder.Services.AddOrganizationInvitations().BindConfiguration(InvitationKeyOptions.SectionName);
         // Realtime applies the revoked sessions; its Valkey-backed implementation is not needed to start the connector.
         builder.Services.AddSingleton<Backroom.Modules.Realtime.Contracts.ISessionRevocation, RecordingSessionRevocation>();
+        builder.Services.AddSingleton<Backroom.Modules.Presence.Contracts.IAccountStatusSink, RecordingAccountStatusSink>();
         builder.AddControlPlaneConnector();
         return builder.Build();
     }

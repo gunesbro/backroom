@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Application.Persistence;
 using Backroom.Modules.Messaging.Contracts;
+using Backroom.Modules.Presence.Contracts;
 using Backroom.Modules.Realtime.Infrastructure.Revocation;
 
 namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
@@ -26,6 +27,7 @@ internal sealed partial class RealtimeHub(
     DelayedAbort aborts,
     TimeProvider timeProvider,
     IOrganizationMembershipCheck membership,
+    IPresenceTracker presence,
     IConversationReadAccess conversations,
     OrganizationContext organization,
     IUnitOfWork unitOfWork,
@@ -38,6 +40,9 @@ internal sealed partial class RealtimeHub(
     public const string Unavailable = "realtime.unavailable";
     public const string RateLimited = "realtime.rate_limited";
     public const string TooManyRefusals = "realtime.too_many_refusals";
+
+    /// <summary>This node tracks its limit of connections for presence; the client may try again later (or on another node).</summary>
+    public const string PresenceUnavailable = "realtime.presence_unavailable";
 
     public override async Task OnConnectedAsync()
     {
@@ -79,8 +84,12 @@ internal sealed partial class RealtimeHub(
                 }
 
                 aborts.Schedule(Context.Abort);
+                return;
             }
         }
+
+        // Presence (docs/contracts/phase-2.md, flow 9): the connection makes the person online; never throws for Valkey.
+        await presence.ConnectedAsync(Context.ConnectionId, accountId, Context.ConnectionAborted);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -91,6 +100,8 @@ internal sealed partial class RealtimeHub(
         }
 
         RealtimeTelemetry.Connections.Add(-1);
+        await presence.DisconnectedAsync(Context.ConnectionId, CancellationToken.None);
+
         // SignalR drops the connection from its groups itself; the state only has to stop counting.
         await state.Gate.WaitAsync();
         try
@@ -137,6 +148,141 @@ internal sealed partial class RealtimeHub(
         return UnsubscribeAsync([GroupNames.Conversation(options.Value.CellId, orgId, conversationId)]);
     }
 
+    /// <summary>
+    /// Replaces the connection's watch set (docs/contracts/phase-2.md, "Live events"): the connection joins the presence groups of
+    /// <paramref name="accountIds"/> in the organization and leaves those it no longer watches. The caller must be an active member
+    /// (else <see cref="NotFound"/>, as for a subscription); people who are not active members there are left out without a word, so the
+    /// answer tells nothing about them. At most <see cref="RealtimeOptions.MaxWatchedPerConnection"/> ids; an empty list clears the set.
+    /// </summary>
+    public Task WatchPresence(Guid orgId, Guid[] accountIds) => WatchPresenceAsync(orgId, accountIds);
+
+    private async Task WatchPresenceAsync(Guid orgId, Guid[] accountIds)
+    {
+        if (!presence.Enabled)
+        {
+            throw new HubException(NotFound);
+        }
+
+        if (!presence.IsTracking(Context.ConnectionId))
+        {
+            RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "presence_unavailable"));
+            throw new HubException(PresenceUnavailable);
+        }
+
+        Require(orgId);
+        if (accountIds is null || accountIds.Length > options.Value.MaxWatchedPerConnection || accountIds.Contains(Guid.Empty))
+        {
+            throw new HubException(InvalidArgument);
+        }
+
+        var state = Current();
+        var cancellationToken = Context.ConnectionAborted;
+        IReadOnlyList<Guid> members;
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (state.Closed)
+            {
+                throw new HubException(Unavailable);
+            }
+
+            // A watch counts as a subscribe call: one call joins up to 200 groups.
+            if (!state.TryCountCall(timeProvider.GetUtcNow(), options.Value.SubscribeWindow, options.Value.MaxSubscribeCallsPerWindow))
+            {
+                RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "rate_limited"));
+                Context.Abort();
+                throw new HubException(RateLimited);
+            }
+
+            if (await WatchableAsync(state.AccountId, orgId, [.. accountIds.Distinct()], cancellationToken) is not { } watchable)
+            {
+                RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "not_found"));
+                if (state.CountRefusal() >= options.Value.MaxRefusedSubscribesPerConnection)
+                {
+                    Context.Abort();
+                    throw new HubException(TooManyRefusals);
+                }
+
+                throw new HubException(NotFound);
+            }
+
+            members = watchable;
+            var cellId = options.Value.CellId;
+            var wanted = members.Select(accountId => GroupNames.Presence(cellId, orgId, accountId)).ToHashSet(StringComparer.Ordinal);
+            foreach (var group in state.Watched.Where(group => !wanted.Contains(group)).ToList())
+            {
+                state.Remove(group);
+                RealtimeTelemetry.Subscriptions.Add(-1);
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, group, cancellationToken);
+            }
+
+            var joining = wanted.Where(group => !state.Contains(group)).ToList();
+            if (state.Count + joining.Count > options.Value.MaxSubscriptionsPerConnection)
+            {
+                RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "subscription_limit"));
+                throw new HubException(SubscriptionLimit);
+            }
+
+            foreach (var group in joining)
+            {
+                state.AddWatched(group, orgId);
+                try
+                {
+                    await Groups.AddToGroupAsync(Context.ConnectionId, group, cancellationToken);
+                }
+                catch
+                {
+                    state.Remove(group);
+                    throw;
+                }
+
+                RealtimeTelemetry.Subscriptions.Add(1);
+            }
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+
+        // Their changes now reach this organization's presence groups (never throws for Valkey).
+        await presence.WatchAsync(Context.ConnectionId, orgId, members, cancellationToken);
+    }
+
+    /// <summary>
+    /// The client's report of input (<c>active</c>) or of 10 minutes without it (<c>idle</c>), at most one per
+    /// <see cref="RealtimeOptions.ActivityInterval"/>; extra reports are dropped, so a client sends the latest state when it may.
+    /// </summary>
+    public Task ReportActivity(string state)
+    {
+        if (!presence.Enabled)
+        {
+            throw new HubException(NotFound);
+        }
+
+        var active = state switch
+        {
+            "active" => true,
+            "idle" => false,
+            _ => throw new HubException(InvalidArgument),
+        };
+        if (!Current().TryCountActivity(timeProvider.GetUtcNow(), options.Value.ActivityInterval))
+        {
+            RealtimeTelemetry.DroppedActivity.Add(1);
+            return Task.CompletedTask;
+        }
+
+        return presence.ActivityAsync(Context.ConnectionId, active, Context.ConnectionAborted);
+    }
+
+    /// <summary>
+    /// The groups other than presence groups one connection may join: the limit less a full watch set when the limit is more than
+    /// twice the watch set (600 less 200 by default), else the whole limit (small limits in tests and constrained deployments).
+    /// </summary>
+    internal static int SubscriptionShare(RealtimeOptions limits) =>
+        limits.MaxSubscriptionsPerConnection > 2 * limits.MaxWatchedPerConnection
+            ? limits.MaxSubscriptionsPerConnection - limits.MaxWatchedPerConnection
+            : limits.MaxSubscriptionsPerConnection;
+
     private static void Require(Guid id)
     {
         if (id == Guid.Empty)
@@ -181,7 +327,9 @@ internal sealed partial class RealtimeHub(
                 return;
             }
 
-            if (state.Count + missing.Length > options.Value.MaxSubscriptionsPerConnection)
+            // Presence groups have their own share of the limit, so a full sidebar never blocks watching and a full watch set never
+            // blocks a conversation: with the defaults 400 conversation, organization and account groups plus 200 presence groups.
+            if (state.Count - state.Watched.Count + missing.Length > SubscriptionShare(options.Value))
             {
                 RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "subscription_limit"));
                 throw new HubException(SubscriptionLimit);
@@ -288,6 +436,36 @@ internal sealed partial class RealtimeHub(
                 && (conversationId is not { } conversation || await conversations.CanReadAsync(organizationId, conversation, accountId, cancellationToken));
             await unitOfWork.CommitAsync(cancellationToken);
             return allowed;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+#pragma warning disable CA1031 // The client gets a stable code; the cause (database down, bad state) goes to the log.
+        catch (Exception exception) when (exception is not HubException)
+#pragma warning restore CA1031
+        {
+            LogCheckFailed(logger, exception.GetType().Name, organizationId);
+            throw new HubException(Unavailable);
+        }
+    }
+
+    // The people the caller may watch in the organization: those that are active members there, in the same transaction as the
+    // caller's own membership check; null when the caller is not an active member.
+    private async Task<IReadOnlyList<Guid>?> WatchableAsync(Guid accountId, Guid organizationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken)
+    {
+        try
+        {
+            organization.Enter(organizationId);
+            await unitOfWork.BeginAsync(cancellationToken);
+            IReadOnlyList<Guid>? watchable = null;
+            if (await membership.IsActiveMemberAsync(accountId, cancellationToken))
+            {
+                watchable = await membership.SelectActiveMembersAsync(accountIds, cancellationToken);
+            }
+
+            await unitOfWork.CommitAsync(cancellationToken);
+            return watchable;
         }
         catch (OperationCanceledException)
         {

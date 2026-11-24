@@ -41,6 +41,24 @@ internal sealed class TestData(PostgresDatabase database)
         return messages;
     }
 
+    /// <summary>The <c>AccountStatusChanged</c> messages queued for the cell, oldest first.</summary>
+    public async Task<IReadOnlyList<AccountStatusChanged>> AccountStatusMessagesAsync(string cellId)
+    {
+        await using var connection = new NpgsqlConnection(database.SuperuserConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT payload FROM cell_management.outbound_messages WHERE cell_id = $1 AND type = 'AccountStatusChanged' ORDER BY sequence", connection);
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cellId });
+        await using var reader = await command.ExecuteReaderAsync();
+        var messages = new List<AccountStatusChanged>();
+        while (await reader.ReadAsync())
+        {
+            messages.Add(ConnectResponse.Parser.ParseFrom((byte[])reader[0]).AccountStatusChanged);
+        }
+
+        return messages;
+    }
+
     public async Task<long> CountRevokedSessionsAsync(Guid accountId) =>
         await ScalarAsync<long>("SELECT count(*) FROM identity.revoked_sessions WHERE account_id = $1", accountId);
 

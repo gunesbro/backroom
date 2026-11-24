@@ -1,0 +1,72 @@
+/* docs/design: Thread, the status menu and the dot on the account's avatar. */
+
+.bp-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ph-radius-full);
+  background: var(--ph-presence-online);
+}
+
+.bp-dot--away {
+  background: var(--ph-presence-away);
+}
+
+.bp-dot--dnd {
+  background: var(--ph-presence-dnd);
+}
+
+/* The dot at the corner of the account's avatar (`.sdot`). */
+.bp-avatar {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.bp-avatar .bp-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ph-panel);
+  box-sizing: border-box;
+}
+
+.bp-lead {
+  margin: 0;
+  color: var(--ph-muted);
+}
+
+.bp-status-row {
+  display: flex;
+  gap: var(--ph-space-10);
+}
+
+.bp-emoji {
+  flex: 0 0 72px;
+}
+
+.bp-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.bp-hints {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ph-space-10);
+  margin-top: calc(-1 * var(--ph-space-6));
+}
+
+.bp-foot-start {
+  margin-right: auto;
+}
+
+.bp-notice {
+  position: absolute;
+  bottom: calc(100% + var(--ph-space-4));
+  left: var(--ph-space-6);
+  right: var(--ph-space-6);
+}

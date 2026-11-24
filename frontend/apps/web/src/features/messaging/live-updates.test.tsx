@@ -42,6 +42,7 @@ function fakeRealtime() {
     MessagePosted: [],
     ChannelCreated: [],
     SessionRevoked: [],
+    PresenceChanged: [],
     MembershipChanged: [],
   };
   const statusListeners: ((status: ConnectionStatus, reconnected: boolean) => void)[] = [];
@@ -55,6 +56,8 @@ function fakeRealtime() {
     unsubscribeOrganization: vi.fn(),
     subscribeConversation: vi.fn(),
     unsubscribeConversation: vi.fn(),
+    watchPresence: vi.fn(),
+    reportActivity: vi.fn(),
     on: (event: RealtimeEventName, listener: (payload: never) => void) => {
       (listeners[event] as ((payload: never) => void)[]).push(listener);
       return () => undefined;

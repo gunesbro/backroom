@@ -135,6 +135,7 @@ internal sealed partial class DownstreamReceiver(IServiceScopeFactory scopes, Ti
             ConnectResponse.PayloadOneofCase.SessionRevoked => HasHandler<SessionRevoked>(services),
             ConnectResponse.PayloadOneofCase.InvitationAccepted => HasHandler<InvitationAccepted>(services),
             ConnectResponse.PayloadOneofCase.MembershipSnapshotRequested => HasHandler<MembershipSnapshotRequested>(services),
+            ConnectResponse.PayloadOneofCase.AccountStatusChanged => HasHandler<AccountStatusChanged>(services),
             _ => false,
         };
 
@@ -148,6 +149,7 @@ internal sealed partial class DownstreamReceiver(IServiceScopeFactory scopes, Ti
             ConnectResponse.PayloadOneofCase.SessionRevoked => DispatchAsync(services, messageId, message.SessionRevoked, cancellationToken),
             ConnectResponse.PayloadOneofCase.InvitationAccepted => DispatchAsync(services, messageId, message.InvitationAccepted, cancellationToken),
             ConnectResponse.PayloadOneofCase.MembershipSnapshotRequested => DispatchAsync(services, messageId, message.MembershipSnapshotRequested, cancellationToken),
+            ConnectResponse.PayloadOneofCase.AccountStatusChanged => DispatchAsync(services, messageId, message.AccountStatusChanged, cancellationToken),
             _ => throw new InvalidOperationException($"{message.PayloadCase} is not a durable downstream message."),
         };
 

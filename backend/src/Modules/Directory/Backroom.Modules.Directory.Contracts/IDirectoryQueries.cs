@@ -18,6 +18,15 @@ public interface IDirectoryQueries
     /// <summary>The accounts among <paramref name="accountIds"/> (at most <see cref="MaxAccountsPerSelection"/>) that have a pending or active membership in an organization of the cell.</summary>
     Task<IReadOnlyList<Guid>> SelectMembersOfCellAsync(string cellId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
 
+    /// <summary>The most accounts <see cref="ListAccountsOfCellAsync"/> returns at a time.</summary>
+    public const int MaxAccountsPerPage = 5_000;
+
+    /// <summary>
+    /// The accounts with a pending or active membership in an organization of the cell (organization not failed), in id order after
+    /// <paramref name="after"/> (<see cref="Guid.Empty"/> for the first page), at most <paramref name="limit"/> (at most <see cref="MaxAccountsPerPage"/>).
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListAccountsOfCellAsync(string cellId, Guid after, int limit, CancellationToken cancellationToken);
+
     /// <summary>The organizations assigned to the cell that did not fail, oldest first, at most <paramref name="limit"/>.</summary>
     Task<IReadOnlyList<CellOrganization>> ListOrganizationsOfCellAsync(string cellId, int limit, CancellationToken cancellationToken);
 }

@@ -96,6 +96,9 @@
           "Backroom.BuildingBlocks.Domain": "[1.0.0, )"
         }
       },
+      "backroom.modules.presence.contracts": {
+        "type": "Project"
+      },
       "backroom.modules.realtime.contracts": {
         "type": "Project",
         "dependencies": {

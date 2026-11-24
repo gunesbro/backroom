@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\Contracts\Backroom.ControlPlane.Contracts\Backroom.ControlPlane.Contracts.csproj" />
     <ProjectReference Include="..\..\Organization\Backroom.Modules.Organization.Contracts\Backroom.Modules.Organization.Contracts.csproj" />
+    <ProjectReference Include="..\..\Presence\Backroom.Modules.Presence.Contracts\Backroom.Modules.Presence.Contracts.csproj" />
     <ProjectReference Include="..\..\Realtime\Backroom.Modules.Realtime.Contracts\Backroom.Modules.Realtime.Contracts.csproj" />
   </ItemGroup>
 

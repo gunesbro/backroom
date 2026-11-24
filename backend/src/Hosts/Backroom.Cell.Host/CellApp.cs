@@ -5,6 +5,7 @@ using Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
 using Backroom.Modules.Files.Presentation;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
+using Backroom.Modules.Presence.Presentation;
 using Backroom.Modules.Realtime.Infrastructure;
 using Backroom.ServiceDefaults;
 
@@ -35,6 +36,7 @@ internal static class CellApp
         builder.AddCellModules(role);
         // UseRateLimiter needs its services in every role; only the app role maps endpoints that use them.
         builder.Services.AddOrganizationEndpoints();
+        builder.Services.AddPresenceEndpoints();
         if (role == CellRole.App)
         {
             // Writes wait for the cell's confirmed epoch (docs/adr/0011, "Cell epoch"); the worker confirms it over the link.
@@ -71,6 +73,7 @@ internal static class CellApp
         {
             app.MapOrganizationEndpoints();
             app.MapMessagingEndpoints();
+            app.MapPresenceEndpoints();
             if (app.Configuration.GetValue<bool>(FilesEndpoints.FilesFlag))
             {
                 app.MapFilesEndpoints();

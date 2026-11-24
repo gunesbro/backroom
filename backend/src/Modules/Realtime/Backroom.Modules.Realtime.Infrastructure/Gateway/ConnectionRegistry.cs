@@ -70,6 +70,15 @@ internal sealed class ConnectionRegistry
         }
     }
 
+    /// <summary>A snapshot of every connection on this node (for rare passes such as a member removal).</summary>
+    public IReadOnlyList<ConnectionState> All()
+    {
+        lock (_lock)
+        {
+            return [.. _connections.Values];
+        }
+    }
+
     /// <summary>A snapshot of the account's connections on this node.</summary>
     public IReadOnlyList<ConnectionState> ConnectionsOf(Guid accountId)
     {

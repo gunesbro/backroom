@@ -20,6 +20,8 @@
     <ProjectReference Include="..\..\..\..\src\Modules\Organization\Backroom.Modules.Organization.Infrastructure\Backroom.Modules.Organization.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\..\src\Modules\Permissions\Backroom.Modules.Permissions.Infrastructure\Backroom.Modules.Permissions.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\..\src\Modules\Realtime\Backroom.Modules.Realtime.Infrastructure\Backroom.Modules.Realtime.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Presence\Backroom.Modules.Presence.Infrastructure\Backroom.Modules.Presence.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Presence\Backroom.Modules.Presence.Presentation\Backroom.Modules.Presence.Presentation.csproj" />
     <ProjectReference Include="..\..\..\Backroom.Testing\Backroom.Testing.csproj" />
   </ItemGroup>
 

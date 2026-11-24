@@ -104,6 +104,7 @@ public static class ControlPlaneConnectorModule
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<OrganizationProvisioned>, OrganizationProvisionedHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<InvitationAccepted>, InvitationAcceptedHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<SessionRevoked>, SessionRevokedHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<AccountStatusChanged>, AccountStatusChangedHandler>());
         services.TryAddSingleton<FullSyncRunner>();
         services.TryAddSingleton<CellEpochStore>();
         // The worker's consumers and maintenance jobs wait for the confirmed epoch like the app role's writes.
