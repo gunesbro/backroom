@@ -2,6 +2,7 @@ using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.BuildingBlocks.Presentation.Cors;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
+using Backroom.Modules.Files.Presentation;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
 using Backroom.Modules.Realtime.Infrastructure;
@@ -70,6 +71,11 @@ internal static class CellApp
         {
             app.MapOrganizationEndpoints();
             app.MapMessagingEndpoints();
+            if (app.Configuration.GetValue<bool>(FilesEndpoints.FilesFlag))
+            {
+                app.MapFilesEndpoints();
+            }
+
             app.MapRealtimeHub();
         }
 

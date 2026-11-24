@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Backroom.Modules.CellManagement.IntegrationTests" />
+    <InternalsVisibleTo Include="Backroom.Modules.Permissions.IntegrationTests" />
   </ItemGroup>
 
 </Project>

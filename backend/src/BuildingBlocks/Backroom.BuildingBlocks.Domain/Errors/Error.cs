@@ -44,6 +44,8 @@ public sealed partial record Error
 
     public static Error Forbidden(string code, string description) => new(code, description, ErrorKind.Forbidden);
 
+    public static Error ContentTooLarge(string code, string description) => new(code, description, ErrorKind.ContentTooLarge);
+
     public static Error RateLimited(string code, string description, TimeSpan retryAfter)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(retryAfter, TimeSpan.Zero);

@@ -20,6 +20,7 @@ Contracts: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (f
 - `IPermissionChecker` (Permissions.Contracts); membership comes from the organization context.
 - Integration events `messaging.conversation-created.v1`, `messaging.conversation-member-added.v1`, `messaging.conversation-member-removed.v1` (ids and the kind only).
 - Publishes `IConversationReadAccess` (Contracts): whether an account may read a conversation (an open public channel, or an open conversation it is a member of), used by Realtime's subscription check, and `IsMemberAsync` (an open membership), used by Realtime's late-removal check.
+- Publishes `IMessageFileAccess` (Contracts): whether an account may read a message that carries a file, asked by Files on every download of an attached file. Until attachments (Phase 2 step 22) no message carries files, so it answers false.
 
 ## Rules
 

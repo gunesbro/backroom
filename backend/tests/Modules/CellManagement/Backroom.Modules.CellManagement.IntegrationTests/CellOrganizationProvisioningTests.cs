@@ -49,11 +49,11 @@ public sealed class CellOrganizationProvisioningTests(PostgresDatabase database,
             "SELECT count(*) FROM permissions.member_roles m JOIN permissions.roles r ON r.id = m.role_id WHERE m.org_id = $1 AND m.account_id = $2 AND r.key = 'owner'",
             organization, owner)).Should().Be(1);
 
-        // The contract's "Permissions used in Phase 1" table; Owner has every permission.
+        // The contracts' permission tables (Phase 1, and Phase 2 flow 6 for files); Owner has every permission.
         (await PermissionsAsync(organization, "owner")).Should().BeEquivalentTo(SystemRoles.AllPermissions);
         (await PermissionsAsync(organization, "admin")).Should().BeEquivalentTo(
-            ["channels.create-public", "members.invite-by-email", "members.choose-role-on-invite", "members.manage-invitations"]);
-        (await PermissionsAsync(organization, "member")).Should().BeEquivalentTo(["channels.create-public", "members.invite-by-email"]);
+            ["channels.create-public", "members.invite-by-email", "members.choose-role-on-invite", "members.manage-invitations", "files.upload", "files.remove-others-public"]);
+        (await PermissionsAsync(organization, "member")).Should().BeEquivalentTo(["channels.create-public", "members.invite-by-email", "files.upload"]);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class CellOrganizationProvisioningTests(PostgresDatabase database,
         (await CountAsync("SELECT count(*) FROM organization.members WHERE org_id = $1", organization)).Should().Be(1);
         (await CountAsync("SELECT count(*) FROM permissions.roles WHERE org_id = $1", organization)).Should().Be(3);
         (await CountAsync("SELECT count(*) FROM permissions.member_roles WHERE org_id = $1", organization)).Should().Be(1);
-        (await CountAsync("SELECT count(*) FROM permissions.role_permissions WHERE org_id = $1", organization)).Should().Be(10);
+        (await CountAsync("SELECT count(*) FROM permissions.role_permissions WHERE org_id = $1", organization)).Should().Be(SystemRoles.Permissions.Values.Sum(permissions => permissions.Count));
     }
 
     [Fact]

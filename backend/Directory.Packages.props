@@ -58,6 +58,11 @@
     <PackageVersion Include="RabbitMQ.Client" Version="7.2.2" />
   </ItemGroup>
 
+  <!-- Object storage (Files module infrastructure only: the S3-compatible IFileStorage) -->
+  <ItemGroup>
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.104.12" />
+  </ItemGroup>
+
   <!-- Email (Email module infrastructure only; architecture test SmtpUsageTests) -->
   <ItemGroup>
     <PackageVersion Include="MailKit" Version="5.0.0" />
