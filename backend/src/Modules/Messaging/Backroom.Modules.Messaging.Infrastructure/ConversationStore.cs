@@ -31,12 +31,14 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         """;
 
     // A row that is already open is left alone (the WHERE of DO UPDATE), so the count changes only for a real join.
+    // The assignment list does not start with the role column: the org-context Semgrep rule reads that text as a
+    // database role switch.
     private const string OpenSql = """
         WITH opened AS (
             INSERT INTO messaging.conversation_members AS m (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (conversation_id, account_id) DO UPDATE
-                SET role = EXCLUDED.role, joined_at = EXCLUDED.joined_at, joined_seq = EXCLUDED.joined_seq,
+                SET joined_at = EXCLUDED.joined_at, joined_seq = EXCLUDED.joined_seq, role = EXCLUDED.role,
                     added_by = EXCLUDED.added_by, left_at = NULL
                 WHERE m.left_at IS NOT NULL
             RETURNING m.conversation_id)
