@@ -39,6 +39,20 @@ public sealed class CorsConfigurationTests
         authentication.Should().BeGreaterThan(cors);
     }
 
+    [Fact]
+    public void CellHost_WhenBuildingThePipeline_MarksWebSocketUpgradesBeforeAuthentication()
+    {
+        // Authentication takes the hub's query token only for a WebSocket upgrade, which only the WebSocket middleware marks.
+        var program = File.ReadAllText(Path.Combine(RepositoryPaths.SourceDirectory, "Hosts", "Backroom.Cell.Host", "Program.cs"));
+
+        var cors = program.IndexOf("app.UseWebOriginsCors()", StringComparison.Ordinal);
+        var webSockets = program.IndexOf("app.UseRealtimeWebSockets()", StringComparison.Ordinal);
+        var authentication = program.IndexOf("app.UseAuthentication()", StringComparison.Ordinal);
+
+        webSockets.Should().BeGreaterThan(cors);
+        authentication.Should().BeGreaterThan(webSockets);
+    }
+
     [Theory]
     [InlineData("""{ "Cors": { "AllowedOrigins": [ "*" ] } }""", true)]
     [InlineData("""{ "Cors": { "AllowedOrigins": [ "https://*.example.test" ] } }""", true)]

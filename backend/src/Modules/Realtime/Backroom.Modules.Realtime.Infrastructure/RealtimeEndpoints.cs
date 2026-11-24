@@ -14,6 +14,18 @@ public static class RealtimeEndpoints
     public const string HubPath = "/hubs/realtime";
 
     /// <summary>
+    /// Before <c>UseAuthentication</c>: marks WebSocket upgrades, so authentication can tell the hub's WebSocket request (the
+    /// only one that may carry the token in the query string) from the others. The hub's own pipeline adds the same
+    /// middleware with the same default options, but only after authentication has run; on Kestrel, without this,
+    /// authentication never sees an upgrade and a browser's connect is answered 401.
+    /// </summary>
+    public static IApplicationBuilder UseRealtimeWebSockets(this IApplicationBuilder app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        return app.UseWebSockets();
+    }
+
+    /// <summary>
     /// After <c>UseAuthentication</c>: refuses a token whose session was revoked (<c>401</c>) and, when Valkey cannot be read, any token
     /// not recently checked (<c>503</c>). Covers every request and hub connect of the app role.
     /// </summary>
