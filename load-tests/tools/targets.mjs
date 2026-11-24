@@ -8,7 +8,8 @@ const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 
 /**
  * Throws unless every target is set, local (or LOADTEST_ALLOW_REMOTE=yes) and not on a development port
- * (or LOADTEST_ALLOW_DEVELOPMENT_STACK=yes). `targets` maps a name (the variable or fixture field it came from) to a URL.
+ * (or LOADTEST_ALLOW_DEVELOPMENT_STACK=yes), whatever the host is: a remote name can resolve to this machine.
+ * `targets` maps a name (the variable or fixture field it came from) to a URL.
  */
 export function assertSafeTargets(targets, env = process.env) {
   for (const [name, value] of Object.entries(targets)) {
@@ -25,11 +26,23 @@ export function assertSafeTargets(targets, env = process.env) {
       throw new Error(`Refusing the non-local target ${name}. Set LOADTEST_ALLOW_REMOTE=yes only for a dedicated load-test stack, never production.`);
     }
     const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
-    if (LOCAL_HOSTS.includes(url.hostname) && DEVELOPMENT_PORTS.includes(port) && env.LOADTEST_ALLOW_DEVELOPMENT_STACK !== 'yes') {
+    if (DEVELOPMENT_PORTS.includes(port) && env.LOADTEST_ALLOW_DEVELOPMENT_STACK !== 'yes') {
       throw new Error(
         `Refusing ${name}: port ${port} belongs to the development stack. Start an isolated stack and use its endpoints; ` +
           'LOADTEST_ALLOW_DEVELOPMENT_STACK=yes overrides this (for example to clean up after a mistake).',
       );
     }
   }
+}
+
+/**
+ * The same check for everything a fixture names: its Keycloak, its control plane and the cell of every organization.
+ * serve, cleanup and the crash check act on the fixture, whatever the environment says now.
+ */
+export function assertSafeFixture(fixture, env = process.env) {
+  const targets = { 'fixture keycloak': fixture?.keycloak, 'fixture controlPlane': fixture?.controlPlane };
+  (fixture?.orgs ?? []).forEach((org, index) => {
+    targets[`fixture cellUrl of organization ${index}`] = org.cellUrl;
+  });
+  assertSafeTargets(targets, env);
 }

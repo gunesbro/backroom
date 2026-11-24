@@ -8,7 +8,7 @@
 ## Safety
 
 - **Never run against production.** The tool creates users and organizations, and the scenarios send thousands of messages. It refuses targets other than `localhost` unless `LOADTEST_ALLOW_REMOTE=yes`; use that only for a dedicated load-test stack.
-- **Do not load the AppHost you work in.** Start a separate stack (an isolated run has random ports and no volumes) and point the tool at it. The endpoints have no defaults, and the tool refuses the development stack's fixed ports (`tools/targets.mjs`, tested by `node --test load-tests/tools/targets.test.mjs`); `LOADTEST_ALLOW_DEVELOPMENT_STACK=yes` overrides that, for example to clean up after a mistake.
+- **Do not load the AppHost you work in.** Start a separate stack (an isolated run has random ports and no volumes) and point the tool at it. The endpoints have no defaults, and the tool refuses the development stack's fixed ports (`tools/targets.mjs`, tested by `node --test load-tests/tools/targets.test.mjs`, which the Frontend workflow runs); `LOADTEST_ALLOW_DEVELOPMENT_STACK=yes` overrides that, for example to clean up after a mistake.
 - Outside production all email goes to Mailpit, and test users use `lt-<run>-<org>-<member>@loadtest.test` addresses. The setup tool sends invitations (membership exists only through them), at most 49 per organization; the scenarios themselves **never create invitations, organizations or users**.
 - Nothing secret is committed: the fixture (`.data/`, git-ignored) holds throwaway passwords of throwaway users, and tokens only live in the memory of the token server.
 
@@ -89,8 +89,12 @@ Pass k6 variables with `-e NAME=value` or the shell environment. Defaults are si
 A send is acknowledged only after PostgreSQL has flushed its commit to disk, so `send_ms` and `message_visible_ms` can never be better than the disk's flush latency (docs/adr/0012). Run the probe beside every `messaging` run: one tiny synchronous commit five times a second, logged per commit.
 
 ```sh
-# In the PostgreSQL container of the load-test stack (pgbench ships with the image; -n: no tables are created or touched).
-pgbench -n -f wal-flush-probe.sql -R 5 -T 125 -c 1 -l --log-prefix=probe postgres
+# <container> is the PostgreSQL container of the load-test stack, never the development stack's.
+docker cp load-tests/tools/wal-flush-probe.sql <container>:/tmp/wal-flush-probe.sql
+docker exec -it -w /tmp <container> sh
+# Inside the container (pgbench ships with the image; -n: no tables are created or touched). The password is the
+# container's POSTGRES_PASSWORD: PGPASSWORD=$POSTGRES_PASSWORD, with -h 127.0.0.1.
+pgbench -h 127.0.0.1 -U postgres -n -f wal-flush-probe.sql -R 5 -T 125 -c 1 -l --log-prefix=probe postgres
 # Share of the probe's commits that took more than 50 ms, waiting behind an earlier one included (third column:
 # latency in microseconds). It estimates the share of the run during which a commit had to wait that long for the disk.
 awk '{ n++; if ($3 > 50000) slow++ } END { printf "%d commits, %.1f %% over 50 ms\n", n, 100 * slow / n }' probe.*
@@ -100,7 +104,7 @@ A run whose probe has more than about 1 % of its commits over 50 ms measures the
 
 ## Crash check
 
-`tools/crash-check.mjs` sends to one channel, remembers every acknowledged message, and after the run reads the channel back: an acknowledged message must still be there, under the sequence number it was acknowledged with. Crash the load-test stack's PostgreSQL while it sends (the comment at the top of the file shows how); it uses the fixture and the token server like k6 does. It is the check to run before changing anything about how sends become durable.
+`tools/crash-check.mjs` sends to one channel, remembers every acknowledged message, and after the run reads the channel back: an acknowledged message must still be there, under the sequence number it was acknowledged with. Crash the load-test stack's PostgreSQL while it sends (the comment at the top of the file shows how, and which container to name); it uses the fixture and the token server like k6 does, and refuses a fixture or token server on the development stack's ports. It is the check to run before changing anything about how sends become durable.
 
 ## Not covered yet
 

@@ -13,7 +13,7 @@ import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Keycloak, KeycloakAdmin } from './keycloak.mjs';
-import { assertSafeTargets } from './targets.mjs';
+import { assertSafeFixture, assertSafeTargets } from './targets.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const env = (name, fallback) => process.env[name] || fallback;
@@ -43,15 +43,6 @@ const log = (message) => console.log(`[loadtest] ${message}`);
 // named explicitly, never the development stack (targets.mjs).
 function refuseUnsafeEndpoints() {
   assertSafeTargets({ KEYCLOAK_URL: config.keycloakUrl, CONTROL_PLANE_URL: config.controlPlane, MAILPIT_URL: config.mailpit });
-}
-
-/** serve and cleanup act on what the fixture names, whatever the environment says now. */
-function refuseUnsafeFixture(fixture) {
-  const targets = { 'fixture keycloak': fixture.keycloak, 'fixture controlPlane': fixture.controlPlane };
-  fixture.orgs.forEach((org, index) => {
-    targets[`fixture cellUrl of organization ${index}`] = org.cellUrl;
-  });
-  assertSafeTargets(targets);
 }
 
 async function pool(items, size, work) {
@@ -192,7 +183,7 @@ async function load() {
 
 async function serve() {
   const fixture = await load();
-  refuseUnsafeFixture(fixture);
+  assertSafeFixture(fixture);
   const keycloak = new Keycloak(fixture.keycloak, fixture.realm);
   const scopes = ['control-plane', ...(await sharedCellScopes(fixture.controlPlane))];
   const state = new Map(); // user index -> { session, scope, token: { accessToken, expiresAt } }
@@ -243,7 +234,7 @@ async function serve() {
 
 async function cleanup() {
   const fixture = await load();
-  refuseUnsafeFixture(fixture);
+  assertSafeFixture(fixture);
   const admin = new KeycloakAdmin(fixture.keycloak, fixture.realm, process.env.KEYCLOAK_ADMIN_USER, process.env.KEYCLOAK_ADMIN_PASSWORD);
   let deleted = 0;
   await pool(fixture.users, config.concurrency, async (user) => {

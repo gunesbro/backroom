@@ -4,7 +4,11 @@
 // number. While it runs, crash the database of the load-test stack from another terminal, for example by killing one
 // of its server processes (PostgreSQL then restarts itself through crash recovery and loses whatever was not flushed):
 //
-//   docker exec <postgres container> sh -c 'kill -9 $(pgrep -f "walwriter")'
+//   docker exec <postgres container> pkill -9 -f '^postgres: walwriter'
+//
+// The container name must be the PostgreSQL container of the isolated run this fixture was provisioned on (the one
+// created when that stack started; `docker ps` shows creation times). Docker accepts any name: the development
+// stack's PostgreSQL is a container on the same machine, and killing its WAL writer crashes the database you work in.
 //
 // Afterwards it reads the channel back through the API and reports acknowledged messages that are missing, and
 // sequence numbers that were acknowledged for one message but now belong to another. Both must be 0.
@@ -13,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertSafeFixture, assertSafeTargets } from './targets.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const env = (name, fallback) => process.env[name] || fallback;
@@ -22,10 +27,10 @@ const rate = Number(env('RATE', '100')); // sends per second
 const seconds = Number(env('SECONDS', '12'));
 const settleSeconds = Number(env('SETTLE_SECONDS', '8')); // lets the stack recover before the channel is read back
 
+// Never the development stack: the cell this sends to comes from the fixture (targets.mjs).
+assertSafeFixture(fixture);
+assertSafeTargets({ TOKEN_SERVER: tokenServer });
 const org = fixture.orgs[0];
-if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(org.cellUrl).hostname) && process.env.LOADTEST_ALLOW_REMOTE !== 'yes') {
-  throw new Error('Refusing a non-local target.');
-}
 const channelId = org.channelIds[0];
 const users = fixture.users.filter((user) => user.orgIndex === 0);
 const messages = `${org.cellUrl.replace(/\/$/, '')}/api/v1/orgs/${org.id}/channels/${channelId}/messages`;
