@@ -1,7 +1,7 @@
-import { type InfiniteData, type QueryClient } from '@tanstack/react-query';
-import { channelsKey, messagesKey, type MessagePages } from './queries';
+import { type QueryClient } from '@tanstack/react-query';
+import { browseChannelsKey, messagesKey, type MessagePages } from './queries';
 import { lastSeenSeq, rememberSeq } from './seq-memory';
-import type { Channel, ChannelPage, Message, MessagingApi } from './api';
+import type { Message, MessagingApi } from './api';
 
 // Applying live events to the query cache. Live events are hints (ADR 0011): everything here is idempotent, and a
 // missed event is repaired by `catchUpChannel`.
@@ -40,19 +40,12 @@ export function applyLiveMessage(
   return result.present;
 }
 
-/** Adds a created channel to the list, in the page where it belongs (oldest first, so the last one). */
-export function applyChannelCreated(queryClient: QueryClient, orgId: string, channel: Channel): void {
-  queryClient.setQueryData<InfiniteData<ChannelPage, string | undefined>>(channelsKey(orgId), (data) => {
-    const last = data?.pages.at(-1);
-    if (!data || !last) return data;
-    if (data.pages.some((page) => page.channels.some(({ id }) => id === channel.id))) return data;
-    // More pages to load: the channel arrives with them, in order.
-    if (last.next !== null) return data;
-    return {
-      ...data,
-      pages: [...data.pages.slice(0, -1), { ...last, channels: [...last.channels, channel] }],
-    };
-  });
+/**
+ * A channel was created: the browse list is out of date. Nobody but the creator is a member of it yet, so the
+ * person's own conversations do not change.
+ */
+export function noteChannelCreated(queryClient: QueryClient, orgId: string): void {
+  void queryClient.invalidateQueries({ queryKey: browseChannelsKey(orgId) });
 }
 
 /**

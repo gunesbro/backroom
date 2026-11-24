@@ -49,10 +49,10 @@ public sealed partial class InvitationTests(EndToEndEnvironment environment)
         var channelId = channel.Json["id"]!.GetValue<Guid>();
         var bobCell = await bob.TokenForAsync("cell:a", CancellationToken);
         await using var bobLive = await LiveClient.ConnectAsync(organization.CellUrl, bobCell, CancellationToken);
-        await bobLive.SubscribeChannelAsync(organization.Id, channelId, CancellationToken);
+        await bobLive.SubscribeConversationAsync(organization.Id, channelId, CancellationToken);
         var clientMessageId = Guid.NewGuid();
         var posted = await Api.PostAsync(
-            environment.Http, organization.Api($"channels/{channelId}/messages"), aliceCell.Value, new { clientMessageId, text = "Welcome, Bob" }, CancellationToken);
+            environment.Http, organization.Api($"conversations/{channelId}/messages"), aliceCell.Value, new { clientMessageId, text = "Welcome, Bob" }, CancellationToken);
         posted.Status.Should().Be(HttpStatusCode.Created);
 
         var received = await bobLive.NextMessageAsync(CancellationToken);

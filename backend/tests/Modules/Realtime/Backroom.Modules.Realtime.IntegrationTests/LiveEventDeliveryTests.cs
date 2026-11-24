@@ -23,7 +23,7 @@ public sealed class LiveEventDeliveryTests(PostgresDatabase database, KeycloakRe
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
         var bob = await ConnectAsync(NodeB, Bob);
-        await bob.SubscribeChannelAsync(organizationId, channelId);
+        await bob.SubscribeConversationAsync(organizationId, channelId);
 
         var sent = await SendMessageAsync(NodeA, organizationId, channelId, Alice, "Hello <b>there</b> & \"you\"");
 
@@ -46,8 +46,8 @@ public sealed class LiveEventDeliveryTests(PostgresDatabase database, KeycloakRe
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
         var aliceOnA = await ConnectAsync(NodeA, Alice);
         var bobOnB = await ConnectAsync(NodeB, Bob);
-        await aliceOnA.SubscribeChannelAsync(organizationId, channelId);
-        await bobOnB.SubscribeChannelAsync(organizationId, channelId);
+        await aliceOnA.SubscribeConversationAsync(organizationId, channelId);
+        await bobOnB.SubscribeConversationAsync(organizationId, channelId);
 
         await SendMessageAsync(NodeB, organizationId, channelId, Bob, "first");
         await SendMessageAsync(NodeB, organizationId, channelId, Bob, "second");
@@ -85,15 +85,15 @@ public sealed class LiveEventDeliveryTests(PostgresDatabase database, KeycloakRe
         var random = await CreateChannelAsync(NodeA, organizationId, Alice, "random");
         var bob = await ConnectAsync(NodeB, Bob);
         var alice = await ConnectAsync(NodeB, Alice);
-        await bob.SubscribeChannelAsync(organizationId, general);
-        await alice.SubscribeChannelAsync(organizationId, general);
-        await alice.SubscribeChannelAsync(organizationId, random);
+        await bob.SubscribeConversationAsync(organizationId, general);
+        await alice.SubscribeConversationAsync(organizationId, general);
+        await alice.SubscribeConversationAsync(organizationId, random);
 
         await SendMessageAsync(NodeA, organizationId, random, Alice, "in random");
         (await alice.NextMessageAsync()).Message.Text.Should().Be("in random");
         bob.HasUnreadMessage.Should().BeFalse("Bob never joined that channel");
 
-        await bob.UnsubscribeChannelAsync(organizationId, general);
+        await bob.UnsubscribeConversationAsync(organizationId, general);
         await SendMessageAsync(NodeA, organizationId, general, Alice, "in general");
         (await alice.NextMessageAsync()).Message.Text.Should().Be("in general");
         bob.HasUnreadMessage.Should().BeFalse("Bob left that channel");

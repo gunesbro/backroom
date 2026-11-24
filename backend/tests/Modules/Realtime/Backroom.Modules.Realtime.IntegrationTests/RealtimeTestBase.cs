@@ -9,6 +9,7 @@ using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Application.Persistence;
 using Backroom.Modules.Organization.Contracts;
 using Backroom.Modules.Permissions.Contracts;
+using Backroom.Modules.Realtime.Infrastructure.Gateway;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.Valkey;
@@ -102,10 +103,18 @@ public abstract class RealtimeTestBase(PostgresDatabase database, KeycloakRealm 
         return JsonNode.Parse(await response.Content.ReadAsStringAsync(CancellationToken))!["id"]!.GetValue<Guid>();
     }
 
+    /// <summary>Joins a public conversation; joining one the account is in succeeds.</summary>
+    internal async Task JoinAsync(CellNode node, Guid organizationId, Guid conversationId, string username)
+    {
+        using var response = await PostAsync(node, $"/api/v1/orgs/{organizationId}/conversations/{conversationId}/join", username, new { });
+        response.EnsureSuccessStatusCode();
+    }
+
     internal async Task<JsonNode> SendMessageAsync(CellNode node, Guid organizationId, Guid channelId, string username, string text)
     {
+        await JoinAsync(node, organizationId, channelId, username);
         using var response = await PostAsync(
-            node, $"/api/v1/orgs/{organizationId}/channels/{channelId}/messages", username, new { clientMessageId = Guid.NewGuid(), text });
+            node, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/messages", username, new { clientMessageId = Guid.NewGuid(), text });
         response.EnsureSuccessStatusCode();
         return JsonNode.Parse(await response.Content.ReadAsStringAsync(CancellationToken))!;
     }
@@ -141,6 +150,63 @@ public abstract class RealtimeTestBase(PostgresDatabase database, KeycloakRealm 
         }
     }
 
+    /// <summary>A private channel with these members (the first is its owner), inserted directly until private channels have their routes (Phase 2 step 7).</summary>
+    protected async Task<Guid> CreatePrivateConversationAsync(Guid organizationId, params string[] members)
+    {
+        var conversationId = Guid.CreateVersion7();
+        var owner = await AccountAsync(members[0]);
+        await ExecuteAsync(
+            "INSERT INTO messaging.conversations (id, org_id, kind, name, name_key, created_by, created_at, member_count) VALUES ($1, $2, 'private_channel', 'Secret', 'secret', $3, now(), $4)",
+            conversationId, organizationId, owner, members.Length);
+        foreach (var member in members)
+        {
+            var account = await AccountAsync(member);
+            await ExecuteAsync(
+                "INSERT INTO messaging.conversation_members (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by) VALUES ($1, $2, $3, $4, now(), 0, $5)",
+                organizationId, conversationId, account, account == owner ? "owner" : "member", owner);
+        }
+
+        return conversationId;
+    }
+
+    /// <summary>Ends the account's membership of the conversation, as a leave or a removal commits it.</summary>
+    protected async Task EndMembershipAsync(Guid organizationId, Guid conversationId, string username) =>
+        await ExecuteAsync(
+            "UPDATE messaging.conversation_members SET left_at = now() WHERE org_id = $1 AND conversation_id = $2 AND account_id = $3",
+            organizationId, conversationId, await AccountAsync(username));
+
+    /// <summary>The removal broadcast travels through Valkey to each node's listener; the groups are the only thing to observe, so poll them.</summary>
+    protected async Task WaitForSubscriptionsAsync(string username, int expected)
+    {
+        using var timeout = new CancellationTokenSource(HubClient.Deadline);
+        while (await SubscriptionCountAsync(NodeA, username) != expected || await SubscriptionCountAsync(NodeB, username) != expected)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token);
+        }
+    }
+
+    /// <summary>The groups the account's connections on <paramref name="node"/> are in.</summary>
+    internal async Task<int> SubscriptionCountAsync(CellNode node, string username)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        var account = await AccountAsync(username);
+        var total = 0;
+        foreach (var state in node.Services.GetRequiredService<ConnectionRegistry>().ConnectionsOf(account))
+        {
+            await state.Gate.WaitAsync(CancellationToken);
+            try
+            {
+                total += state.Count;
+            }
+            finally
+            {
+                state.Gate.Release();
+            }
+        }
+
+        return total;
+    }
+
     [SuppressMessage("Security", "CA2100", Justification = "The SQL comes from the tests; values are parameters.")]
     protected async Task ExecuteAsync(string sql, params object[] parameters)
     {
@@ -155,7 +221,7 @@ public abstract class RealtimeTestBase(PostgresDatabase database, KeycloakRealm 
         await command.ExecuteNonQueryAsync(CancellationToken);
     }
 
-    private async Task InOrganizationAsync(Guid organizationId, Func<IServiceProvider, Task> work)
+    protected async Task InOrganizationAsync(Guid organizationId, Func<IServiceProvider, Task> work)
     {
         await using var scope = NodeA.Services.CreateAsyncScope();
         scope.ServiceProvider.GetRequiredService<OrganizationContext>().Enter(organizationId);

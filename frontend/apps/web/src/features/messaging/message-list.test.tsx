@@ -79,6 +79,7 @@ function list(rows: readonly Row[]) {
         locale="en"
         onRetry={vi.fn()}
         onDiscard={vi.fn()}
+        onJoin={vi.fn()}
       />
     </LocaleProvider>
   );
@@ -241,5 +242,47 @@ describe('Message feed focus and the action bar', () => {
 
     expect(results.violations.map((violation) => `${violation.id}: ${violation.help}`)).toEqual([]);
     expect(within(screen.getByRole('feed')).getAllByRole('article')).toHaveLength(5);
+  });
+});
+
+describe('A send refused because the person has not joined', () => {
+  it('FailedSend_NotAMember_OffersJoinAndRetriesTheSameMessage', () => {
+    const onJoin = vi.fn();
+    const failed: Row = {
+      key: 'p-1',
+      pending: {
+        clientMessageId: 'client-1',
+        text: 'hello',
+        createdAt: '2026-11-24T10:00:00Z',
+        status: 'failed',
+        code: 'messaging.not_a_member',
+      },
+    };
+    render(
+      <LocaleProvider locale="en">
+        <MessageList
+          channelName="general"
+          rows={[failed]}
+          hasEarlier={false}
+          loadingEarlier={false}
+          onLoadEarlier={vi.fn()}
+          hasNewer={false}
+          loadingNewer={false}
+          onLoadNewer={vi.fn()}
+          authorName={() => 'Veli'}
+          ownAccountId={undefined}
+          ownName="Alice"
+          locale="en"
+          onRetry={vi.fn()}
+          onDiscard={vi.fn()}
+          onJoin={onJoin}
+        />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByText(/Join this channel to post in it\./)).toBeTruthy();
+    expect(screen.queryByText("Couldn't send.")).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }));
+    expect(onJoin).toHaveBeenCalledWith('client-1');
   });
 });

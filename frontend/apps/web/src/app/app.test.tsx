@@ -63,9 +63,9 @@ describe('App messaging', () => {
   it('Organization_WithACellTokenSource_CallsTheCellWithItsOwnToken', async () => {
     const authorizations: (string | null)[] = [];
     server.use(
-      http.get('https://a.example.test/api/v1/orgs/1/channels', ({ request }) => {
+      http.get('https://a.example.test/api/v1/orgs/1/conversations', ({ request }) => {
         authorizations.push(request.headers.get('Authorization'));
-        return HttpResponse.json({ channels: [], next: null });
+        return HttpResponse.json({ items: [], next: null });
       }),
     );
     const cellTokens = vi.fn(() => Promise.resolve('cell-a-token'));
@@ -93,9 +93,9 @@ describe('App workspace shell', () => {
   function renderShell(authClient = fakeAuthClient()) {
     const cellRequests: string[] = [];
     server.use(
-      http.get('https://a.example.test/api/v1/orgs/:org/channels', ({ request }) => {
+      http.get('https://a.example.test/api/v1/orgs/:org/conversations', ({ request }) => {
         cellRequests.push(request.url);
-        return HttpResponse.json({ channels: [], next: null });
+        return HttpResponse.json({ items: [], next: null });
       }),
       http.get('https://a.example.test/api/v1/orgs/:org/members', ({ request }) => {
         cellRequests.push(request.url);
@@ -245,8 +245,8 @@ describe('App workspace shell', () => {
 describe('App', () => {
   it('InvitePeople_FirstOpen_KeepsTheWorkspaceOnScreenAndReturnsFocusOnClose', async () => {
     server.use(
-      http.get('https://a.example.test/api/v1/orgs/:org/channels', () =>
-        HttpResponse.json({ channels: [], next: null }),
+      http.get('https://a.example.test/api/v1/orgs/:org/conversations', () =>
+        HttpResponse.json({ items: [], next: null }),
       ),
       http.get('https://a.example.test/api/v1/orgs/:org/members', () =>
         HttpResponse.json({ members: [], next: null }),
@@ -331,9 +331,9 @@ describe('App', () => {
   it('OpenOrganization_CallsItsCellWithTheCellsOwnToken', async () => {
     const authorizations: (string | null)[] = [];
     server.use(
-      http.get('https://a.example.test/api/v1/orgs/:org/channels', ({ request }) => {
+      http.get('https://a.example.test/api/v1/orgs/:org/conversations', ({ request }) => {
         authorizations.push(request.headers.get('Authorization'));
-        return HttpResponse.json({ channels: [], next: null });
+        return HttpResponse.json({ items: [], next: null });
       }),
       http.get('https://a.example.test/api/v1/orgs/:org/members', () =>
         HttpResponse.json({ members: [], next: null }),

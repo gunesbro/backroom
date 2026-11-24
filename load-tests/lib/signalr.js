@@ -1,7 +1,7 @@
 import { WebSocket } from 'k6/websockets';
 
 // A minimal SignalR client for the MessagePack protocol (the hub accepts nothing else, and only WebSockets). It
-// encodes the few invocations a client sends (handshake, SubscribeChannel, ping) and does not decode the live events:
+// encodes the few invocations a client sends (handshake, SubscribeConversation, ping) and does not decode the live events:
 // the sender writes its send time into the message text ("lt:<epoch ms>:"), and the client finds that stamp in the
 // frame bytes. This measures delivery through the whole path (live event, Valkey, SignalR) without a decoder.
 const RECORD_SEPARATOR = '\u001e';
@@ -78,9 +78,13 @@ export function completionsOf(buffer) {
   return found;
 }
 
-/** The send time in the first "lt:<ms>:" stamp of a binary frame, or null. */
-export function stampOf(buffer) {
+/**
+ * The send times of every "lt:<ms>:" stamp in a binary frame. The server may write several hub messages into one
+ * WebSocket frame when they are sent together (a burst after a slow commit), so a frame can carry more than one.
+ */
+export function stampsOf(buffer) {
   const bytes = new Uint8Array(buffer);
+  const stamps = [];
   for (let i = 0; i + 4 < bytes.length; i++) {
     if (bytes[i] === STAMP[0] && bytes[i + 1] === STAMP[1] && bytes[i + 2] === STAMP[2]) {
       let ms = 0;
@@ -89,10 +93,13 @@ export function stampOf(buffer) {
         ms = ms * 10 + (bytes[j] - 0x30);
         j++;
       }
-      if (j > i + 3 && bytes[j] === 0x3a) return ms;
+      if (j > i + 3 && bytes[j] === 0x3a) {
+        stamps.push(ms);
+        i = j;
+      }
     }
   }
-  return null;
+  return stamps;
 }
 
 /**
@@ -124,7 +131,7 @@ export function listen({ cellUrl, token, orgId, channelIds, holdMs, onReady, onV
         return;
       }
       pending = channelIds.length;
-      channelIds.forEach((id, i) => ws.send(invocation('SubscribeChannel', [orgId, id], String(i + 1))));
+      channelIds.forEach((id, i) => ws.send(invocation('SubscribeConversation', [orgId, id], String(i + 1))));
       pinger = setInterval(() => {
         if (ws.readyState === 1) ws.send(PING);
       }, 10_000);
@@ -143,8 +150,7 @@ export function listen({ cellUrl, token, orgId, channelIds, holdMs, onReady, onV
         if (--pending === 0 && !refused) onReady(Date.now() - started);
       }
     }
-    const sentAt = stampOf(event.data);
-    if (sentAt !== null) {
+    for (const sentAt of stampsOf(event.data)) {
       const elapsed = Date.now() - sentAt;
       if (elapsed >= 0 && elapsed < 60_000) onVisible(elapsed);
     }

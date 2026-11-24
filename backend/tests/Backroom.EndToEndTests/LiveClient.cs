@@ -57,8 +57,8 @@ internal sealed class LiveClient : IAsyncDisposable
     public Task SubscribeOrganizationAsync(Guid organizationId, CancellationToken cancellationToken) =>
         _connection.InvokeAsync("SubscribeOrganization", organizationId, cancellationToken);
 
-    public Task SubscribeChannelAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken) =>
-        _connection.InvokeAsync("SubscribeChannel", organizationId, channelId, cancellationToken);
+    public Task SubscribeConversationAsync(Guid organizationId, Guid conversationId, CancellationToken cancellationToken) =>
+        _connection.InvokeAsync("SubscribeConversation", organizationId, conversationId, cancellationToken);
 
     public Task<MessagePostedPayload> NextMessageAsync(CancellationToken cancellationToken) =>
         Eventually.WithinDeadlineAsync(_messages.Reader.ReadAsync(cancellationToken).AsTask(), "A MessagePosted event", cancellationToken);

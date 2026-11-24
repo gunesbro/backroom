@@ -8,10 +8,12 @@ export interface RealtimeClient {
   /** Connects (and keeps reconnecting) until `stop`. Calling it again has no effect. */
   start: () => void;
   stop: () => Promise<void>;
+  /** Joins the organization's group and the account's own group in it (per-person events such as read state). */
   subscribeOrganization: (orgId: string) => void;
   unsubscribeOrganization: (orgId: string) => void;
-  subscribeChannel: (orgId: string, channelId: string) => void;
-  unsubscribeChannel: (orgId: string, channelId: string) => void;
+  /** Any conversation the account may read (channel, private channel, DM, group DM); threads use the parent's group. */
+  subscribeConversation: (orgId: string, conversationId: string) => void;
+  unsubscribeConversation: (orgId: string, conversationId: string) => void;
   on: <K extends RealtimeEventName>(event: K, listener: RealtimeListener<K>) => () => void;
   /** Called on every status change; `reconnected` is true for a connect that follows a loss. */
   onStatus: (listener: (status: ConnectionStatus, reconnected: boolean) => void) => () => void;
@@ -58,6 +60,7 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     MessagePosted: new Set(),
     ChannelCreated: new Set(),
     SessionRevoked: new Set(),
+    MembershipChanged: new Set(),
   };
   const statusListeners = new Set<(status: ConnectionStatus, reconnected: boolean) => void>();
   // The groups to be in, as hub method plus arguments; replayed after every connect.
@@ -93,18 +96,33 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     return run.then(
       () => undefined,
       (error: unknown) => {
-        // Refused for every reason the same way (not a member, unknown or non-public channel): do not ask again.
-        // A refused organization takes its channels with it, or every reconnect would run into the refusal limit.
+        // Refused for every reason the same way (not a member, unknown conversation, or one it may not read): do not ask again.
+        // A refused organization takes its conversations with it, or every reconnect would run into the refusal limit.
         if (method.startsWith('Subscribe') && isHubError(error, 'realtime.not_found')) {
           wanted.delete(key);
           if (method === 'SubscribeOrganization') {
             for (const other of [...wanted.keys()]) {
-              if (other.startsWith(`channel:${args[0] ?? ''}/`)) wanted.delete(other);
+              if (other.startsWith(`conversation:${args[0] ?? ''}/`)) wanted.delete(other);
             }
           }
         }
       },
     );
+  };
+
+  // Removal from a conversation's group runs on every node after the commit, but an event already on its way can
+  // still arrive (docs/contracts/phase-2.md, removal): conversation events are delivered only for conversations this
+  // client still wants. A removal of this account (MembershipChanged) ends the want without asking the hub.
+  const accepts = (name: RealtimeEventName, payload: unknown): boolean => {
+    if (name === 'MessagePosted') {
+      const { orgId, channelId } = payload as RealtimeEvents['MessagePosted'];
+      return wanted.has(conversationKey(orgId, channelId));
+    }
+    if (name === 'MembershipChanged') {
+      const { orgId, conversationId, change } = payload as RealtimeEvents['MembershipChanged'];
+      if (change === 'removed') wanted.delete(conversationKey(orgId, conversationId));
+    }
+    return true;
   };
 
   const join = (key: string, method: string, args: string[]) => {
@@ -149,6 +167,7 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
             // The server closes the connection next; the session is over, so never reconnect.
             started = false;
           }
+          if (!accepts(name, payload)) return;
           for (const listener of [...listeners[name]] as ((payload: unknown) => void)[]) listener(payload);
         });
       }
@@ -213,11 +232,11 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     unsubscribeOrganization: (orgId) => {
       leave(`org:${orgId}`, 'UnsubscribeOrganization', [orgId]);
     },
-    subscribeChannel: (orgId, channelId) => {
-      join(`channel:${orgId}/${channelId}`, 'SubscribeChannel', [orgId, channelId]);
+    subscribeConversation: (orgId, conversationId) => {
+      join(conversationKey(orgId, conversationId), 'SubscribeConversation', [orgId, conversationId]);
     },
-    unsubscribeChannel: (orgId, channelId) => {
-      leave(`channel:${orgId}/${channelId}`, 'UnsubscribeChannel', [orgId, channelId]);
+    unsubscribeConversation: (orgId, conversationId) => {
+      leave(conversationKey(orgId, conversationId), 'UnsubscribeConversation', [orgId, conversationId]);
     },
     on: (event, listener) => {
       const set = listeners[event] as Set<typeof listener>;
@@ -234,6 +253,10 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     },
     status: () => status,
   };
+}
+
+function conversationKey(orgId: string, conversationId: string): string {
+  return `conversation:${orgId}/${conversationId}`;
 }
 
 function isHubError(error: unknown, code: string): boolean {

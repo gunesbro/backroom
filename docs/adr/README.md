@@ -15,6 +15,7 @@ Each record captures one significant decision: its context, the decision and its
 | [0009](0009-keycloak-features.md) | Keycloak: account settings in our app, unused features off | Accepted |
 | [0010](0010-maintenance-role-for-cross-organization-jobs.md) | A maintenance database role for cross-organization jobs | Accepted |
 | [0011](0011-message-sync-read-state-and-storage-encryption.md) | Message sync, read state and storage encryption | Accepted |
+| [0012](0012-durable-sends-and-the-wal-flush.md) | Durable sends: keep the synchronous commit and make the WAL flush a storage requirement | Accepted |
 
 ## Template
 

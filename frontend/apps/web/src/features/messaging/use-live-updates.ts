@@ -11,8 +11,8 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import type { ConnectionStatus, RealtimeClient } from '@backroom/realtime';
 import { useAuth } from '@/features/auth';
-import { applyChannelCreated, applyLiveMessage, catchUpChannel } from './live-cache';
-import { channelsKey } from './queries';
+import { applyLiveMessage, catchUpChannel, noteChannelCreated } from './live-cache';
+import { browseChannelsKey, conversationsKey } from './queries';
 import { RealtimeContext } from './realtime-context';
 import type { Cell, MessagingApi } from './api';
 
@@ -106,13 +106,13 @@ export function useLiveUpdates({
     const want = new Set(wanted === '' ? [] : wanted.split(','));
     for (const id of want) {
       if (!joined.current.has(id)) {
-        client.subscribeChannel(orgId, id);
+        client.subscribeConversation(orgId, id);
         joined.current.add(id);
       }
     }
     for (const id of [...joined.current]) {
       if (!want.has(id)) {
-        client.unsubscribeChannel(orgId, id);
+        client.unsubscribeConversation(orgId, id);
         joined.current.delete(id);
       }
     }
@@ -152,8 +152,10 @@ export function useLiveUpdates({
       running = false;
     };
     const catchUp = (refreshChannels: boolean) => {
-      if (refreshChannels)
-        void queryClient.invalidateQueries({ queryKey: channelsKey(latest.current.orgId) });
+      if (refreshChannels) {
+        void queryClient.invalidateQueries({ queryKey: conversationsKey(latest.current.orgId) });
+        void queryClient.invalidateQueries({ queryKey: browseChannelsKey(latest.current.orgId) });
+      }
       if (running) {
         rerun = true;
         controller?.abort();
@@ -176,8 +178,8 @@ export function useLiveUpdates({
           setActivity((previous) => (previous.has(channelId) ? previous : new Set(previous).add(channelId)));
         }
       }),
-      client.on('ChannelCreated', ({ orgId: eventOrg, channel }) => {
-        if (eventOrg === latest.current.orgId) applyChannelCreated(queryClient, eventOrg, channel);
+      client.on('ChannelCreated', ({ orgId: eventOrg }) => {
+        if (eventOrg === latest.current.orgId) noteChannelCreated(queryClient, eventOrg);
       }),
       client.on('SessionRevoked', () => {
         if (revoked) return;

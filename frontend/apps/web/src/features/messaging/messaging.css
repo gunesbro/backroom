@@ -728,6 +728,14 @@
   outline-offset: -2px;
 }
 
+.bm-browse__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
 /* Rich text: the editor and the rendered blocks share these classes. */
 .bm-rt {
   position: relative;

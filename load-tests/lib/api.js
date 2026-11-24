@@ -11,7 +11,7 @@ export function stampedText(length) {
 
 export function sendMessage(org, channelId, token, textLength) {
   const body = JSON.stringify({ clientMessageId: uuid(), text: stampedText(textLength) });
-  return http.post(`${base(org)}/channels/${channelId}/messages`, body, {
+  return http.post(`${base(org)}/conversations/${channelId}/messages`, body, {
     headers: authHeaders(token),
     tags: { kind: 'send' },
   });
@@ -22,7 +22,7 @@ export function historyPage(org, channelId, token, { before, after, limit }) {
   const query = [`limit=${limit}`];
   if (before !== undefined && before !== null) query.push(`before=${before}`);
   if (after !== undefined && after !== null) query.push(`after=${after}`);
-  return http.get(`${base(org)}/channels/${channelId}/messages?${query.join('&')}`, {
+  return http.get(`${base(org)}/conversations/${channelId}/messages?${query.join('&')}`, {
     headers: authHeaders(token),
     tags: { kind: 'history' },
   });
