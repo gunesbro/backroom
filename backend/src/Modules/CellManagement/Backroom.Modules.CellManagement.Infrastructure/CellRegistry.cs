@@ -68,23 +68,29 @@ internal sealed class CellRegistry(NpgsqlDataSource dataSource, TimeProvider tim
         WHERE registration_keys.used_at IS NULL AND registration_keys.cell_id = EXCLUDED.cell_id
         """;
 
-    // Counts use outbound_messages_pending_idx and outbound_messages_rejected_idx; one page of cells at most.
-    private const string ListSql = """
+    // Counts are capped (10001 means "more than 10000") and use outbound_messages_pending_idx and
+    // outbound_messages_rejected_idx. Two statements, so that the cursor is a primary-key range scan.
+    private const string ListColumns = """
         SELECT c.id, c.type, c.region, c.status, c.version, c.last_heartbeat_at,
-               (SELECT count(*)::int FROM cell_management.outbound_messages m
-                WHERE m.cell_id = c.id AND m.acked_at IS NULL AND m.rejected_code IS NULL),
-               (SELECT count(*)::int FROM cell_management.outbound_messages m
-                WHERE m.cell_id = c.id AND m.rejected_code IS NOT NULL)
+               (SELECT count(*)::int FROM (SELECT 1 FROM cell_management.outbound_messages m
+                WHERE m.cell_id = c.id AND m.acked_at IS NULL AND m.rejected_code IS NULL LIMIT 10001) p),
+               (SELECT count(*)::int FROM (SELECT 1 FROM cell_management.outbound_messages m
+                WHERE m.cell_id = c.id AND m.rejected_code IS NOT NULL LIMIT 10001) r)
         FROM cell_management.cells c
-        WHERE $1::text IS NULL OR c.id > $1
-        ORDER BY c.id
-        LIMIT $2
         """;
+
+    private const string ListFirstSql = ListColumns + "\nORDER BY c.id LIMIT $1";
+
+    private const string ListAfterSql = ListColumns + "\nWHERE c.id > $1 ORDER BY c.id LIMIT $2";
 
     public async Task<IReadOnlyList<CellRow>> ListCellsAsync(string? after, int limit, CancellationToken cancellationToken)
     {
-        await using var command = dataSource.CreateCommand(ListSql);
-        command.Parameters.Add(new NpgsqlParameter<string?> { TypedValue = after, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
+        await using var command = dataSource.CreateCommand(after is null ? ListFirstSql : ListAfterSql);
+        if (after is not null)
+        {
+            command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = after });
+        }
+
         command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = limit });
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var rows = new List<CellRow>();

@@ -63,6 +63,28 @@ public sealed class OpsCellListTests(PostgresDatabase database, KeycloakRealm ke
         using var response = await GetAsync(token: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        _logs.Messages.Should().ContainSingle(message => message.Contains("ops.cells.list", StringComparison.Ordinal))
+            .Which.Should().Contain("denied.unauthenticated").And.Contain("unknown");
+    }
+
+    [Fact]
+    public async Task ListCells_WithATokenForAnotherAudience_IsUnauthorizedAsync()
+    {
+        using var response = await GetAsync(Token("ops", true, true, audience: "cell-other"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ListCells_WithTheOpsRoleOnlyAsAClientRole_IsForbiddenAsync()
+    {
+        var accountId = Guid.CreateVersion7();
+
+        using var response = await GetAsync(Token("ops", true, true, accountId, clientRoleOnly: true));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        _logs.Messages.Should().ContainSingle(message => message.Contains("ops.cells.list", StringComparison.Ordinal))
+            .Which.Should().Contain("denied.forbidden").And.Contain(accountId.ToString());
     }
 
     [Theory]
@@ -74,7 +96,8 @@ public sealed class OpsCellListTests(PostgresDatabase database, KeycloakRealm ke
         using var response = await GetAsync(Token(client, opsRole, otp));
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        _logs.Messages.Should().NotContain(message => message.Contains("ops.cells.list", StringComparison.Ordinal));
+        _logs.Messages.Should().ContainSingle(message => message.Contains("ops.cells.list", StringComparison.Ordinal))
+            .Which.Should().Contain("denied.forbidden");
     }
 
     [Fact]
@@ -100,6 +123,7 @@ public sealed class OpsCellListTests(PostgresDatabase database, KeycloakRealm ke
         var cells = await ReadCellsAsync(response);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Headers.CacheControl!.NoStore.Should().BeTrue("operations data is never cached");
         var one = cells[connected];
         one.GetProperty("type").GetString().Should().Be("shared");
         one.GetProperty("region").GetString().Should().Be("eu-test");
@@ -125,18 +149,36 @@ public sealed class OpsCellListTests(PostgresDatabase database, KeycloakRealm ke
     }
 
     [Fact]
-    public async Task ListCells_WithALimit_PagesByCellIdAsync()
+    public async Task ListCells_WithALimit_PagesByCellIdAndTheLastPageHasNoNextAsync()
     {
-        var first = await AddCellAsync("page");
-        var second = await AddCellAsync("page");
-        var ids = new[] { first, second }.Order(StringComparer.Ordinal).ToArray();
+        // Ids that sort after every other test cell, so the pages hold exactly these two.
+        var first = await AddCellAsync("zzzy1");
+        var second = await AddCellAsync("zzzy2");
+        var token = Token("ops", true, true);
 
-        using var response = await GetAsync(Token("ops", true, true), $"?after={Uri.EscapeDataString(ids[0][..^1])}&limit=1");
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CancellationToken);
+        using var firstResponse = await GetAsync(token, "?after=zzzy&limit=1");
+        var firstPage = await firstResponse.Content.ReadFromJsonAsync<JsonElement>(CancellationToken);
+        using var secondResponse = await GetAsync(token, $"?after={Uri.EscapeDataString(firstPage.GetProperty("next").GetString()!)}&limit=1");
+        var secondPage = await secondResponse.Content.ReadFromJsonAsync<JsonElement>(CancellationToken);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        body.GetProperty("cells").GetArrayLength().Should().Be(1);
-        body.GetProperty("next").GetString().Should().Be(body.GetProperty("cells")[0].GetProperty("id").GetString());
+        firstPage.GetProperty("cells")[0].GetProperty("id").GetString().Should().Be(first);
+        firstPage.GetProperty("next").GetString().Should().Be(first);
+        secondPage.GetProperty("cells").GetArrayLength().Should().Be(1);
+        secondPage.GetProperty("cells")[0].GetProperty("id").GetString().Should().Be(second);
+        secondPage.GetProperty("next").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task ListCells_WithMoreThanTenThousandPendingMessages_CapsTheCountAsync()
+    {
+        var cell = await AddCellAsync("zzzcap");
+        await SqlAsync("UPDATE cell_management.cells SET status = 'registered' WHERE id = ANY($1)", new[] { cell });
+        await SqlAsync(
+            "INSERT INTO cell_management.outbound_messages (message_id, cell_id, type, payload, created_at, next_attempt_at) SELECT gen_random_uuid(), unnest($1::text[]), 'organization_provisioned', '\\x01', now(), now() FROM generate_series(1, 10005)",
+            new[] { cell });
+
+        using var response = await GetAsync(Token("ops", true, true), "?after=zzzca&limit=1");
+        (await ReadCellsAsync(response))[cell].GetProperty("pendingMessages").GetInt32().Should().Be(10_001);
     }
 
     [Fact]
@@ -155,7 +197,7 @@ public sealed class OpsCellListTests(PostgresDatabase database, KeycloakRealm ke
 
     private ICellRegistry Registry() => _controlPlane.Services.GetRequiredService<ICellRegistry>();
 
-    private string Token(string client, bool opsRole, bool otp, Guid? accountId = null)
+    private string Token(string client, bool opsRole, bool otp, Guid? accountId = null, string? audience = null, bool clientRoleOnly = false)
     {
         var now = DateTime.UtcNow;
         var claims = new Dictionary<string, object>(StringComparer.Ordinal)
@@ -164,13 +206,22 @@ public sealed class OpsCellListTests(PostgresDatabase database, KeycloakRealm ke
             [KeycloakClaims.SessionId] = "session-1",
             [KeycloakClaims.AuthorizedParty] = client,
             [KeycloakClaims.TokenType] = KeycloakClaims.AccessTokenType,
-            [KeycloakClaims.RealmAccess] = new Dictionary<string, object> { ["roles"] = opsRole ? new[] { "ops" } : new[] { "default-roles-backroom" } },
+            [KeycloakClaims.RealmAccess] = new Dictionary<string, object>
+            {
+                ["roles"] = opsRole && !clientRoleOnly ? new[] { "ops" } : new[] { "default-roles-backroom" },
+            },
             [KeycloakClaims.AuthenticationMethods] = otp ? new[] { "pwd", "otp" } : new[] { "pwd" },
         };
+        if (clientRoleOnly)
+        {
+            // The role exists only as a client role, which must not count as the realm role.
+            claims["resource_access"] = new Dictionary<string, object> { [client] = new Dictionary<string, object> { ["roles"] = new[] { "ops" } } };
+        }
+
         return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = keycloak.Url,
-            Audience = Audiences.ControlPlane,
+            Audience = audience ?? Audiences.ControlPlane,
             IssuedAt = now.AddMinutes(-1),
             NotBefore = now.AddMinutes(-1),
             Expires = now.AddMinutes(5),

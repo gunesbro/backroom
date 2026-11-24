@@ -47,6 +47,9 @@ public static class ControlPlaneUnderTest
         builder.AddCellManagement();
         builder.Services.AddCellManagementEndpoints();
 
+        // Directory provides the real counts in the control plane; the cell list needs some at startup.
+        builder.Services.AddSingleton<Backroom.Modules.CellManagement.Contracts.ICellOrganizationCounts, NoOrganizationCounts>();
+
         configureServices?.Invoke(builder.Services);
         var app = builder.Build();
         app.UseAuthentication();
@@ -85,4 +88,10 @@ public static class ControlPlaneUnderTest
             s_migrationLock.Release();
         }
     }
+}
+
+internal sealed class NoOrganizationCounts : Backroom.Modules.CellManagement.Contracts.ICellOrganizationCounts
+{
+    public Task<IReadOnlyDictionary<string, int>> CountByCellAsync(IReadOnlyCollection<string> cellIds, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<string, int>>(new Dictionary<string, int>());
 }

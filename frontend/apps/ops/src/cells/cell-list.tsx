@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { formatDateTime, type Locale } from '@backroom/i18n';
 import { Alert, Button, Heading, Spinner, Status } from '@backroom/ui';
 import { ApiError, type AccessTokenSource } from '@/shared/http';
-import { formatRelative, translator } from '@/shared/locale';
+import { formatCount, formatRelative, translator } from '@/shared/locale';
 import type { Cell } from './cell-api';
 import { messages, type MessageKey } from './messages';
 import { useCells } from './use-cells';
@@ -131,8 +131,8 @@ export function CellList({ getAccessToken, locale }: { getAccessToken: AccessTok
                     <Heartbeat cell={cell} locale={locale} t={t} />
                   </td>
                   <td className="ops-num">{cell.organizationCount}</td>
-                  <td className="ops-num">{cell.pendingMessages}</td>
-                  <td className="ops-num">{cell.rejectedMessages}</td>
+                  <td className="ops-num">{formatCount(cell.pendingMessages, locale)}</td>
+                  <td className="ops-num">{formatCount(cell.rejectedMessages, locale)}</td>
                 </tr>
               ))}
             </tbody>

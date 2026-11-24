@@ -123,6 +123,16 @@ describe('Cell list', () => {
     expect(within(rowOf('eu-3')).getByText('Never')).toBeInTheDocument();
   });
 
+  it('shows a capped message count as 10,000+', async () => {
+    respondWith([{ ...cellOne, pendingMessages: 10_001, rejectedMessages: 12_345 }]);
+
+    render(<App auth={fakeAuth()} locale="en" />);
+
+    await screen.findByRole('table');
+    const cells = within(rowOf('eu-1')).getAllByRole('cell');
+    expect(cells.slice(-2).map((cell) => cell.textContent)).toEqual(['10,000+', '10,000+']);
+  });
+
   it('shows Turkish texts and a Turkish absolute time', async () => {
     respondWith([cellOne]);
 

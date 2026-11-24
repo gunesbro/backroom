@@ -19,3 +19,12 @@ export function formatRelative(then: Date, now: Date, locale: Locale): string {
   if (abs < 86_400) return format.format(Math.round(seconds / 3600), 'hour');
   return format.format(Math.round(seconds / 86_400), 'day');
 }
+
+/** The control plane counts messages up to this value and reports one more when there are more. */
+export const MESSAGE_COUNT_CAP = 10_000;
+
+/** A message count in the person's language; a capped one reads "10,000+". */
+export function formatCount(value: number, locale: Locale): string {
+  const format = new Intl.NumberFormat(FORMAT_TAGS[locale]);
+  return value > MESSAGE_COUNT_CAP ? `${format.format(MESSAGE_COUNT_CAP)}+` : format.format(value);
+}
