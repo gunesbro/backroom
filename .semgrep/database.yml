@@ -13,3 +13,26 @@ rules:
         - /backend/src/
       exclude:
         - /backend/src/BuildingBlocks/Backroom.BuildingBlocks.Infrastructure/Persistence/
+
+  - id: row-level-security-lifted-outside-data-migration-helper
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Only OrganizationDataSql may lift FORCE ROW LEVEL SECURITY, inside a migration's transaction and with the
+      restoring FORCE after the statements (docs/adr/0005, data migrations). Use the helper.
+    pattern-regex: (?i)\bno\s+force\s+row\s+level\s+security\b
+    paths:
+      include:
+        - /backend/src/
+      exclude:
+        - /backend/src/BuildingBlocks/Backroom.BuildingBlocks.Infrastructure/Persistence/OrganizationDataMigrationExtensions.cs
+
+  - id: row-level-security-lifted-in-sql-file
+    languages: [generic]
+    severity: ERROR
+    message: >-
+      SQL files must not lift FORCE ROW LEVEL SECURITY; data migrations use OrganizationDataSql (docs/adr/0005).
+    pattern-regex: (?i)\bno\s+force\s+row\s+level\s+security\b
+    paths:
+      include:
+        - "*.sql"

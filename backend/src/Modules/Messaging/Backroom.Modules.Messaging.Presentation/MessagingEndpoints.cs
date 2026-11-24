@@ -2,10 +2,13 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Backroom.BuildingBlocks.Application.Accounts;
 using Backroom.BuildingBlocks.Presentation.Errors;
 using Backroom.BuildingBlocks.Presentation.Organizations;
 using Backroom.Modules.Messaging.Application.Channels;
+using Backroom.Modules.Messaging.Application.Conversations;
 using Backroom.Modules.Messaging.Application.Messages;
 using Backroom.Modules.Permissions.Contracts;
 
@@ -13,6 +16,12 @@ namespace Backroom.Modules.Messaging.Presentation;
 
 public static class MessagingEndpoints
 {
+    /// <summary>
+    /// The Phase 2 conversations flag (docs/contracts/phase-2.md, decision 27): the conversation routes (join and leave
+    /// so far). Off by default; the AppHost turns it on in development.
+    /// </summary>
+    public const string ConversationsFlag = "Features:Conversations";
+
     /// <summary>A channel name: 80 characters, a few bytes each, plus the JSON around it.</summary>
     private const long MaxCreateChannelRequestBytes = 4 * 1024;
 
@@ -35,6 +44,12 @@ public static class MessagingEndpoints
             .InOrganization()
             .WithMetadata(new RequestSizeLimitAttribute(MaxSendMessageRequestBytes));
 
+        if (endpoints.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>(ConversationsFlag))
+        {
+            endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/join", JoinAsync).InOrganization();
+            endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/leave", LeaveAsync).InOrganization();
+        }
+
         return endpoints;
     }
 
@@ -50,9 +65,10 @@ public static class MessagingEndpoints
         return result.ToHttpResult(channel => TypedResults.Created((string?)null, ToResponse(channel)));
     }
 
-    private static async Task<IResult> ListMessagesAsync(Guid channelId, long? before, long? after, int? limit, MessageService messages, CancellationToken cancellationToken)
+    private static async Task<IResult> ListMessagesAsync(
+        Guid channelId, long? before, long? after, int? limit, ICurrentAccount account, MessageService messages, CancellationToken cancellationToken)
     {
-        var result = await messages.ListAsync(channelId, before, after, limit, cancellationToken);
+        var result = await messages.ListAsync(account.AccountId, channelId, before, after, limit, cancellationToken);
         return result.ToHttpResult(page => TypedResults.Ok(new MessagesResponse([.. page.Messages.Select(ToResponse)], page.Next)));
     }
 
@@ -63,6 +79,12 @@ public static class MessagingEndpoints
             ? TypedResults.Created((string?)null, ToResponse(sent.Message))
             : TypedResults.Ok(ToResponse(sent.Message)));
     }
+
+    private static async Task<IResult> JoinAsync(Guid conversationId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
+        (await memberships.JoinAsync(account.AccountId, conversationId, cancellationToken)).ToHttpResult();
+
+    private static async Task<IResult> LeaveAsync(Guid conversationId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
+        (await memberships.LeaveAsync(account.AccountId, conversationId, cancellationToken)).ToHttpResult();
 
     private static ChannelResponse ToResponse(ChannelEntry channel) => new(channel.Id, channel.Name, channel.CreatedAt);
 

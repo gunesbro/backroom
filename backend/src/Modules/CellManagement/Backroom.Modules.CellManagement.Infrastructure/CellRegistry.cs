@@ -151,14 +151,22 @@ internal sealed class CellRegistry(NpgsqlDataSource dataSource, TimeProvider tim
         return await command.ExecuteScalarAsync(cancellationToken) is true;
     }
 
-    public async Task RecordHeartbeatAsync(string cellId, string version, CancellationToken cancellationToken)
+    public async Task<long?> RecordHeartbeatAsync(string cellId, string version, CancellationToken cancellationToken)
     {
+        // The same statement returns the epoch, so the link learns of an increment without another query.
         await using var command = dataSource.CreateCommand(
-            "UPDATE cell_management.cells SET last_heartbeat_at = $2, version = $3 WHERE id = $1 AND status = 'registered'");
+            "UPDATE cell_management.cells SET last_heartbeat_at = $2, version = $3 WHERE id = $1 AND status = 'registered' RETURNING epoch");
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cellId });
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = timeProvider.GetUtcNow() });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = version });
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await command.ExecuteScalarAsync(cancellationToken) as long?;
+    }
+
+    public async Task<long?> IncrementEpochAsync(string cellId, CancellationToken cancellationToken)
+    {
+        await using var command = dataSource.CreateCommand("UPDATE cell_management.cells SET epoch = epoch + 1 WHERE id = $1 RETURNING epoch");
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cellId });
+        return await command.ExecuteScalarAsync(cancellationToken) as long?;
     }
 
     public async Task<int> CountSharedCellsAsync(CancellationToken cancellationToken)

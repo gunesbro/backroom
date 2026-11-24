@@ -27,7 +27,7 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
         body.Select(property => property.Key).Should().BeEquivalentTo(["id", "name", "createdAt"]);
         body["name"]!.GetValue<string>().Should().Be("General", "the name is trimmed");
         var row = await QuerySingleAsync(
-            "SELECT name, org_id, created_by, archived_at IS NULL FROM messaging.channels WHERE id = $1", body["id"]!.GetValue<Guid>());
+            "SELECT name, org_id, created_by, archived_at IS NULL FROM messaging.conversations WHERE id = $1", body["id"]!.GetValue<Guid>());
         row.Should().Equal("General", organizationId, await AccountAsync(Alice), true);
     }
 
@@ -37,7 +37,7 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
         var organizationId = await ProvisionForAsync(Alice);
         long? storedWhenPublished = null;
         Publisher.OnPublish = async () =>
-            storedWhenPublished = (long)(await QuerySingleAsync("SELECT count(*) FROM messaging.channels WHERE org_id = $1", organizationId))[0]!;
+            storedWhenPublished = (long)(await QuerySingleAsync("SELECT count(*) FROM messaging.conversations WHERE org_id = $1", organizationId))[0]!;
 
         using var response = await PostAsync($"/api/v1/orgs/{organizationId}/channels", Alice, new { name = "General" });
 
@@ -58,7 +58,7 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
         using var response = await PostAsync($"/api/v1/orgs/{organizationId}/channels", Alice, new { name = "General" });
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.channels WHERE org_id = $1", organizationId))[0].Should().Be(1L);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.conversations WHERE org_id = $1", organizationId))[0].Should().Be(1L);
         Logs.Entries.Should().Contain(entry => entry.Contains("Publishing the live event ChannelCreated failed", StringComparison.Ordinal));
     }
 
@@ -80,7 +80,7 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.channel_name_invalid");
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.channels WHERE org_id = $1", organizationId))[0].Should().Be(0L);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.conversations WHERE org_id = $1", organizationId))[0].Should().Be(0L);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
         first.StatusCode.Should().Be(HttpStatusCode.Created);
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await ReadJsonAsync(second))["code"]!.GetValue<string>().Should().Be("messaging.channel_name_taken");
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.channels WHERE org_id = $1", organizationId))[0].Should().Be(1L);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.conversations WHERE org_id = $1", organizationId))[0].Should().Be(1L);
         Publisher.Channels.Should().ContainSingle("the refused request announces nothing");
     }
 
@@ -195,7 +195,7 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
         var first = await CreateChannelAsync(organizationId, Alice, "Alpha");
         var second = await CreateChannelAsync(organizationId, Alice, "Beta");
         var archived = await CreateChannelAsync(organizationId, Alice, "Gamma");
-        await ExecuteAsync("UPDATE messaging.channels SET archived_at = now() WHERE id = $1", archived);
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", archived);
 
         var body = await ReadJsonAsync(await GetAsync($"/api/v1/orgs/{organizationId}/channels", Alice));
 

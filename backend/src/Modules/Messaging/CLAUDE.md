@@ -1,6 +1,6 @@
 # Messaging (cell)
 
-Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (flow 4).
+Contracts: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (flow 4), [docs/contracts/phase-2.md](../../../../docs/contracts/phase-2.md) (Phase 2, in progress).
 
 ## Responsibility (Phase 1 core)
 
@@ -11,14 +11,15 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (fl
 
 ## Owns
 
-- Schema `messaging`: `channels`, `messages`, `outbox`.
+- Schema `messaging`: `conversations` (Phase 1 `channels`), `conversation_members`, `messages`, `outbox`.
 
 ## Publishes / depends on
 
 - Integration event `messaging.message-posted.v1` (no text).
 - Live events through `ILiveEventPublisher` (Realtime.Contracts) after commit: `MessagePosted` to the channel group, `ChannelCreated` to the organization group.
 - `IPermissionChecker` (Permissions.Contracts); membership comes from the organization context.
-- Publishes `IChannelReadAccess` (Contracts): whether an account may read a channel (Phase 1: an open public channel), used by Realtime's subscription check.
+- Integration events `messaging.conversation-created.v1`, `messaging.conversation-member-added.v1`, `messaging.conversation-member-removed.v1` (ids and the kind only).
+- Publishes `IConversationReadAccess` (Contracts): whether an account may read a conversation (an open public channel, or an open conversation it is a member of), used by Realtime's subscription check.
 
 ## Rules
 
@@ -32,5 +33,13 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (fl
 - Channels: `POST`/`GET /api/v1/orgs/{orgId}/channels`. Create needs `channels.create-public`; both need membership (outsiders get `404 organization.not_found`). Names follow Directory's `DisplayText` rule (mirrored in `DisplayText.cs`: NFC, trimmed, at most 80 user-perceived characters, a visible character, no control or format characters except ZWNJ/ZWJ between characters); unique among open channels per organization by `name_key` (`ToLowerInvariant`, never the current culture), else `409 messaging.channel_name_taken`. The list is keyset by id, oldest first, page size 1 to 100 (default 50).
 - Messages: `POST .../channels/{channelId}/messages { clientMessageId, text }` and `GET ...?before=&after=&limit=`. `text` is stored raw and validated (see the storage model), `blocks` derived. In the send transaction `UPDATE channels SET last_seq = last_seq + 1 RETURNING last_seq` takes the channel row lock until commit, so `messages.seq` order is commit order (ids are assigned before the commit, so id order is not); sends to one channel are serialized to their commit, and `seq` has gaps. Sending is idempotent through the unique index `(channel_id, author_account_id, client_message_id)` (the repeat check relies on READ COMMITTED, checked by a test): a repeat answers `200` with the stored message and publishes nothing. The message row and the `messaging.message-posted.v1` outbox row (ids only) are written in one transaction; `messages (org_id, channel_id)` is a composite foreign key to `channels (org_id, id)`. Reads page by `seq`: `after` gives oldest first (catch-up, resume with `after={lastSeenSeq}`), otherwise newest first (`before` pages back); `next` is the cursor for the following page or `null`; `before` with `after` is refused (`messaging.page_invalid`); an unknown, archived or other organization channel is `404 messaging.channel_not_found`.
 - Live events: `AfterCommitLiveEvents` holds `MessagePosted` and `ChannelCreated` until the unit of work has committed; the endpoint filter `PublishLiveEventsAfterCommit` (added before `InOrganization()` so it wraps the commit) flushes them only for a successful response. A publish failure is logged with ids and the exception type, never the payload, and never fails the request.
-- Live events are delivered by Realtime's `ValkeyLiveEventPublisher` (step 6.2); `IChannelReadAccess` (Contracts) answers Realtime's channel subscription check.
+- Live events are delivered by Realtime's `ValkeyLiveEventPublisher` (step 6.2); `IConversationReadAccess` (Contracts) answers Realtime's channel subscription check.
 - Not yet: archiving channels (the column and the filters exist); the feature flag (the endpoints are live behind authentication and membership).
+
+## Phase 2 step 1: conversations schema (human review)
+
+- Migration `20261124150000_RenameChannelsToConversations`: `channels` → `conversations` in place (ids, names, `last_seq` and the RLS policy kept; `last_seq` and its assignment are unchanged, ADR 0012 owns them), with `kind` (`public_channel`, `private_channel`, `dm`, `group_dm`, `thread`; existing rows `public_channel`), `member_count`, and a name only for channel kinds; `messages.channel_id` → `conversation_id`. Name uniqueness (`conversations_public_name_key_idx`) covers open public channels only, so no answer reveals a private channel's name. New `conversation_members (org_id, conversation_id, account_id, role owner|member, joined_at, joined_seq, added_by, left_at)` under RLS, primary key `(conversation_id, account_id)` and partial index `(org_id, account_id, conversation_id) WHERE left_at IS NULL`; Phase 1 creators and authors were backfilled as members at the channel's `last_seq`. The data steps run through `OrganizationDataSql` (docs/adr/0005, data migrations), because the migrator owns the tables but would see no rows under forced row-level security. `Down()` restores Phase 1 and refuses while any non-public conversation exists.
+- Read access (`ConversationAccess.CanRead`, `IConversationReadAccess`): an open public channel for every active member, otherwise an open membership; threads and archived conversations are refused until their steps (thread: parent's access; archive: read-only but readable). Phase 1's channel routes use the same check, so a private conversation is `404` for non-members, Owner and Admin included; posting to a public channel still needs no join on those routes.
+- Creating a channel makes the creator a member (`joined_seq` 0) and writes `conversation-created` and `conversation-member-added` to the outbox.
+- Behind `Features:Conversations` (on in the AppHost): `POST /api/v1/orgs/{orgId}/conversations/{id}/join` (open public channels; a member gets `204` without a change; archived `409 messaging.conversation_archived`) and `/leave` (any member; DMs `409 messaging.cannot_leave_dm`; not a member `204`); unreadable, unknown and foreign conversations are the same `404 messaging.conversation_not_found`. At most 10,000 open memberships per person (`409 messaging.membership_limit`; concurrent joins can exceed it by their number). Membership and `member_count` change in one statement; lock order membership row, then conversation row.
+- Left for later steps: live `MembershipChanged` and the removal broadcast (step 2), the conversation routes for messages and the removal of the Phase 1 routes (step 3), ownership transfer when a private channel's owner leaves (step 7), `change_seq` / `last_message_seq` (step 5).

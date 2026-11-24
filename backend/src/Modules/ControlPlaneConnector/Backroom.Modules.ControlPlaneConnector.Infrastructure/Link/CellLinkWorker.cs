@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Backroom.ControlPlane.Contracts.V1;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Health;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Registration;
 
@@ -32,6 +33,7 @@ internal sealed partial class CellLinkWorker(
     UpstreamOutcomes outcomes,
     DownstreamReceiver downstream,
     FullSyncRunner fullSync,
+    CellEpochStore epochs,
     CellLinkStatus status,
     [FromKeyedServices(LinkLease.DataSourceKey)] NpgsqlDataSource leaseDataSource,
     IHttpClientFactory httpClientFactory,
@@ -43,6 +45,9 @@ internal sealed partial class CellLinkWorker(
 
     internal static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan WelcomeTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long clearing the epoch confirmation may take (it runs even while the worker stops).</summary>
+    internal static readonly TimeSpan UnconfirmTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>The FullSync interval when Welcome names none the cell accepts (the contract: every 15 minutes).</summary>
     internal static readonly TimeSpan DefaultFullSyncInterval = TimeSpan.FromMinutes(15);
@@ -213,7 +218,15 @@ internal sealed partial class CellLinkWorker(
         try
         {
             await writer.WriteAsync(new ConnectRequest { Hello = new Hello { CellId = settings.CellId, Version = s_version } }, stream.Token);
-            var fullSyncInterval = await ReadWelcomeAsync(call.ResponseStream, stream.Token);
+            var (fullSyncInterval, epoch) = await ReadWelcomeAsync(call.ResponseStream, stream.Token);
+
+            // The epoch the control plane holds: storing it confirmed lets the app role accept writes (docs/adr/0011,
+            // "Cell epoch"). A Welcome without one (an older control plane) confirms nothing.
+            if (epoch is { } current)
+            {
+                await ConfirmEpochAsync(settings.CellId, current, stream.Token);
+            }
+
             _connected = true;
             status.Clear();
             welcomedAt = timeProvider.GetUtcNow();
@@ -237,10 +250,20 @@ internal sealed partial class CellLinkWorker(
                 await Task.WhenAll(heartbeats, sends, reads, fullSyncs).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
 
+            // The epoch changed on the control plane: fence writes until the next Welcome brings the new one.
+            var epochChanged = Array.Exists(
+                [heartbeats, sends, reads, fullSyncs], loop => loop.Exception?.InnerException is RpcException ended && IsEpochChanged(ended));
+            if (epochChanged)
+            {
+                LogEpochChanged(logger, settings.CellId);
+                await UnconfirmEpochAsync(settings.CellId);
+            }
+
             // The control plane ended the stream (seen by the reader, whichever loop failed first): only the
             // oldest unanswered message is charged an attempt, so a message that breaks the stream every time
             // expires without taking the messages behind it along. The cell's own failures charge nothing.
-            if (reads.Exception?.InnerException is RpcException { StatusCode: not StatusCode.Cancelled }
+            // An epoch change is not the message's fault and charges nothing either.
+            if (reads.Exception?.InnerException is RpcException { StatusCode: not StatusCode.Cancelled } && !epochChanged
                 && !stoppingToken.IsCancellationRequested && !inFlight.IsEmpty)
             {
                 await ChargeOldestAsync(inFlight, stoppingToken);
@@ -279,7 +302,45 @@ internal sealed partial class CellLinkWorker(
         }
     }
 
-    private async Task<TimeSpan> ReadWelcomeAsync(IAsyncStreamReader<ConnectResponse> responses, CancellationToken cancellationToken)
+    /// <summary>Whether the control plane ended the stream because the cell's epoch changed (cell_link.proto, <c>Welcome.epoch</c>).</summary>
+    internal static bool IsEpochChanged(RpcException exception) =>
+        exception.StatusCode == StatusCode.FailedPrecondition && string.Equals(exception.Status.Detail, EpochChangedDetail, StringComparison.Ordinal);
+
+    internal const string EpochChangedDetail = "cell.epoch_changed";
+
+    // A failure is logged as an error: the app role keeps accepting writes on the old epoch until the next Welcome.
+    [SuppressMessage("Design", "CA1031", Justification = "The stream error is rethrown by the caller; the next Welcome stores the new epoch anyway.")]
+    // Its own short timeout instead of the stopping token: a shutdown must not leave the fence open.
+    internal async Task UnconfirmEpochAsync(string cellId)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(UnconfirmTimeout);
+            await epochs.UnconfirmAsync(cellId, timeout.Token);
+        }
+        catch (Exception exception)
+        {
+            LogUnconfirmFailed(logger, cellId, exception.GetType().Name);
+        }
+    }
+
+    // A confirmation interrupted (the stream ended, for example because the epoch changed again meanwhile) may or may
+    // not have committed: clear it, so the cell never stays confirmed on an epoch it did not finish learning. The next
+    // Welcome confirms the current one.
+    internal async Task ConfirmEpochAsync(string cellId, long epoch, CancellationToken streamToken)
+    {
+        try
+        {
+            await epochs.ConfirmAsync(cellId, epoch, streamToken);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            await UnconfirmEpochAsync(cellId);
+            throw;
+        }
+    }
+
+    private async Task<(TimeSpan FullSyncInterval, long? Epoch)> ReadWelcomeAsync(IAsyncStreamReader<ConnectResponse> responses, CancellationToken cancellationToken)
     {
         using var deadline = new CancellationTokenSource(WelcomeTimeout, timeProvider);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
@@ -289,9 +350,15 @@ internal sealed partial class CellLinkWorker(
         }
 
         // The control plane says how often to repair drift; a value outside one minute to one day falls back to 15 minutes.
-        var seconds = responses.Current.Welcome.FullSyncIntervalSeconds;
-        return seconds is >= 60 and <= 86_400 ? TimeSpan.FromSeconds(seconds) : DefaultFullSyncInterval;
+        var welcome = responses.Current.Welcome;
+        var seconds = welcome.FullSyncIntervalSeconds;
+        var interval = seconds is >= 60 and <= 86_400 ? TimeSpan.FromSeconds(seconds) : DefaultFullSyncInterval;
+        return (interval, EpochOf(welcome));
     }
+
+    /// <summary>The epoch <paramref name="welcome"/> carries, or <see langword="null"/> for none (0, an older control plane) or one out of range.</summary>
+    internal static long? EpochOf(Welcome welcome) =>
+        welcome.Epoch is >= 1 and <= long.MaxValue ? (long)welcome.Epoch : null;
 
     // The first FullSync runs at once, the next ones at the interval. A failed run is logged and tried again at the next
     // interval; it never ends the stream, because SessionRevoked messages are the main path and FullSync only repairs.
@@ -438,6 +505,12 @@ internal sealed partial class CellLinkWorker(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Cell {CellId} connected its link to the control plane.")]
     private static partial void LogConnected(ILogger logger, string cellId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Security: the control plane changed the epoch of cell {CellId}; writes are fenced until the link reconnects.")]
+    private static partial void LogEpochChanged(ILogger logger, string cellId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Security: fencing the writes of cell {CellId} after an epoch change failed with {ExceptionType}; they stay accepted until the next Welcome.")]
+    private static partial void LogUnconfirmFailed(ILogger logger, string cellId, string exceptionType);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "FullSync failed with {ExceptionType}; trying again at the next interval.")]
     private static partial void LogFullSyncFailed(ILogger logger, string exceptionType);

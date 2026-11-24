@@ -87,9 +87,14 @@ internal sealed partial class CellLinkEndpoint(
         using var session = sessions.Open(cellId, expiresAt, context.CancellationToken);
         try
         {
-            await registry.RecordHeartbeatAsync(cellId, version, session.Ended);
+            // The cell learns its epoch here; the same statement records the heartbeat. A cell that stopped being
+            // registered since the check above is refused like an unregistered one.
+            var epoch = await registry.RecordHeartbeatAsync(cellId, version, session.Ended)
+                ?? throw new RpcException(new Status(StatusCode.PermissionDenied, "The cell is not registered."));
             using var writer = new ResponseWriter(responseStream, timeProvider);
-            await writer.WriteAsync(new ConnectResponse { Welcome = new Welcome { FullSyncIntervalSeconds = FullSyncIntervalSeconds } }, session.Ended);
+            await writer.WriteAsync(
+                new ConnectResponse { Welcome = new Welcome { FullSyncIntervalSeconds = FullSyncIntervalSeconds, Epoch = (ulong)epoch } },
+                session.Ended);
             LogConnected(logger, cellId);
 
             // Sending due messages and reading the cell's answers run side by side; when one ends, both stop.
@@ -98,7 +103,7 @@ internal sealed partial class CellLinkEndpoint(
             var streamId = Guid.CreateVersion7();
             var inFlight = new ConcurrentDictionary<Guid, DateTimeOffset>();
             var sending = SendDueAsync(cellId, streamId, writer, inFlight, loops.Token);
-            var reading = ReadAsync(requestStream, writer, cellId, version, inFlight, loops.Token);
+            var reading = ReadAsync(requestStream, writer, cellId, version, epoch, inFlight, loops.Token);
             Task first;
             try
             {
@@ -111,6 +116,11 @@ internal sealed partial class CellLinkEndpoint(
             }
 
             await first;
+        }
+        catch (OperationCanceledException) when (session.IsEpochChanged)
+        {
+            LogEpochChanged(logger, cellId);
+            throw EpochChanged();
         }
         catch (OperationCanceledException) when (session.IsSuperseded)
         {
@@ -172,6 +182,7 @@ internal sealed partial class CellLinkEndpoint(
         ResponseWriter writer,
         string cellId,
         string version,
+        long epoch,
         ConcurrentDictionary<Guid, DateTimeOffset> inFlight,
         CancellationToken cancellationToken)
     {
@@ -190,7 +201,21 @@ internal sealed partial class CellLinkEndpoint(
                     if (since >= HeartbeatWriteInterval
                         || (since >= MinimumWriteGap && !string.Equals(reported, version, StringComparison.Ordinal)))
                     {
-                        await registry.RecordHeartbeatAsync(cellId, reported, cancellationToken);
+                        // An epoch incremented on another control-plane instance is noticed here (at most every 20 s
+                        // to 30 s), so the cell fences its writes and reconnects to learn it.
+                        var current = await registry.RecordHeartbeatAsync(cellId, reported, cancellationToken);
+                        if (current is null)
+                        {
+                            LogRejected(logger, cellId, "cell no longer registered");
+                            throw new RpcException(new Status(StatusCode.PermissionDenied, "The cell is not registered."));
+                        }
+
+                        if (current != epoch)
+                        {
+                            LogEpochChanged(logger, cellId);
+                            throw EpochChanged();
+                        }
+
                         (version, lastWrite) = (reported, now);
                     }
 
@@ -326,6 +351,11 @@ internal sealed partial class CellLinkEndpoint(
         throw new RpcException(new Status(StatusCode.InvalidArgument, "The first message must be Hello."));
     }
 
+    /// <summary>The status that ends a stream whose cell epoch changed (cell_link.proto, <c>Welcome.epoch</c>).</summary>
+    internal const string EpochChangedDetail = "cell.epoch_changed";
+
+    private static RpcException EpochChanged() => new(new Status(StatusCode.FailedPrecondition, EpochChangedDetail));
+
     private static string CheckVersion(string version) =>
         VersionPattern().IsMatch(version)
             ? version
@@ -342,6 +372,9 @@ internal sealed partial class CellLinkEndpoint(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Security: link of cell {CellId} rejected: {Reason}.")]
     private static partial void LogRejected(ILogger logger, string cellId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Security: the epoch of cell {CellId} changed; its link was ended so it learns the new epoch.")]
+    private static partial void LogEpochChanged(ILogger logger, string cellId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The link of cell {CellId} was replaced by a newer stream.")]
     private static partial void LogSuperseded(ILogger logger, string cellId);
