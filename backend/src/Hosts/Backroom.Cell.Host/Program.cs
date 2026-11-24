@@ -1,6 +1,7 @@
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.Cell.Host;
+using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
 using Backroom.ServiceDefaults;
 
@@ -39,6 +40,7 @@ app.MapDefaultEndpoints();
 if (role == CellRole.App)
 {
     app.MapOrganizationEndpoints();
+    app.MapMessagingEndpoints();
 }
 
 CellHostLog.Starting(app.Logger, role);

@@ -4,9 +4,11 @@ using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure;
 using Backroom.Modules.Email.Infrastructure;
 using Backroom.Modules.Email.Infrastructure.Sending;
+using Backroom.Modules.Messaging.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure.Invitations;
 using Backroom.Modules.Permissions.Infrastructure;
+using Backroom.Modules.Realtime.Infrastructure;
 
 namespace Backroom.Cell.Host;
 
@@ -19,6 +21,7 @@ internal static class CellModules
         // The connector's link tables are migrated in every role, though only the worker uses them.
         return services
             .AddOrganizationDatabase()
+            .AddMessagingDatabase()
             .AddPermissionsDatabase()
             .AddEmailDatabase()
             .AddControlPlaneConnectorDatabase();
@@ -29,6 +32,9 @@ internal static class CellModules
         builder.Services.AddCellDatabases();
         builder.Services.AddPermissions();
         builder.Services.AddOrganization();
+        // Live events: the placeholder publisher until the Valkey and SignalR gateway arrives (step 6.2).
+        builder.Services.AddRealtime();
+        builder.Services.AddMessaging();
         // Every role needs the invitation keys: the app issues codes, the worker will build the links.
         builder.Services.AddOrganizationInvitations().BindConfiguration(InvitationKeyOptions.SectionName);
         if (role == CellRole.Worker)

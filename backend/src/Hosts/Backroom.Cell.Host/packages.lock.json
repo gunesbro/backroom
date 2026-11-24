@@ -248,6 +248,35 @@
           "MailKit": "[5.0.0, )"
         }
       },
+      "backroom.modules.messaging.application": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Application": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.messaging.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Domain": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.messaging.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Application": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.messaging.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Application": "[1.0.0, )",
+          "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
+        }
+      },
       "backroom.modules.organization.application": {
         "type": "Project",
         "dependencies": {
@@ -287,6 +316,15 @@
         "dependencies": {
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.realtime.contracts": {
+        "type": "Project"
+      },
+      "backroom.modules.realtime.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )"
         }
       },
       "backroom.servicedefaults": {
