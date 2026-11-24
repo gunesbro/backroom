@@ -85,4 +85,4 @@ Pass k6 variables with `-e NAME=value` or the shell environment. Defaults are si
 
 - CI runs no k6 job: it would need the k6 binary (a third-party setup action to pin and review) and a new required-check path in the workflows. Add `k6 inspect` to CI together with the first real load environment.
 - Search, presence, notifications and files do not exist in Phase 1.
-- Neither scenario has been run at full size yet; the 5,000-user profile is a plan for proper hardware.
+- Neither scenario has been run at full size yet; the 5,000-user profile is a plan for proper hardware. Laptop runs are recorded in `results/` (first run: [2026-11-24-laptop.md](results/2026-11-24-laptop.md), k6 v2.4.0).
