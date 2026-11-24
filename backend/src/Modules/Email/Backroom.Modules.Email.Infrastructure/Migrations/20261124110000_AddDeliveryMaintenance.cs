@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Backroom.BuildingBlocks.Infrastructure.Maintenance;
+using Backroom.BuildingBlocks.Infrastructure.Persistence;
 
 namespace Backroom.Modules.Email.Infrastructure.Migrations;
 
@@ -47,7 +48,9 @@ internal sealed class AddDeliveryMaintenance : Migration
         migrationBuilder.RevokeMaintenanceGrants(EmailDbContext.Schema, "deliveries");
         migrationBuilder.Sql("""
             DROP INDEX email.deliveries_pending_idx;
-            UPDATE email.deliveries SET status = 'pending' WHERE status = 'unknown';
+            """);
+        migrationBuilder.OrganizationDataSql(EmailDbContext.Schema, ["deliveries"], "UPDATE email.deliveries SET status = 'pending' WHERE status = 'unknown';");
+        migrationBuilder.Sql("""
             ALTER TABLE email.deliveries DROP CONSTRAINT deliveries_status_check;
             ALTER TABLE email.deliveries ADD CONSTRAINT deliveries_status_check CHECK (status IN ('pending', 'sent', 'failed'));
             """);
