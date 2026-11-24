@@ -13,6 +13,7 @@ import { messages } from './messages';
 import { NewMessageAnnouncer } from './new-message-announcer';
 import { usePendingMessages } from './pending-messages';
 import { channelsKey, membersKey, oldestFirst, useChannelMessages } from './queries';
+import { useLiveUpdates } from './use-live-updates';
 import './messaging.css';
 
 export type WorkspaceOrganization = { id: string; name: string; cell: Cell };
@@ -47,6 +48,24 @@ function OrganizationWorkspace({
   const [creating, setCreating] = useState(false);
   const selected = chosen ?? channels.channels[0];
   const pending = usePendingMessages(api, orgId);
+  const { user } = useAuth();
+  const channelIds = useMemo(() => channels.channels.map((channel) => channel.id), [channels.channels]);
+  const live = useLiveUpdates({
+    cell: organization.cell,
+    api,
+    orgId,
+    channelIds,
+    selectedId: selected?.id,
+    ownAccountId: user.accountId,
+  });
+  const { clearActivity } = live;
+  const select = useCallback(
+    (channel: Channel) => {
+      clearActivity(channel.id);
+      setChosen(channel);
+    },
+    [clearActivity],
+  );
 
   return (
     <div className="bm-workspace">
@@ -54,11 +73,13 @@ function OrganizationWorkspace({
         organizationName={organization.name}
         state={channels}
         selectedId={selected?.id}
-        onSelect={setChosen}
+        onSelect={select}
         onAdd={() => {
           setCreating(true);
         }}
         onSwitch={onSwitch}
+        activity={live.activity}
+        connection={live.status}
       />
       <section className="bm-main">
         {selected ? (

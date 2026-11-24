@@ -36,7 +36,10 @@ type Key =
   | 'composerHint'
   | 'announceMessage'
   | 'you'
-  | 'member';
+  | 'member'
+  | 'newActivity'
+  | 'connecting'
+  | 'reconnecting';
 
 export const messages: Messages<Key> = {
   en: {
@@ -74,6 +77,9 @@ export const messages: Messages<Key> = {
     announceMessage: '{name}: {text}.',
     you: 'You',
     member: 'Member',
+    newActivity: 'new messages',
+    connecting: 'Connecting…',
+    reconnecting: 'Connection lost. Reconnecting…',
   },
   tr: {
     channels: 'Kanallar',
@@ -110,5 +116,8 @@ export const messages: Messages<Key> = {
     announceMessage: '{name}: {text}.',
     you: 'Sen',
     member: 'Üye',
+    newActivity: 'yeni mesajlar',
+    connecting: 'Bağlanılıyor…',
+    reconnecting: 'Bağlantı koptu. Yeniden bağlanılıyor…',
   },
 };

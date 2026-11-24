@@ -21,7 +21,9 @@ import { hasPendingInvitation, InvitePage, saveInvitationCode } from '@/features
 import { isLivekitSpikeEnabled, LIVEKIT_SPIKE_HASH, LivekitSpike } from '@/features/livekit-spike';
 import {
   createMessagingApi,
+  createRealtimeFactory,
   MessagingApiContext,
+  RealtimeContext,
   type CellTokenSource,
   type MessagingApiFactory,
 } from '@/features/messaging';
@@ -157,6 +159,11 @@ function SignedIn({
     [messagingEnabled, cellTokens],
   );
 
+  const realtime = useMemo(
+    () => (messagingEnabled && cellTokens ? createRealtimeFactory(cellTokens) : null),
+    [messagingEnabled, cellTokens],
+  );
+
   const queryClient = useQueryClient();
   // An invitation link, a pasted invitation or an acceptance being waited for comes first.
   const [inviting, setInviting] = useState(hasPendingInvitation);
@@ -184,7 +191,9 @@ function SignedIn({
   return (
     <OrganizationsApiContext.Provider value={api}>
       <MessagingApiContext.Provider value={messagingApi}>
-        <OrganizationsGate onJoin={join} />
+        <RealtimeContext.Provider value={realtime}>
+          <OrganizationsGate onJoin={join} />
+        </RealtimeContext.Provider>
       </MessagingApiContext.Provider>
     </OrganizationsApiContext.Provider>
   );
