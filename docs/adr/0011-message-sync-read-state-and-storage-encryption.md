@@ -1,6 +1,6 @@
 # 0011. Message sync, read state and storage encryption
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
 
 ## Context

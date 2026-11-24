@@ -14,7 +14,7 @@ Each record captures one significant decision: its context, the decision and its
 | [0008](0008-email-safety-outside-production.md) | Email never leaves non-production environments | Accepted |
 | [0009](0009-keycloak-features.md) | Keycloak: account settings in our app, unused features off | Accepted |
 | [0010](0010-maintenance-role-for-cross-organization-jobs.md) | A maintenance database role for cross-organization jobs | Accepted |
-| [0011](0011-message-sync-read-state-and-storage-encryption.md) | Message sync, read state and storage encryption | Proposed |
+| [0011](0011-message-sync-read-state-and-storage-encryption.md) | Message sync, read state and storage encryption | Accepted |
 
 ## Template
 
