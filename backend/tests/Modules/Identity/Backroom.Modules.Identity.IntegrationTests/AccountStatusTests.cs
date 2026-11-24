@@ -155,13 +155,17 @@ public sealed class AccountStatusTests(PostgresDatabase database) : IAsyncLifeti
     {
         { "dnd in the past", """{"dndUntil":"2031-03-01T08:59:00Z","timeZone":"Europe/Istanbul"}""" },
         { "dnd beyond 7 days", """{"dndUntil":"2031-03-08T09:00:01Z","timeZone":"Europe/Istanbul"}""" },
-        { "no time zone", """{"dndUntil":"2031-03-01T10:00:00Z"}""" },
-        { "a Windows zone id", """{"timeZone":"Turkey Standard Time"}""" },
-        { "an unknown zone", """{"timeZone":"Mars/Olympus"}""" },
         { "an empty custom status", """{"customStatus":{},"timeZone":"Europe/Istanbul"}""" },
         { "two emoji", """{"customStatus":{"emoji":"🎯🎯"},"timeZone":"Europe/Istanbul"}""" },
         { "a letter as emoji", """{"customStatus":{"emoji":"a"},"timeZone":"Europe/Istanbul"}""" },
         { "a digit as emoji", """{"customStatus":{"emoji":"1"},"timeZone":"Europe/Istanbul"}""" },
+        { "a lone regional indicator", """{"customStatus":{"emoji":"🇹"},"timeZone":"Europe/Istanbul"}""" },
+        { "the copyright sign", """{"customStatus":{"emoji":"©"},"timeZone":"Europe/Istanbul"}""" },
+        { "box drawing", """{"customStatus":{"emoji":"─"},"timeZone":"Europe/Istanbul"}""" },
+        { "braille", """{"customStatus":{"emoji":"⠿"},"timeZone":"Europe/Istanbul"}""" },
+        { "a Hangul filler", """{"customStatus":{"text":"ㅤ"},"timeZone":"Europe/Istanbul"}""" },
+        { "a Hangul choseong filler in text", """{"customStatus":{"text":"aᅟb"},"timeZone":"Europe/Istanbul"}""" },
+        { "a halfwidth filler in text", """{"customStatus":{"text":"aﾠb"},"timeZone":"Europe/Istanbul"}""" },
         { "101 characters", $$"""{"customStatus":{"text":"{{new string('ı', 101)}}"},"timeZone":"Europe/Istanbul"}""" },
         { "a line break", """{"customStatus":{"text":"one\ntwo"},"timeZone":"Europe/Istanbul"}""" },
         { "a bidi override", """{"customStatus":{"text":"abc‮def"},"timeZone":"Europe/Istanbul"}""" },
@@ -183,6 +187,18 @@ public sealed class AccountStatusTests(PostgresDatabase database) : IAsyncLifeti
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest, rule);
         (await JsonAsync(response))["code"]!.GetValue<string>().Should().Be("identity.status_invalid");
         (await _data.AccountStatusMessagesAsync(cell)).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("""{"dndUntil":"2031-03-01T10:00:00Z"}""")]
+    [InlineData("""{"timeZone":"Turkey Standard Time"}""")]
+    [InlineData("""{"timeZone":"Mars/Olympus"}""")]
+    public async Task SetStatus_WithAMissingOrUnknownZone_Answers400TimeZoneInvalidAsync(string json)
+    {
+        using var response = await SendAsync(HttpMethod.Put, Guid.NewGuid(), new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await JsonAsync(response))["code"]!.GetValue<string>().Should().Be("identity.time_zone_invalid", "a client falls back to UTC on this code only");
     }
 
     public static TheoryData<string> ValidEmoji => new()

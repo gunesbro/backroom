@@ -115,6 +115,67 @@ public sealed class AccountStatusLinkTests(PostgresDatabase database, KeycloakRe
         }
     }
 
+    [Fact]
+    public async Task StatusSync_OfACellWithManyMembers_GoesPageByPageAndSkipsStatusesWithNothingInForceAsync()
+    {
+        await using var cell = await RegisterCellAsync();
+        var organization = Guid.CreateVersion7();
+        await ExecuteAsync(
+            "INSERT INTO directory.organizations (id, name, region, cell_id, status, created_by, created_at) VALUES ($1, 'Acme', 'eu', $2, 'active', $1, now())",
+            organization, cell.CellId);
+        await ExecuteAsync(
+            """
+            WITH accounts AS (SELECT gen_random_uuid() AS id, n FROM generate_series(1, 2600) AS n),
+                 members AS (INSERT INTO directory.memberships (account_id, org_id, status, version, updated_at)
+                             SELECT id, $1, 'active', 1, now() FROM accounts RETURNING account_id)
+            INSERT INTO identity.account_status (account_id, dnd_until, custom_text, time_zone, version, updated_at)
+            SELECT a.id,
+                   CASE WHEN a.n > 2500 THEN now() - interval '1 hour' END,
+                   CASE WHEN a.n <= 2500 THEN 'Bulk' END,
+                   CASE WHEN a.n <= 2500 THEN 'UTC' END,
+                   1, now()
+            FROM accounts a
+            """,
+            organization);
+
+        await StartAsync(cell);
+        try
+        {
+            await WaitUntilAsync(() => Task.FromResult(cell.Statuses.Applied.Count >= 2500));
+            await Task.Delay(500, CancellationToken);
+            cell.Statuses.Applied.Should().HaveCount(2500, "three pages of 1,000 members; the 100 with only an expired do not disturb are skipped");
+            cell.Statuses.Applied.Should().OnlyContain(status => status.CustomText == "Bulk");
+        }
+        finally
+        {
+            await cell.Link.StopAsync(CancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task FullSync_WhenStatusesCannotBeApplied_StillAppliesTheRevocationsAsync()
+    {
+        await using var cell = await RegisterCellAsync();
+        var account = Guid.NewGuid();
+        await AddMembershipAsync(account, cell.CellId);
+        await AddStatusAsync(account, "Broken", version: 1);
+        await ExecuteAsync(
+            "INSERT INTO identity.revoked_sessions (session_id, account_id, revoked_at, keep_until) VALUES ('sid-x', $1, now(), now() + interval '4 minutes')",
+            account);
+        cell.Statuses.Fail = true;
+
+        await StartAsync(cell);
+        try
+        {
+            await WaitUntilAsync(() => Task.FromResult(cell.Revocations.Applied.Any(revocation => revocation.AccountId == account)));
+            cell.Statuses.Applied.Should().BeEmpty();
+        }
+        finally
+        {
+            await cell.Link.StopAsync(CancellationToken);
+        }
+    }
+
     private Task<TestCell> RegisterCellAsync() => TestCell.RegisterAsync(_controlPlane, keycloak, CancellationToken, database);
 
     private static async Task StartAsync(TestCell cell)

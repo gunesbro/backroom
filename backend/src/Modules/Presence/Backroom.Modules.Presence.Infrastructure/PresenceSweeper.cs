@@ -1,6 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Backroom.BuildingBlocks.Application.Organizations;
+using Backroom.BuildingBlocks.Application.Persistence;
 
 namespace Backroom.Modules.Presence.Infrastructure;
 
@@ -14,6 +17,7 @@ internal sealed partial class PresenceSweeper(
     PresenceTracker tracker,
     PresenceStore store,
     PresencePublisher publisher,
+    IServiceScopeFactory scopes,
     IOptions<PresenceOptions> options,
     TimeProvider timeProvider,
     ILogger<PresenceSweeper> logger) : BackgroundService
@@ -54,10 +58,7 @@ internal sealed partial class PresenceSweeper(
                 await store.RefreshAsync(tracker.Snapshot(), (now + settings.OfflineAfter).ToUnixTimeMilliseconds(), cancellationToken);
             }
 
-            foreach (var (organizationId, accountIds) in tracker.TakeWatchesToRenew(now - settings.WatchLifetime / 2, now))
-            {
-                await store.WatchAsync(organizationId, accountIds, now, cancellationToken);
-            }
+            await RenewWatchesAsync(tracker.TakeWatchesToRenew(now - settings.WatchLifetime / 2, now), now, cancellationToken);
 
             var due = await store.ClaimDueAsync(now, settings.SweepBatchSize, cancellationToken);
             foreach (var accountId in due)
@@ -70,6 +71,37 @@ internal sealed partial class PresenceSweeper(
             PresenceTelemetry.Failures.Add(1, new KeyValuePair<string, object?>("operation", "sweep"));
             LogSweepFailed(logger, exception.GetType().Name);
         }
+    }
+
+    // A watch is renewed only for people who are still active members of its organization (one statement per organization and
+    // batch of 1,000), so a removal whose broadcast was lost cannot bring the person back; the others are dropped from the watch sets.
+    private async Task RenewWatchesAsync(List<(Guid OrganizationId, Guid[] AccountIds)> watches, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        foreach (var organization in watches.GroupBy(watch => watch.OrganizationId))
+        {
+            var wanted = organization.SelectMany(watch => watch.AccountIds).Distinct().ToList();
+            foreach (var batch in wanted.Chunk(IOrganizationMembershipCheck.MaxAccountsPerSelection))
+            {
+                var members = (await ActiveMembersAsync(organization.Key, batch, cancellationToken)).ToHashSet();
+                foreach (var gone in batch.Where(accountId => !members.Contains(accountId)))
+                {
+                    tracker.Unwatch(organization.Key, gone);
+                }
+
+                await store.WatchAsync(organization.Key, members, now, cancellationToken);
+            }
+        }
+    }
+
+    private async Task<IReadOnlyList<Guid>> ActiveMembersAsync(Guid organizationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        scope.ServiceProvider.GetRequiredService<OrganizationContext>().Enter(organizationId);
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        await unitOfWork.BeginAsync(cancellationToken);
+        var members = await scope.ServiceProvider.GetRequiredService<IOrganizationMembershipCheck>().SelectActiveMembersAsync(accountIds, cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+        return members;
     }
 
     [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "A presence sweep failed ({ExceptionType}); the next one tries again.")]

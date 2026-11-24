@@ -15,4 +15,10 @@ internal sealed class NoPresenceTracker : IPresenceTracker
 
     public Task WatchAsync(string connectionId, Guid organizationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+
+    public bool IsTracking(string connectionId) => false;
+
+    public void Unwatch(Guid organizationId, Guid accountId)
+    {
+    }
 }

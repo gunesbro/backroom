@@ -32,6 +32,7 @@ builder.Services.AddDatabaseSession().BindConfiguration(DatabaseOptions.SectionN
 builder.AddCellModules(role);
 // UseRateLimiter needs its services in every role; only the app role maps endpoints that use them.
 builder.Services.AddOrganizationEndpoints();
+builder.Services.AddPresenceEndpoints();
 
 // Role-specific services (endpoints for "app", consumers and jobs for "worker") are registered by the modules.
 

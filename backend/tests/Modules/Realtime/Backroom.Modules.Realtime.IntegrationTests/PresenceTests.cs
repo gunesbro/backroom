@@ -228,6 +228,22 @@ public sealed class PresenceTests(PostgresDatabase database, KeycloakRealm keycl
     }
 
     [Fact]
+    public async Task GetPresence_MoreThan120TimesAMinute_Answers429Async()
+    {
+        var (organizationId, alice, _) = await OrganizationOfTwoAsync();
+        for (var i = 0; i < 120; i++)
+        {
+            using var accepted = await GetAsync(NodeB, $"/api/v1/orgs/{organizationId}/presence?accountIds={alice}", Bob);
+            accepted.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using var response = await GetAsync(NodeB, $"/api/v1/orgs/{organizationId}/presence?accountIds={alice}", Bob);
+
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        JsonNode.Parse(await response.Content.ReadAsStringAsync(CancellationToken))!["code"]!.GetValue<string>().Should().Be("presence.rate_limited");
+    }
+
+    [Fact]
     public async Task WatchPresence_InAnOrganizationOfWhichTheCallerIsNotAMember_IsRefusedAsNotFoundAsync()
     {
         var (_, alice, _) = await OrganizationOfTwoAsync();
@@ -266,6 +282,54 @@ public sealed class PresenceTests(PostgresDatabase database, KeycloakRealm keycl
         await SweepAsync(NodeB);
 
         bob.HasUnreadPresence.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RenewingAWatch_AfterThePersonLeftTheOrganization_DoesNotBringThemBackAsync()
+    {
+        var (organizationId, alice, _) = await OrganizationOfTwoAsync();
+        var bob = await WatchingAsync(NodeB, Bob, organizationId, alice);
+        await ConnectAsync(NodeA, Alice);
+        (await bob.NextPresenceAsync()).State.Should().Be("online");
+
+        // The worker forgot the watch, but the broadcast to the app nodes was lost: Bob's node still holds the watch set.
+        await ExecuteAsync("UPDATE organization.members SET status = 'removed' WHERE org_id = $1 AND account_id = $2", organizationId, alice);
+        await NodeA.Services.GetRequiredService<IPresenceMemberships>().ForgetAsync(organizationId, alice, CancellationToken);
+        _time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+        await SweepAsync(NodeB);
+        await SweepAsync(NodeA);
+
+        await NodeA.Services.GetRequiredService<IAccountStatusSink>().ApplyAsync(
+            new AccountStatusCopy(alice, null, null, "Still here?", null, "UTC", 1), CancellationToken);
+        _time.Advance(TimeSpan.FromSeconds(5));
+        await SweepAsync(NodeA);
+        await SweepAsync(NodeB);
+
+        bob.HasUnreadPresence.Should().BeFalse("the renewal checks the membership again and drops the person from the watch");
+    }
+
+    [Fact]
+    public async Task MemberRemoval_DropsThePersonsPresenceGroupFromWatchersOnEveryNodeAsync()
+    {
+        var (organizationId, alice, _) = await OrganizationOfTwoAsync();
+        await WatchingAsync(NodeB, Bob, organizationId, alice);
+        await WatchingAsync(NodeA, Bob, organizationId, alice);
+        var group = $"cell:{CellId}:org:{organizationId:D}:presence:{alice:D}";
+
+        await ExecuteAsync("UPDATE organization.members SET status = 'removed' WHERE org_id = $1 AND account_id = $2", organizationId, alice);
+        var consumer = new Backroom.Modules.Realtime.Infrastructure.Gateway.MemberRemovedConsumer(
+            NodeA.Services.GetRequiredService<Backroom.Modules.Realtime.Infrastructure.Gateway.GroupRemovalBroadcast>(),
+            NodeA.Services.GetRequiredService<IPresenceMemberships>());
+        await consumer.HandleAsync(
+            new Backroom.Modules.Organization.Contracts.MemberRemoved(Guid.CreateVersion7(), organizationId, DateTimeOffset.UtcNow, alice, 2), CancellationToken);
+
+        foreach (var node in new[] { NodeA, NodeB })
+        {
+            var registry = node.Services.GetRequiredService<Backroom.Modules.Realtime.Infrastructure.Gateway.ConnectionRegistry>();
+            await WaitUntilAsync(() => Task.FromResult(registry.All().All(state => !state.Watched.Contains(group))));
+            node.Services.GetRequiredService<PresenceTracker>().TakeWatchesToRenew(DateTimeOffset.MaxValue, _time.GetUtcNow())
+                .Should().OnlyContain(watch => !watch.AccountIds.Contains(alice), "the node stops renewing the watch");
+        }
     }
 
     [Fact]

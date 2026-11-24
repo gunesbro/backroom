@@ -121,6 +121,22 @@ internal sealed partial class PresenceTracker(
         }
     }
 
+    public bool IsTracking(string connectionId) => Find(connectionId) is not null;
+
+    public void Unwatch(Guid organizationId, Guid accountId)
+    {
+        lock (_lock)
+        {
+            foreach (var tracked in _connections.Values)
+            {
+                if (tracked.WatchOrganization == organizationId && Array.IndexOf(tracked.Watched, accountId) >= 0)
+                {
+                    tracked.Watched = [.. tracked.Watched.Where(id => id != accountId)];
+                }
+            }
+        }
+    }
+
     /// <summary>A snapshot of this node's connections for the sweeper's renewal.</summary>
     internal List<(Guid AccountId, string ConnectionId, long LastActiveAtMs, bool Idle)> Snapshot()
     {

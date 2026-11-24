@@ -4,40 +4,26 @@ using Backroom.Modules.Identity.Contracts;
 namespace Backroom.Modules.Identity.Application;
 
 /// <summary>
-/// <c>FullSync</c>'s account statuses: the cell's members are read from Directory in pages by account id and their statuses looked up
-/// by primary key, so the work grows with the cell's members, not with every account of the control plane. At most
-/// <see cref="IAccountStatusQueries.MaxPerCell"/> statuses and <see cref="MaxPages"/> pages of members. The stored values are sent as
-/// they are (expired ones too, so the cell's copy has the newest version); the cell leaves expired parts out when it reads them.
+/// The link's status sync: one page of the cell's members from Directory (keyset by account id) and their statuses by primary key, so
+/// the work grows with the cell's members, not with every account of the control plane, and each answer is bounded on its own. Expired
+/// parts are left out and empty statuses skipped; the version stays, so the cell still keeps only newer copies.
 /// </summary>
-internal sealed class AccountStatusQueries(IAccountStatusStore store, IDirectoryQueries directory) : IAccountStatusQueries
+internal sealed class AccountStatusQueries(IAccountStatusStore store, IDirectoryQueries directory, TimeProvider timeProvider) : IAccountStatusQueries
 {
-    public const int PageSize = IDirectoryQueries.MaxAccountsPerPage;
-
-    public const int MaxPages = 10;
-
-    public async Task<IReadOnlyList<AccountStatus>> ListForCellAsync(string cellId, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<AccountStatus> Statuses, Guid? Next)> ListPageForCellAsync(string cellId, Guid after, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(cellId);
-        var result = new List<AccountStatus>();
-        var after = Guid.Empty;
-
-        for (var page = 0; page < MaxPages && result.Count < IAccountStatusQueries.MaxPerCell; page++)
+        var accounts = await directory.ListAccountsOfCellAsync(cellId, after, IAccountStatusQueries.PageSize, cancellationToken);
+        if (accounts.Count == 0)
         {
-            var accounts = await directory.ListAccountsOfCellAsync(cellId, after, PageSize, cancellationToken);
-            if (accounts.Count == 0)
-            {
-                break;
-            }
-
-            result.AddRange(await store.ListAsync(accounts, cancellationToken));
-            if (accounts.Count < PageSize)
-            {
-                break;
-            }
-
-            after = accounts[^1];
+            return ([], null);
         }
 
-        return result.Count <= IAccountStatusQueries.MaxPerCell ? result : result[..IAccountStatusQueries.MaxPerCell];
+        var now = timeProvider.GetUtcNow();
+        var statuses = (await store.ListAsync(accounts, cancellationToken))
+            .Select(status => AccountStatusRules.Effective(status, now))
+            .Where(status => status.DndUntil is not null || status.CustomEmoji is not null || status.CustomText is not null || status.TimeZone is not null)
+            .ToList();
+        return (statuses, accounts.Count < IAccountStatusQueries.PageSize ? null : accounts[^1]);
     }
 }

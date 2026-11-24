@@ -17,6 +17,7 @@ internal sealed partial class GroupRemovalListener(
     ValkeyConnection valkey,
     ConnectionRegistry registry,
     IHubContext<RealtimeHub> hub,
+    Backroom.Modules.Presence.Contracts.IPresenceTracker presence,
     IOptions<RealtimeOptions> options,
     TimeProvider timeProvider,
     ILogger<GroupRemovalListener> logger) : BackgroundService
@@ -103,6 +104,41 @@ internal sealed partial class GroupRemovalListener(
                 return;
             }
 #pragma warning disable CA1031 // One connection failing must not keep the others in the groups.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogRemovalFailed(logger, exception.GetType().Name, organizationId, accountId);
+            }
+        }
+
+        // Watchers in that organization stop watching the person: their presence group goes on every node (this message reaches
+        // all), and their nodes stop renewing the watch. A member removal is rare, so a pass over this node's connections is fine.
+        presence.Unwatch(organizationId, accountId);
+        var watched = GroupNames.Presence(options.Value.CellId, organizationId, accountId);
+        foreach (var state in registry.All())
+        {
+            try
+            {
+                await state.Gate.WaitAsync(cancellationToken);
+                try
+                {
+                    if (state.Watched.Contains(watched))
+                    {
+                        state.Remove(watched);
+                        RealtimeTelemetry.Subscriptions.Add(-1);
+                        await hub.Groups.RemoveFromGroupAsync(state.ConnectionId, watched, cancellationToken);
+                    }
+                }
+                finally
+                {
+                    state.Gate.Release();
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+#pragma warning disable CA1031 // One connection failing must not keep the others in the group.
             catch (Exception exception)
 #pragma warning restore CA1031
             {

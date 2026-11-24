@@ -23,8 +23,11 @@ internal sealed partial class FullSyncRunner(ISessionRevocation revocation, IAcc
     /// <summary>More revocations than this in one answer are ignored (the control plane sends at most 10,000).</summary>
     internal const int MaxRevocations = 10_000;
 
-    /// <summary>More account statuses than this in one answer are ignored (the control plane sends at most 10,000).</summary>
-    internal const int MaxStatuses = 10_000;
+    /// <summary>Status pages one run reads at most (1,000 members each), so a run is bounded however large the cell is.</summary>
+    internal const int MaxStatusPages = 100;
+
+    /// <summary>More statuses than this in one page are ignored (the control plane sends at most 1,000).</summary>
+    internal const int MaxStatusesPerPage = 1000;
 
     /// <summary>Calls <c>FullSync</c> with the stream's token and applies the revocations; returns how many were applied.</summary>
     [SuppressMessage("Design", "CA1031", Justification = "One malformed or failing revocation must not keep the others from being applied.")]
@@ -58,31 +61,66 @@ internal sealed partial class FullSyncRunner(ISessionRevocation revocation, IAcc
             }
         }
 
-        var statusesApplied = 0;
-        var statusesFailed = 0;
-        foreach (var message in response.AccountStatuses.Take(MaxStatuses))
-        {
-            try
-            {
-                if (!AccountStatusChangedHandler.TryRead(message, out var status))
-                {
-                    statusesFailed++;
-                    continue;
-                }
+        LogDone(logger, applied, failed);
 
-                // Only a newer version is stored; the same one just keeps the copy from expiring.
-                await statuses.ApplyAsync(status, cancellationToken);
-                statusesApplied++;
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-            {
-                statusesFailed++;
-                LogStatusFailed(logger, exception.GetType().Name);
-            }
+        // Statuses come after the revocations, through their own paged call: whatever happens to them, the revocations are applied.
+        try
+        {
+            await SyncStatusesAsync(client, token, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogStatusSyncFailed(logger, exception.GetType().Name);
         }
 
-        LogDone(logger, applied, failed);
-        LogStatusesDone(logger, statusesApplied, statusesFailed);
+        return applied;
+    }
+
+    /// <summary>Reads the account statuses of the cell's members page by page and hands them to Presence (only newer versions are kept).</summary>
+    [SuppressMessage("Design", "CA1031", Justification = "One malformed or failing status must not keep the others from being applied.")]
+    internal async Task<int> SyncStatusesAsync(CellLinkService.CellLinkServiceClient client, string token, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        var applied = 0;
+        var failed = 0;
+        var after = string.Empty;
+        for (var page = 0; page < MaxStatusPages; page++)
+        {
+            using var deadline = new CancellationTokenSource(CallTimeout, timeProvider);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+            var response = await client.SyncAccountStatusesAsync(
+                new AccountStatusSyncRequest { AfterAccountId = after }, new Metadata { { "Authorization", "Bearer " + token } }, cancellationToken: linked.Token);
+            foreach (var message in response.Statuses.Take(MaxStatusesPerPage))
+            {
+                try
+                {
+                    if (!AccountStatusChangedHandler.TryRead(message, out var status))
+                    {
+                        failed++;
+                        continue;
+                    }
+
+                    // Only a newer version is stored; the same one just keeps the copy from expiring.
+                    await statuses.ApplyAsync(status, cancellationToken);
+                    applied++;
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    failed++;
+                    LogStatusFailed(logger, exception.GetType().Name);
+                }
+            }
+
+            // The cursor must move forward, or a faulty answer could keep the loop on one page.
+            if (response.NextAfterAccountId.Length == 0 || string.CompareOrdinal(response.NextAfterAccountId, after) <= 0)
+            {
+                break;
+            }
+
+            after = response.NextAfterAccountId;
+        }
+
+        LogStatusesDone(logger, applied, failed);
         return applied;
     }
 
@@ -92,9 +130,12 @@ internal sealed partial class FullSyncRunner(ISessionRevocation revocation, IAcc
     [LoggerMessage(Level = LogLevel.Information, Message = "FullSync applied {Applied} revocations ({Failed} failed).")]
     private static partial void LogDone(ILogger logger, int applied, int failed);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Applying an account status from FullSync failed with {ExceptionType}.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Applying an account status from the status sync failed with {ExceptionType}.")]
     private static partial void LogStatusFailed(ILogger logger, string exceptionType);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "FullSync checked {Applied} account statuses ({Failed} failed).")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "The status sync checked {Applied} account statuses ({Failed} failed).")]
     private static partial void LogStatusesDone(ILogger logger, int applied, int failed);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The account status sync failed with {ExceptionType}; the next FullSync tries again.")]
+    private static partial void LogStatusSyncFailed(ILogger logger, string exceptionType);
 }

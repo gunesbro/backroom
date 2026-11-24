@@ -121,6 +121,7 @@ internal sealed class CellNode : IAsyncDisposable
         builder.Services.AddMessaging();
         builder.Services.AddPresence();
         builder.Services.AddPresenceTracking();
+        builder.Services.AddPresenceEndpoints();
         builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 
         var app = builder.Build();
@@ -128,6 +129,7 @@ internal sealed class CellNode : IAsyncDisposable
         app.UseAuthentication();
         app.UseRevokedSessionCheck();
         app.UseAuthorization();
+        app.UseRateLimiter();
         app.MapMessagingEndpoints();
         app.MapPresenceEndpoints();
         app.MapRealtimeHub();

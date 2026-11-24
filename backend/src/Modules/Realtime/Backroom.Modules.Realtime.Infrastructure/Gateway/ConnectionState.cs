@@ -43,7 +43,7 @@ internal sealed class ConnectionState(string connectionId, Guid accountId)
     private DateTimeOffset _lastActivity = DateTimeOffset.MinValue;
 
     /// <summary>Under the gate: the presence groups of the connection's watch set (a subset of its groups).</summary>
-    public IReadOnlyCollection<string> Watched => _watched;
+    public IReadOnlySet<string> Watched => _watched;
 
     /// <summary>Under the gate: joins a presence group of the watch set (counted among the groups).</summary>
     public void AddWatched(string group, Guid organizationId)

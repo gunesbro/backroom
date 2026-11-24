@@ -1,6 +1,8 @@
 import { useContext } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '@/shared/http';
 import { StatusApiContext, type AccountStatus, type StatusInput } from './api';
+import { FALLBACK_TIME_ZONE } from './status';
 
 /** The signed-in person's own status (control plane). */
 export const MY_STATUS = ['me', 'status'] as const;
@@ -23,9 +25,21 @@ export function useSetStatus() {
   const api = useContext(StatusApiContext);
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: StatusInput) => {
+    mutationFn: async (input: StatusInput) => {
       if (!api) throw new Error('Presence is off.');
-      return api.put(input);
+      try {
+        return await api.put(input);
+      } catch (error) {
+        // A zone the server does not know (an older tz database): the status is still set, with UTC as the zone.
+        if (
+          error instanceof ApiError &&
+          error.code === 'identity.time_zone_invalid' &&
+          input.timeZone !== FALLBACK_TIME_ZONE
+        ) {
+          return api.put({ ...input, timeZone: FALLBACK_TIME_ZONE });
+        }
+        throw error;
+      }
     },
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: MY_STATUS });

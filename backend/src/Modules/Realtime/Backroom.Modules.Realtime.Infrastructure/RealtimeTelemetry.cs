@@ -30,6 +30,9 @@ public static class RealtimeTelemetry
     internal static readonly Counter<long> RevokedConnections =
         s_meter.CreateCounter<long>("backroom.realtime.revoked_connections", "{connection}", "Hub connections closed because their session was revoked.");
 
+    internal static readonly Counter<long> DroppedActivity =
+        s_meter.CreateCounter<long>("backroom.realtime.dropped_activity", "{report}", "Activity reports dropped because a connection sent them more often than allowed.");
+
     internal static readonly Counter<long> RejectedSubscriptions =
         s_meter.CreateCounter<long>("backroom.realtime.rejected_subscriptions", "{request}", "Subscribe calls refused (reason tag).");
 }

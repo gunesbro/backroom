@@ -39,6 +39,9 @@ internal sealed partial class RealtimeHub(
     public const string RateLimited = "realtime.rate_limited";
     public const string TooManyRefusals = "realtime.too_many_refusals";
 
+    /// <summary>This node tracks its limit of connections for presence; the client may try again later (or on another node).</summary>
+    public const string PresenceUnavailable = "realtime.presence_unavailable";
+
     public override async Task OnConnectedAsync()
     {
         if (!AccountUserIdProvider.TryGetAccountId(Context.User, out var accountId))
@@ -146,6 +149,12 @@ internal sealed partial class RealtimeHub(
             throw new HubException(NotFound);
         }
 
+        if (!presence.IsTracking(Context.ConnectionId))
+        {
+            RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "presence_unavailable"));
+            throw new HubException(PresenceUnavailable);
+        }
+
         Require(orgId);
         if (accountIds is null || accountIds.Length > options.Value.MaxWatchedPerConnection || accountIds.Contains(Guid.Empty))
         {
@@ -244,7 +253,7 @@ internal sealed partial class RealtimeHub(
         };
         if (!Current().TryCountActivity(timeProvider.GetUtcNow(), options.Value.ActivityInterval))
         {
-            RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "activity_dropped"));
+            RealtimeTelemetry.DroppedActivity.Add(1);
             return Task.CompletedTask;
         }
 

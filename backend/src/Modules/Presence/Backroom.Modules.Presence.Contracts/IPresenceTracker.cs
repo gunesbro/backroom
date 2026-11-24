@@ -22,4 +22,10 @@ public interface IPresenceTracker
     /// there by the caller): changes of those people are published to that organization's presence groups.
     /// </summary>
     Task WatchAsync(string connectionId, Guid organizationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
+
+    /// <summary>Whether this node tracks the connection; a node at its limit tracks no more, and the hub then refuses watches.</summary>
+    bool IsTracking(string connectionId);
+
+    /// <summary>The person left the organization: this node's connections stop watching them there (and stop renewing it).</summary>
+    void Unwatch(Guid organizationId, Guid accountId);
 }

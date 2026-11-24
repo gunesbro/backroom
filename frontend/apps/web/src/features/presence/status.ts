@@ -84,9 +84,13 @@ export function current(status: AccountStatus | undefined, now: Date) {
   return { dndUntil, customStatus };
 }
 
-/** The browser's IANA time zone, sent with every change (used only for reminders and "until tomorrow"). */
+/** The zone sent when the browser has none or the server does not know the browser's. */
+export const FALLBACK_TIME_ZONE = 'UTC';
+
+/** The browser's IANA time zone, sent with every change (used only for reminders and "until tomorrow"); UTC when it has none. */
 export function browserTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return typeof zone === 'string' && zone.length > 0 ? zone : FALLBACK_TIME_ZONE;
 }
 
 /** A whole status from what is in force now and one change. */

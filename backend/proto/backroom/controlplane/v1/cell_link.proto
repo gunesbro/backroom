@@ -24,6 +24,10 @@ service CellLinkService {
   // The full state the cell must hold. Called on connect and periodically to repair drift.
   // FullSync never deletes data in the cell; a missing organization raises an operations alert.
   rpc FullSync(FullSyncRequest) returns (FullSyncResponse);
+
+  // The account statuses of the cell's members, one bounded page per call (docs/contracts/phase-2.md), so drift repair of statuses
+  // never makes FullSync too large. Called after FullSync, page by page until next_after_account_id is empty.
+  rpc SyncAccountStatuses(AccountStatusSyncRequest) returns (AccountStatusSyncResponse);
 }
 
 // Upstream: cell → control plane.
@@ -238,8 +242,19 @@ message FullSyncResponse {
   repeated OrganizationAssignment organizations = 1;
   // Only revocations of accounts that are members of an organization in this cell.
   repeated SessionRevoked revoked_sessions = 2;
-  // Account statuses of accounts that are members of an organization in this cell (at most 10,000).
-  repeated AccountStatusChanged account_statuses = 3;
+}
+
+// A page of account statuses: after_account_id is the cursor from the previous answer (empty for the first page).
+message AccountStatusSyncRequest {
+  string after_account_id = 1;
+}
+
+message AccountStatusSyncResponse {
+  // Statuses of members of the cell with something in force (do not disturb, a custom status or a time zone); expired parts are
+  // left out. At most 1,000 per page.
+  repeated AccountStatusChanged statuses = 1;
+  // The cursor for the next page; empty when this was the last one.
+  string next_after_account_id = 2;
 }
 
 message OrganizationAssignment {

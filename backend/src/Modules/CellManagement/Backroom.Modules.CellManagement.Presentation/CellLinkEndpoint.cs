@@ -266,8 +266,9 @@ internal sealed partial class CellLinkEndpoint(
     /// <summary>The most organizations one <c>FullSync</c> answer lists (about 1.5 MB; the link's message limit is 4 MB).</summary>
     internal const int MaxSyncedOrganizations = 10_000;
 
-    // The state the cell must hold (contract, "Drift repair"): its organizations, and the revocations in force and the account
-    // statuses of accounts that are members in it. The cell comes from the token, never from the request.
+    // The state the cell must hold (contract, "Drift repair"): its organizations and the revocations in force of accounts that
+    // are members in it. Account statuses come through SyncAccountStatuses, so they can never make this answer too large. The cell
+    // comes from the token, never from the request.
     public override async Task<FullSyncResponse> FullSync(FullSyncRequest request, ServerCallContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -300,11 +301,37 @@ internal sealed partial class CellLinkEndpoint(
             });
         }
 
-        // Account statuses of the cell's members (docs/contracts/phase-2.md, "Cell ↔ control plane link"), so a cell that lost its
-        // copies (Valkey restarted empty) or missed a message has them again.
-        foreach (var status in await statuses.ListForCellAsync(cellId, context.CancellationToken))
+        return response;
+    }
+
+    // One page of the account statuses of the cell's members (docs/contracts/phase-2.md, "Cell ↔ control plane link"), so a cell that
+    // lost its copies (Valkey restarted empty) or missed a message has them again. The cell comes from the token, never from the request.
+    public override async Task<AccountStatusSyncResponse> SyncAccountStatuses(AccountStatusSyncRequest request, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
+        if (!CellClients.TryGetCellId(context.GetHttpContext().User, out var cellId))
         {
-            response.AccountStatuses.Add(ToMessage(status));
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "Not a cell token."));
+        }
+
+        if (!await registry.IsRegisteredAsync(cellId, context.CancellationToken))
+        {
+            LogRejected(logger, cellId, "cell not registered");
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "The cell is not registered."));
+        }
+
+        var after = Guid.Empty;
+        if (request.AfterAccountId.Length > 0 && !Guid.TryParse(request.AfterAccountId, out after))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "The cursor is not an account id."));
+        }
+
+        var (page, next) = await statuses.ListPageForCellAsync(cellId, after, context.CancellationToken);
+        var response = new AccountStatusSyncResponse { NextAfterAccountId = next?.ToString("D") ?? string.Empty };
+        foreach (var status in page)
+        {
+            response.Statuses.Add(ToMessage(status));
         }
 
         return response;

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,11 +30,17 @@ public static class PresenceEndpoints
         if (endpoints.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>(Flag))
         {
             // A member reads people of the same organization only: the reader leaves everyone else out.
-            endpoints.MapGet("/api/v1/orgs/{orgId:guid}/presence", ReadAsync).InOrganization();
+            endpoints.MapGet("/api/v1/orgs/{orgId:guid}/presence", ReadAsync)
+                .RequireRateLimiting(PresenceReadRateLimitPolicy.Name)
+                .InOrganization();
         }
 
         return endpoints;
     }
+
+    /// <summary>The rate limit of the read endpoint; the host also calls <c>UseRateLimiter</c>.</summary>
+    public static IServiceCollection AddPresenceEndpoints(this IServiceCollection services) =>
+        services.AddRateLimiter(options => options.AddPolicy<string, PresenceReadRateLimitPolicy>(PresenceReadRateLimitPolicy.Name));
 
     private static async Task<IResult> ReadAsync(string? accountIds, HttpResponse response, IPresenceReader reader, CancellationToken cancellationToken)
     {

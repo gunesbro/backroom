@@ -1,14 +1,15 @@
 namespace Backroom.Modules.Identity.Contracts;
 
-/// <summary>Identity's read of account statuses for <c>FullSync</c>.</summary>
+/// <summary>Identity's read of account statuses for the link's status sync.</summary>
 public interface IAccountStatusQueries
 {
-    /// <summary>The most statuses one answer carries (about 1.2 MB with the zone and a short text; the link's message limit is 4 MB).</summary>
-    public const int MaxPerCell = 10_000;
+    /// <summary>The members of the cell one page looks at (and so the most statuses it carries: about 150 KB, far below the link's 4 MB).</summary>
+    public const int PageSize = 1000;
 
     /// <summary>
-    /// The statuses of accounts that are members of an organization in <paramref name="cellId"/>, at most <see cref="MaxPerCell"/>; never
-    /// another account's, so a cell learns nothing about people it does not serve.
+    /// One page of the statuses of accounts that are members of an organization in <paramref name="cellId"/>, in account id order after
+    /// <paramref name="after"/> (<see cref="Guid.Empty"/> for the first page); never another account's. Expired parts are left out, and a
+    /// status with nothing in force is skipped. <c>Next</c> is the cursor of the next page, or <see langword="null"/> after the last.
     /// </summary>
-    Task<IReadOnlyList<AccountStatus>> ListForCellAsync(string cellId, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<AccountStatus> Statuses, Guid? Next)> ListPageForCellAsync(string cellId, Guid after, CancellationToken cancellationToken);
 }
