@@ -104,6 +104,7 @@ public static class ControlPlaneConnectorModule
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<InvitationAccepted>, InvitationAcceptedHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<SessionRevoked>, SessionRevokedHandler>());
         services.TryAddSingleton<FullSyncRunner>();
+        services.TryAddSingleton<Epoch.CellEpochStore>();
         services.TryAddSingleton<CellLinkWorker>();
         services.AddHostedService(provider => provider.GetRequiredService<CellLinkWorker>());
         return builder;

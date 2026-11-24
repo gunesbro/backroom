@@ -2,6 +2,7 @@ using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.BuildingBlocks.Presentation.Cors;
 using Backroom.Cell.Host;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
 using Backroom.Modules.Realtime.Infrastructure;
@@ -31,6 +32,11 @@ builder.Services.AddDatabaseSession().BindConfiguration(DatabaseOptions.SectionN
 builder.AddCellModules(role);
 // UseRateLimiter needs its services in every role; only the app role maps endpoints that use them.
 builder.Services.AddOrganizationEndpoints();
+if (role == CellRole.App)
+{
+    // Writes wait for the cell's confirmed epoch (docs/adr/0011, "Cell epoch"); the worker confirms it over the link.
+    builder.Services.AddCellEpochFence();
+}
 
 // Role-specific services (endpoints for "app", consumers and jobs for "worker") are registered by the modules.
 
@@ -49,6 +55,13 @@ if (role == CellRole.App)
 }
 
 app.UseAuthorization();
+if (role == CellRole.App)
+{
+    // After authorization (a caller without a token still gets 401), before rate limiting. The hub is exempt: its
+    // negotiate is a POST, and its methods only subscribe.
+    app.UseCellEpochFence(RealtimeEndpoints.HubPath);
+}
+
 app.UseRateLimiter();
 app.MapDefaultEndpoints();
 if (role == CellRole.App)
