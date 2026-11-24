@@ -42,6 +42,17 @@ describe('normalizeMessageText trimming', () => {
     expect(normalizeMessageText('\u0085\u2028\u2029\u00a0\u3000\u000b a \u000b\u3000')).toBe('a');
   });
 
+  it('NormalizeMessageText_WithAVeryLongRunOfSpaces_IsFast', () => {
+    const started = performance.now();
+
+    const result = normalizeMessageText(`a${' '.repeat(200_000)}b ${' '.repeat(200_000)}`);
+
+    // Compared by length: a failed comparison of two huge strings would take minutes to print.
+    expect(result.length).toBe(200_002);
+    expect(result.endsWith('b')).toBe(true);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it('NormalizeMessageText_WithAZeroWidthNoBreakSpaceAtTheEnds_KeepsIt', () => {
     // JavaScript's trim() removes U+FEFF; .NET's Trim() does not, so the count must not either.
     expect(normalizeMessageText('\uFEFFa\uFEFF')).toBe('\uFEFFa\uFEFF');
