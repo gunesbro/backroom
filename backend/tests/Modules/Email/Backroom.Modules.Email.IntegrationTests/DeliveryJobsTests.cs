@@ -164,16 +164,41 @@ public sealed class DeliveryJobsTests(PostgresDatabase database, MailpitServer m
         (await second.Should().ThrowAsync<PostgresException>()).Which.SqlState.Should().Be(PostgresErrorCodes.UniqueViolation);
     }
 
-    [Fact]
-    public async Task Redelivery_AfterAStalePendingRowWasClosed_StillSendsNothingAsync()
+    [Theory]
+    [InlineData("sent")]
+    [InlineData("failed")]
+    public async Task Complete_AfterTheRowWasClosedAsUnknown_RecordsTheRealOutcomeAsync(string outcome)
+    {
+        var delivery = await AddAsync("pending", updatedAt: s_now.AddHours(-3));
+        await RunAsync(StaleJob(), CancellationToken);
+        (await RowAsync(delivery)).Status.Should().Be("unknown");
+        using var provider = EmailServices.Build("Development", _ => { }, database.ApplicationConnectionString());
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            scope.ServiceProvider.GetRequiredService<OrganizationContext>().Enter(_organization);
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            await unitOfWork.BeginAsync(CancellationToken);
+            await scope.ServiceProvider.GetRequiredService<IDeliveryLog>().CompleteAsync(delivery, outcome, null, s_now.AddMinutes(1), CancellationToken);
+            await unitOfWork.CommitAsync(CancellationToken);
+        }
+
+        (await RowAsync(delivery)).Status.Should().Be(outcome, "a send that outlived the threshold still records its real outcome");
+    }
+
+    [Theory]
+    [InlineData("unknown", 0)]
+    [InlineData("failed", 1)]
+    public async Task Redelivery_AfterAStalePendingRowWasClosed_SendsOnlyIfItWasClosedAsFailedAsync(string closedAs, int expectedEmails)
     {
         // The worker stopped after the hand-over: the delivery is pending and the event's inbox row was lost.
         var ready = new InvitationReady(Guid.CreateVersion7(), _organization, DateTimeOffset.UtcNow, Guid.CreateVersion7(), 1, InvitationReady.DefaultLocale);
         var address = EmailServices.NewAddress();
-        var delivery = await AddAsync("pending", updatedAt: s_now.AddHours(-3), reference: ready.InvitationId, referenceVersion: ready.CodeVersion);
+        // The control case closes the row as failed: the test must then see the second email, so it can see a resend.
+        var delivery = await AddAsync(closedAs == "unknown" ? "pending" : "failed", updatedAt: s_now.AddHours(-3), reference: ready.InvitationId, referenceVersion: ready.CodeVersion);
 
         await RunAsync(StaleJob(), CancellationToken);
-        (await RowAsync(delivery)).Status.Should().Be("unknown");
+        (await RowAsync(delivery)).Status.Should().Be(closedAs);
 
         // Much later the broker delivers the event again, and there is no inbox record.
         var links = new FakeLinks(ready, address);
@@ -195,8 +220,8 @@ public sealed class DeliveryJobsTests(PostgresDatabase database, MailpitServer m
             await unitOfWork.CommitAsync(CancellationToken);
         }
 
-        (await mailpit.MessagesToAsync(address, CancellationToken)).Should().BeEmpty("the first send may have arrived; a second invitation must not");
-        (await RowAsync(delivery)).Status.Should().Be("unknown");
+        (await mailpit.MessagesToAsync(address, CancellationToken)).Should().HaveCount(expectedEmails, "an unknown outcome blocks a second invitation; a failed one does not");
+        (await RowAsync(delivery)).Status.Should().Be(closedAs);
     }
 
     private StaleDeliveryJob StaleJob(int batchSize = StaleDeliveryJob.DefaultBatchSize) =>

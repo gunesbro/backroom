@@ -60,6 +60,6 @@ internal sealed partial class InvitationReadyConsumer(
     [LoggerMessage(Level = LogLevel.Information, Message = "Invitation {InvitationId} code version {CodeVersion} in organization {OrganizationId} gets no email: it is no longer pending, has expired or was replaced.")]
     private static partial void LogNotCurrent(ILogger logger, Guid invitationId, int codeVersion, Guid organizationId);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Invitation {InvitationId} code version {CodeVersion} in organization {OrganizationId} is not emailed again: an earlier delivery is pending or sent.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Invitation {InvitationId} code version {CodeVersion} in organization {OrganizationId} is not emailed again: an earlier delivery is pending, unknown or sent.")]
     private static partial void LogAlreadyDelivered(ILogger logger, Guid invitationId, int codeVersion, Guid organizationId);
 }
