@@ -3,7 +3,7 @@
 - Status: Proposed (needs the owner's approval before implementation)
 - Date: 2026-11-24
 - Requirements (living document, read 2026-11-24): "Yol haritası" (Faz 2), "Kanallar, DM'ler ve kenar çubuğu", "Mesajlaşma", "Varlık, durum ve çalışma saatleri", "Bildirimler", "Dosyalar, arama ve komut paleti", "Roller, izinler ve moderasyon", "Gizlilik ve güvenlik kuralları", "Performans bütçesi", "Akıcılık teknikleri", "Modül planı", "Ek: izin listesi"
-- Builds on: [Phase 1 contract](phase-1.md), ADR [0005](../adr/0005-tenant-isolation-with-org-id-and-rls.md), [0006](../adr/0006-transactional-outbox-and-thin-rabbitmq-layer.md), [0010](../adr/0010-maintenance-role-for-cross-organization-jobs.md), [0011](../adr/0011-message-sync-read-state-and-storage-encryption.md); ADR 0012 (send path durability and performance) is **pending** and decides how sequence numbers are assigned (see "Sequence numbers"); plan limits (owner decision 4, flow 12) add a visibility boundary to ADR 0011's reads, without deleting anything
+- Builds on: [Phase 1 contract](phase-1.md), ADR [0005](../adr/0005-tenant-isolation-with-org-id-and-rls.md), [0006](../adr/0006-transactional-outbox-and-thin-rabbitmq-layer.md), [0010](../adr/0010-maintenance-role-for-cross-organization-jobs.md), [0011](../adr/0011-message-sync-read-state-and-storage-encryption.md); [0012](../adr/0012-durable-sends-and-the-wal-flush.md) (send path durability and performance; it keeps how sequence numbers are assigned, see "Sequence numbers"); plan limits (owner decision 4, flow 12) add a visibility boundary to ADR 0011's reads, without deleting anything
 
 ## Goal and gate
 
@@ -23,9 +23,9 @@ The roadmap's Phase 2: DMs and group DMs, threads, replies, forwarding, reaction
 
 **Not in Phase 2:** link previews and integrations (Phase 5, owner decision 3), work hours, leave and status history (Phase 4; Phase 2 uses the default 22:00–07:00 off-hours window), rooms and meetings in the command palette and the bell's Meetings and Rooms tabs (Phase 3), role and permission screens (Phase 5), plans and Licensing (a later phase; Phase 2 has no storage quota, owner decision 4), data export and account deletion, custom emoji, legal hold, mobile.
 
-## Sequence numbers (ADR 0011, pending ADR 0012)
+## Sequence numbers (ADR 0011, ADR 0012)
 
-ADR 0011 fixes the observable guarantees; ADR 0012 decides the mechanism (the row lock of ADR 0011 and Phase 1 decision 12, or an alternative) and the send path's durability. This contract depends only on these guarantees:
+ADR 0011 fixes the observable guarantees, and [ADR 0012](../adr/0012-durable-sends-and-the-wal-flush.md) keeps its mechanism. This contract depends only on these guarantees:
 
 - Every conversation has `change_seq` (every change takes the next number), `last_message_seq` (the newest message's `seq`), and every message has `seq` (creation order) and `version_seq` (its latest change).
 - Numbers are positive 64-bit integers, increasing in commit order within one conversation; gaps are allowed; a cursor never skips a committed change.
@@ -34,7 +34,7 @@ ADR 0011 fixes the observable guarantees; ADR 0012 decides the mechanism (the ro
 
 - **History boundary.** When an organization limits visible history (flow 12), every message read also returns, per conversation, `historyBoundary { visibleFrom, visibleFromSeq, reason: "plan" }`: messages with `seq` below `visibleFromSeq` exist but are hidden. A read whose cursor or page reaches the boundary stops there with `historyBoundaryReached: true`, never `resync_required`; every conversation entry in sync carries the boundary; clients hide or drop cached messages below it and never treat them as missing. Nothing is deleted, so ADR 0011's tombstones stay permanent and its cursors stay valid. The boundary moves with time and with plan changes (`HistoryBoundaryChanged`).
 
-Whatever ADR 0012 decides is written into this section in step 0, before any change to sequence numbers (step 5).
+**Mechanism and durability (ADR 0012, accepted).** A change is one transaction with a synchronous commit: it is acknowledged, and its live event is sent, only after the commit is durable. Numbers are assigned in commit order under the conversation row lock (`UPDATE … SET change_seq = change_seq + 1 … RETURNING`, held until the commit; ADR 0011), so changes to one conversation are serialized from that statement to their commit. Nothing about this changes in Phase 2. Because an acknowledgment cannot be faster than the WAL flush, cell storage must flush the WAL with p99 at most 10 ms; that is a deployment requirement, checked with the flush probe in `load-tests/README.md`, not something the send path can make up for.
 
 ## Flows
 
@@ -420,7 +420,7 @@ Measured as in the requirements; server times at the cell, p95 under the Phase 2
 
 | Path                             | Budget                                                                                                                                                 |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Send (request to commit)         | set by ADR 0012; message visible on another client p95 300 ms same region (requirements' proposal)                                                     |
+| Send (request to commit)         | no budget of its own (ADR 0012: the code path plus one WAL flush); message visible on another client p95 300 ms same region (requirements' proposal)   |
 | Conversation or DM switch        | < 100 ms from the local cache; first page from the server p95 100 ms                                                                                   |
 | Desktop start                    | < 1.5 s with the last conversation from the cache                                                                                                      |
 | Sync delta (up to 500 changes)   | p95 150 ms; snapshot page of 500 conversations p95 400 ms                                                                                              |
@@ -504,7 +504,7 @@ None at the moment.
 
 ## Order of implementation (small PRs; each behind its flag)
 
-0. ADR 0012 (send path durability and performance) accepted, and its outcome written into "Sequence numbers". Nothing that changes sequence numbers starts before it.
+0. ADR 0012 (send path durability and performance) accepted, and its outcome written into "Sequence numbers" (done: the mechanism stays). Nothing that changes sequence numbers starts before it.
 
 **2A Conversations core**
 
