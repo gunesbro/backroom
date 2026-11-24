@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { formatMessageTime, type Locale } from '@backroom/i18n';
 import { Avatar } from '@backroom/ui';
@@ -57,7 +57,8 @@ export function MessageList({
   const following = useRef(true);
   // Loading earlier messages waits until the list has been scrolled to its end once.
   const armed = useRef(false);
-  const previous = useRef<{ firstKey: string | undefined; total: number }>({ firstKey: undefined, total: 0 });
+  // The row at the top of the view after the last change, and where it was: rows added or dropped above it move it.
+  const previous = useRef<{ rows: readonly Row[]; anchor?: { key: string; start: number } }>({ rows });
 
   // The virtualizer is used only in this component and its functions are not passed to memoized children.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -69,27 +70,35 @@ export function MessageList({
     overscan: 8,
   });
   const total = virtualizer.getTotalSize();
-  const firstKey = rows[0]?.key;
+
+  /** The row at the top of the view, as the anchor to keep still when rows are added or dropped above it. */
+  const anchorAt = useCallback(
+    (scrollTop: number) => {
+      const visible = virtualizer.measurementsCache.find((item) => item.end > scrollTop);
+      const row = visible && rows[visible.index];
+      return visible && row ? { anchor: { key: row.key, start: visible.start } } : {};
+    },
+    [rows, virtualizer],
+  );
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
     const before = previous.current;
-    previous.current = { firstKey, total };
-    // Earlier messages were added above: keep what the person is reading where it was.
-    if (
-      before.firstKey !== undefined &&
-      before.firstKey !== firstKey &&
-      !following.current &&
-      rows.some((row) => row.key === before.firstKey)
-    ) {
-      element.scrollTop += total - before.total;
-    } else if (following.current) {
+    if (following.current) {
       element.scrollTop = element.scrollHeight;
+    } else if (before.rows !== rows && before.anchor) {
+      // Earlier messages were added above, or the oldest page was dropped below the view: keep what the person is
+      // reading where it was, by the move of the row at the top of the view.
+      const { key, start } = before.anchor;
+      const index = rows.findIndex((row) => row.key === key);
+      const now = virtualizer.measurementsCache[index]?.start;
+      if (now !== undefined && now !== start) element.scrollTop += now - start;
     }
 
+    previous.current = { rows, ...anchorAt(element.scrollTop) };
     if (element.scrollHeight <= element.clientHeight) armed.current = true;
-  }, [firstKey, rows, total]);
+  }, [rows, total, virtualizer, anchorAt]);
 
   const items = virtualizer.getVirtualItems();
   const firstIndex = items[0]?.index;
@@ -129,6 +138,7 @@ export function MessageList({
       tabIndex={0}
       onScroll={(event) => {
         const element = event.currentTarget;
+        previous.current = { rows, ...anchorAt(element.scrollTop) };
         following.current = element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_DISTANCE;
         if (element.scrollTop > 0 || following.current) armed.current = true;
       }}
