@@ -71,13 +71,14 @@ internal sealed partial class MessageService(
             return new SentMessage(stored, Created: false);
         }
 
+        var now = StoredTime.Now(timeProvider);
+
         // Takes the channel row lock until commit: sequence numbers follow commit order, which catch-up relies on.
-        if (await channels.NextSequenceAsync(organizationId, conversationId, cancellationToken) is not { } seq)
+        if (await channels.NextSequenceAsync(organizationId, conversationId, now, cancellationToken) is not { } seq)
         {
             return ConversationNotFound;
         }
 
-        var now = StoredTime.Now(timeProvider);
         var message = new NewMessage(ids.NewId(), organizationId, conversationId, seq, authorAccountId, clientId, prepared, MessageText.ToBlocks(prepared), now);
         if (!await messages.AddAsync(message, cancellationToken))
         {

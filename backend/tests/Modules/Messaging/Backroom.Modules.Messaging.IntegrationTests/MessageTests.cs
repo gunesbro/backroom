@@ -278,7 +278,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         bobAfter["items"]!.AsArray().Select(item => item!["id"]!.GetValue<Guid>()).Should().Equal(channelId);
         bobAfter["items"]![0]!["kind"]!.GetValue<string>().Should().Be("public_channel");
         alice["items"]!.AsArray().Should().ContainSingle();
-        alice["next"]!.GetValue<Guid>().Should().Be(alice["items"]![0]!["id"]!.GetValue<Guid>());
+        alice["next"]!.GetValue<string>().Should().NotBeNullOrEmpty();
         other.Should().NotBeEmpty();
     }
 
@@ -290,6 +290,40 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         using var response = await GetAsync($"/api/v1/orgs/{organizationId}/conversations?limit=101", Alice);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ListConversations_OrdersByNewestMessageAndPagesByAnOpaqueCursorAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        var quiet = await CreateChannelAsync(organizationId, Alice, "Quiet");
+        var older = await CreateChannelAsync(organizationId, Alice, "Older");
+        var newer = await CreateChannelAsync(organizationId, Alice, "Newer");
+        await SendMessageAsync(organizationId, older, Alice, "one");
+        await SendMessageAsync(organizationId, newer, Alice, "two");
+        await SendMessageAsync(organizationId, older, Alice, "three");
+        var path = $"/api/v1/orgs/{organizationId}/conversations";
+
+        var first = await ReadJsonAsync(await GetAsync($"{path}?limit=2", Alice));
+        var second = await ReadJsonAsync(await GetAsync($"{path}?limit=2&after={Uri.EscapeDataString(first["next"]!.GetValue<string>())}", Alice));
+
+        first["items"]!.AsArray().Select(item => item!["id"]!.GetValue<Guid>()).Should().Equal(older, newer);
+        second["items"]!.AsArray().Select(item => item!["id"]!.GetValue<Guid>()).Should().Equal(quiet);
+        second["next"].Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("not-a-cursor")]
+    [InlineData("AAAA")]
+    [InlineData("!!!")]
+    public async Task ListConversations_WithAMalformedCursor_IsRejectedAsync(string cursor)
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+
+        using var response = await GetAsync($"/api/v1/orgs/{organizationId}/conversations?after={cursor}", Alice);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.cursor_invalid");
     }
     [Fact]
     public async Task Send_AsSomeoneElse_IsNotFoundAndStoresNothingAsync()

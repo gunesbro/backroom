@@ -53,9 +53,6 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
 
     protected IServiceProvider Services => _cell.Services;
 
-    /// <summary>Whether the Phase 2 conversations flag is on for this cell.</summary>
-    protected virtual bool ConversationsEnabled => true;
-
     public async ValueTask InitializeAsync()
     {
         await MessagingSchema.MigrateOnceAsync(database, CancellationToken);
@@ -68,7 +65,6 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         builder.Logging.AddProvider(Logs);
         builder.Configuration["Authentication:Authority"] = keycloak.Url;
         builder.Configuration["Database:ConnectionString"] = database.ApplicationConnectionString();
-        builder.Configuration[MessagingEndpoints.ConversationsFlag] = ConversationsEnabled ? "true" : "false";
         builder.AddAccessTokenAuthentication(Audiences.Cell(_cellId), [KeycloakClients.Web, KeycloakClients.Desktop]);
         builder.Services.AddDatabaseSession().BindConfiguration(DatabaseOptions.SectionName);
         builder.Services.AddPermissions();

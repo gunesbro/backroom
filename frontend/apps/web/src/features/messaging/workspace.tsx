@@ -297,6 +297,21 @@ function ChannelView({
     },
     [discardMessage, channel.id],
   );
+  // A send refused because the person has not joined the channel: join it, then send the same message again. A failed
+  // join leaves the message as it is, so the action can be tried again.
+  const queryClient = useQueryClient();
+  const join = useCallback(
+    (clientMessageId: string) => {
+      api
+        .joinConversation(orgId, channel.id)
+        .then(() => {
+          void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
+          retryMessage(channel.id, clientMessageId);
+        })
+        .catch(() => undefined);
+    },
+    [api, orgId, channel.id, queryClient, retryMessage],
+  );
 
   return (
     <>
@@ -354,6 +369,7 @@ function ChannelView({
             locale={locale}
             onRetry={retry}
             onDiscard={discard}
+            onJoin={join}
           />
           <NewMessageAnnouncer
             rows={rows}
