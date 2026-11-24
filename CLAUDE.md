@@ -189,6 +189,10 @@ pnpm -C frontend test
 pnpm -C frontend build          # web and ops; the desktop app is built by Tauri
 pnpm -C frontend check:bundle   # bundle budget, after build
 pnpm -C frontend desktop:dev    # desktop app with the web dev server (needs Rust and the C++ build tools; the URL scheme needs one registered start, see README)
+
+# Load tests (k6 is installed separately; use a separate stack, never production; see load-tests/README.md)
+node load-tests/tools/loadtest.mjs provision   # users, organizations, channels; then: ... serve
+k6 run load-tests/scenarios/messaging.js        # also catch-up.js
 ```
 
 Frontend notes:
