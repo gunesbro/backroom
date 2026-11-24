@@ -176,7 +176,9 @@ describe('InviteDialog', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Send as Member instead' }));
 
-    expect(await screen.findAllByText('Invitation sent to x.')).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByText('Invitation sent to x.')).toHaveLength(2);
+    });
     const retried = posts()
       .slice(1)
       .map((request) => JSON.parse(request.body) as unknown);
