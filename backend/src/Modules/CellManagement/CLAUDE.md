@@ -36,3 +36,5 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("C
 - Contracts: `ICellCatalog` (registered cells' public URLs by id, at most 500 per lookup), used by Directory.
 - Projects: Contracts, Application (registration and provisioning), Infrastructure (hand-written SQL, migrations, Keycloak admin client), Presentation (endpoints, registration rate limit). No Domain project yet.
 - Next: `FullSync`, `GET /api/v1/ops/cells`, the alerts and retention jobs listed above.
+
+- **FullSync** (step 6.3): `CellLinkEndpoint.FullSync` answers for the cell in the token (registered cells only): its organizations from `IDirectoryQueries.ListOrganizationsOfCellAsync` (at most 10,000) and the revoked sessions in force of its members from `IRevokedSessionQueries` (Identity.Contracts). The cell applies the revocations only; organizations in the answer are not used yet (the operations alert for unknown organizations comes with the membership drift repair). `Welcome.full_sync_interval_seconds` stays 15 minutes.

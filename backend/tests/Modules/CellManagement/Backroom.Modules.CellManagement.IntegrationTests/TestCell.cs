@@ -31,6 +31,9 @@ internal sealed class TestCell : IAsyncDisposable
 
     public string KeyDirectory { get; }
 
+    /// <summary>What the connector applied through Realtime's contract; needs the database given to <see cref="Create"/>.</summary>
+    public RecordingSessionRevocation Revocations => _provider.GetRequiredService<RecordingSessionRevocation>();
+
     public CellRegistrationWorker Worker => _provider.GetRequiredService<CellRegistrationWorker>();
 
     public CellCredentials Credentials => _provider.GetRequiredService<CellCredentials>();
@@ -109,6 +112,10 @@ internal sealed class TestCell : IAsyncDisposable
             services.AddScoped<UpstreamOutbox>();
             services.AddSingleton<DownstreamReceiver>();
             services.AddSingleton<UpstreamOutcomes>();
+            services.AddSingleton<RecordingSessionRevocation>();
+            services.AddSingleton<Backroom.Modules.Realtime.Contracts.ISessionRevocation>(provider => provider.GetRequiredService<RecordingSessionRevocation>());
+            services.AddSingleton<FullSyncRunner>();
+            services.AddScoped<IDownstreamHandler<Backroom.ControlPlane.Contracts.V1.SessionRevoked>, SessionRevokedHandler>();
             services.AddHttpClient(CellLinkWorker.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
                 .ConfigurePrimaryHttpMessageHandler(() => controlPlane.GetTestServer().CreateHandler());
             // linkTime: a separate clock for the link worker only (the token cache keeps real time).
@@ -122,9 +129,9 @@ internal sealed class TestCell : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _provider.DisposeAsync();
-        if (Directory.Exists(KeyDirectory))
+        if (System.IO.Directory.Exists(KeyDirectory))
         {
-            Directory.Delete(KeyDirectory, recursive: true);
+            System.IO.Directory.Delete(KeyDirectory, recursive: true);
         }
     }
 }

@@ -44,12 +44,15 @@ public abstract class RealtimeTestBase(PostgresDatabase database, KeycloakRealm 
     /// <summary>Extra configuration of both nodes (a test's limits).</summary>
     protected virtual IReadOnlyDictionary<string, string?>? Settings => null;
 
+    /// <summary>A second key both nodes trust next to the realm's, for tokens a test signs itself.</summary>
+    protected virtual Microsoft.IdentityModel.Tokens.SecurityKey? ExtraSigningKey => null;
+
     public async ValueTask InitializeAsync()
     {
         await RealtimeSchema.MigrateOnceAsync(database, CancellationToken);
         CellId = await keycloak.CreateCellScopeAsync();
-        NodeA = await CellNode.StartAsync(database, keycloak.Url, CellId, valkey.ConnectionString, Settings, cancellationToken: CancellationToken);
-        NodeB = await CellNode.StartAsync(database, keycloak.Url, CellId, valkey.ConnectionString, Settings, cancellationToken: CancellationToken);
+        NodeA = await CellNode.StartAsync(database, keycloak.Url, CellId, valkey.ConnectionString, Settings, ExtraSigningKey, cancellationToken: CancellationToken);
+        NodeB = await CellNode.StartAsync(database, keycloak.Url, CellId, valkey.ConnectionString, Settings, ExtraSigningKey, cancellationToken: CancellationToken);
     }
 
     public async ValueTask DisposeAsync()

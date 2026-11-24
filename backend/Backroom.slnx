@@ -35,12 +35,19 @@
   </Folder>
   <Folder Name="/src/Modules/Directory/">
     <Project Path="src/Modules/Directory/Backroom.Modules.Directory.Application/Backroom.Modules.Directory.Application.csproj" />
+    <Project Path="src/Modules/Directory/Backroom.Modules.Directory.Contracts/Backroom.Modules.Directory.Contracts.csproj" />
     <Project Path="src/Modules/Directory/Backroom.Modules.Directory.Infrastructure/Backroom.Modules.Directory.Infrastructure.csproj" />
     <Project Path="src/Modules/Directory/Backroom.Modules.Directory.Presentation/Backroom.Modules.Directory.Presentation.csproj" />
   </Folder>
   <Folder Name="/src/Modules/Email/">
     <Project Path="src/Modules/Email/Backroom.Modules.Email.Application/Backroom.Modules.Email.Application.csproj" />
     <Project Path="src/Modules/Email/Backroom.Modules.Email.Infrastructure/Backroom.Modules.Email.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/Backroom.Modules.Identity.Application/Backroom.Modules.Identity.Application.csproj" />
+    <Project Path="src/Modules/Identity/Backroom.Modules.Identity.Contracts/Backroom.Modules.Identity.Contracts.csproj" />
+    <Project Path="src/Modules/Identity/Backroom.Modules.Identity.Infrastructure/Backroom.Modules.Identity.Infrastructure.csproj" />
+    <Project Path="src/Modules/Identity/Backroom.Modules.Identity.Presentation/Backroom.Modules.Identity.Presentation.csproj" />
   </Folder>
   <Folder Name="/src/Modules/Messaging/">
     <Project Path="src/Modules/Messaging/Backroom.Modules.Messaging.Application/Backroom.Modules.Messaging.Application.csproj" />
@@ -81,6 +88,9 @@
   </Folder>
   <Folder Name="/tests/Modules/Permissions/">
     <Project Path="tests/Modules/Permissions/Backroom.Modules.Permissions.IntegrationTests/Backroom.Modules.Permissions.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Modules/Identity/">
+    <Project Path="tests/Modules/Identity/Backroom.Modules.Identity.IntegrationTests/Backroom.Modules.Identity.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/tests/Modules/Realtime/">
     <Project Path="tests/Modules/Realtime/Backroom.Modules.Realtime.IntegrationTests/Backroom.Modules.Realtime.IntegrationTests.csproj" />

@@ -109,6 +109,12 @@
           "Backroom.ControlPlane.Contracts": "[1.0.0, )"
         }
       },
+      "backroom.modules.directory.contracts": {
+        "type": "Project"
+      },
+      "backroom.modules.identity.contracts": {
+        "type": "Project"
+      },
       "Google.Protobuf": {
         "type": "CentralTransitive",
         "requested": "[3.36.2, )",

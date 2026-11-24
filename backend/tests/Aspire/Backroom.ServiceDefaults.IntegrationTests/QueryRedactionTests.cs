@@ -52,6 +52,13 @@ public sealed class QueryRedactionTests
         using var response = await client.GetAsync(new Uri("/hub?id=1&access_token=secret-token-value", UriKind.Relative), TestContext.Current.CancellationToken);
 
         response.EnsureSuccessStatusCode();
+        // The hosting activity stops after the response has been handed to the client (proven: about one request in eight returns
+        // first), so wait, bounded, for it instead of reading the bag at once.
+        for (var attempt = 0; attempt < 200 && queries.IsEmpty; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(25), TestContext.Current.CancellationToken);
+        }
+
         queries.Should().NotBeEmpty();
         queries.Should().OnlyContain(query => !query.Contains("secret-token-value", StringComparison.Ordinal));
         queries.Should().Contain(query => query.Contains("access_token=[REDACTED]", StringComparison.Ordinal));

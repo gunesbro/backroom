@@ -15,6 +15,7 @@ internal sealed class HubClient : IAsyncDisposable
     private readonly HubConnection _connection;
     private readonly Channel<MessagePostedPayload> _messages = Channel.CreateUnbounded<MessagePostedPayload>();
     private readonly Channel<ChannelCreatedPayload> _channels = Channel.CreateUnbounded<ChannelCreatedPayload>();
+    private readonly Channel<SessionRevokedPayload> _revoked = Channel.CreateUnbounded<SessionRevokedPayload>();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private HubClient(HubConnection connection)
@@ -22,6 +23,7 @@ internal sealed class HubClient : IAsyncDisposable
         _connection = connection;
         connection.On<MessagePostedPayload>(LiveEventNames.MessagePosted, payload => _messages.Writer.TryWrite(payload));
         connection.On<ChannelCreatedPayload>(LiveEventNames.ChannelCreated, payload => _channels.Writer.TryWrite(payload));
+        connection.On<SessionRevokedPayload>(LiveEventNames.SessionRevoked, payload => _revoked.Writer.TryWrite(payload));
         connection.Closed += _ =>
         {
             _closed.TrySetResult();
@@ -79,6 +81,9 @@ internal sealed class HubClient : IAsyncDisposable
     public Task<MessagePostedPayload> NextMessageAsync() => ReadAsync(_messages.Reader);
 
     public Task<ChannelCreatedPayload> NextChannelAsync() => ReadAsync(_channels.Reader);
+
+    /// <summary>The <c>SessionRevoked</c> notice the server sends just before it closes the connection.</summary>
+    public Task<SessionRevokedPayload> NextSessionRevokedAsync() => ReadAsync(_revoked.Reader);
 
     /// <summary>Whether a message has arrived that nobody read; for "nothing was delivered" checks after a later event proved the path.</summary>
     public bool HasUnreadMessage => _messages.Reader.TryPeek(out _);

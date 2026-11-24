@@ -3,10 +3,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\Backroom.Modules.Directory.Application\Backroom.Modules.Directory.Application.csproj" />
+    <ProjectReference Include="..\Backroom.Modules.Directory.Contracts\Backroom.Modules.Directory.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Backroom.Modules.Directory.IntegrationTests" />
+    <InternalsVisibleTo Include="Backroom.Modules.CellManagement.IntegrationTests" />
   </ItemGroup>
 
 </Project>

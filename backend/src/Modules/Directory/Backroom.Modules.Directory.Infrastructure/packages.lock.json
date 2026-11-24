@@ -139,6 +139,9 @@
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.15, )"
         }
       },
+      "backroom.modules.directory.contracts": {
+        "type": "Project"
+      },
       "Google.Protobuf": {
         "type": "CentralTransitive",
         "requested": "[3.36.2, )",

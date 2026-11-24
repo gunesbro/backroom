@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Application.Persistence;
 using Backroom.Modules.Messaging.Contracts;
+using Backroom.Modules.Realtime.Infrastructure.Revocation;
 
 namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 
@@ -19,6 +20,8 @@ namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 [Authorize]
 internal sealed partial class RealtimeHub(
     ConnectionRegistry registry,
+    RevocationChecker revocations,
+    DelayedAbort aborts,
     TimeProvider timeProvider,
     IOrganizationMembershipCheck membership,
     IChannelReadAccess channels,
@@ -34,24 +37,48 @@ internal sealed partial class RealtimeHub(
     public const string RateLimited = "realtime.rate_limited";
     public const string TooManyRefusals = "realtime.too_many_refusals";
 
-    public override Task OnConnectedAsync()
+    public override async Task OnConnectedAsync()
     {
         if (!AccountUserIdProvider.TryGetAccountId(Context.User, out var accountId))
         {
             Context.Abort();
-            return Task.CompletedTask;
+            return;
         }
 
-        if (registry.TryAdd(Context.ConnectionId, accountId, options.Value.MaxConnectionsPerAccount) is null)
+        if (registry.TryAdd(Context.ConnectionId, accountId, options.Value.MaxConnectionsPerAccount) is not { } state)
         {
             RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "connection_limit"));
             LogConnectionRefused(logger, accountId);
             Context.Abort();
-            return Task.CompletedTask;
+            return;
         }
 
         RealtimeTelemetry.Connections.Add(1);
-        return Task.CompletedTask;
+
+        // What a revocation needs to find this connection. A revocation that arrived between the request's check and the
+        // registration is caught here (answered from the cache the check just filled; an unreadable store was refused already).
+        if (TokenIdentity.TryRead(Context.User, out var identity))
+        {
+            state.Bind(identity.SessionId, identity.IssuedAt, Context.Abort);
+            if (await revocations.CheckAsync(identity.SessionId, identity.AccountId, identity.IssuedAt, Context.ConnectionAborted) == RevocationVerdict.Revoked)
+            {
+                // The client finished its handshake before the node registered the connection, so the broadcast did not find it: tell it
+                // here, as the broadcast would have, and close it after the grace (on a timer, so this call does not wait), so the notice
+                // can leave first. Whatever happens to the notice, the connection is closed.
+                try
+                {
+                    await Clients.Caller.SendAsync(Contracts.LiveEventNames.SessionRevoked, new Contracts.SessionRevokedPayload(Contracts.SessionRevokedPayload.SessionEnded), Context.ConnectionAborted);
+                }
+#pragma warning disable CA1031 // Any failure to send the notice (the client is gone, the pipe is closed) still ends in closing the connection.
+                catch (Exception exception)
+#pragma warning restore CA1031
+                {
+                    LogNoticeFailed(logger, exception.GetType().Name);
+                }
+
+                aborts.Schedule(Context.Abort);
+            }
+        }
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -233,6 +260,9 @@ internal sealed partial class RealtimeHub(
 
     [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "A hub connection of account {AccountId} was refused: too many connections.")]
     private static partial void LogConnectionRefused(ILogger logger, Guid accountId);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Telling a connection that its session was revoked failed ({ExceptionType}); it is closed anyway.")]
+    private static partial void LogNoticeFailed(ILogger logger, string exceptionType);
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "The subscription check failed ({ExceptionType}) in organization {OrganizationId}.")]
     private static partial void LogCheckFailed(ILogger logger, string exceptionType, Guid organizationId);
