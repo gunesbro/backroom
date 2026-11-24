@@ -3,6 +3,7 @@ using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.Cell.Host;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
+using Backroom.Modules.Realtime.Infrastructure;
 using Backroom.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,7 +21,8 @@ var cellId = builder.Configuration[CellIdentity.ConfigurationKey]
 builder.AddServiceDefaults();
 
 // This cell accepts only tokens issued for it (audience cell-{id}).
-builder.AddAccessTokenAuthentication(Audiences.Cell(cellId), [KeycloakClients.Web, KeycloakClients.Desktop]);
+// The SignalR hub's WebSocket cannot carry a header, so its path (only) accepts the token as access_token.
+builder.AddAccessTokenAuthentication(Audiences.Cell(cellId), [KeycloakClients.Web, KeycloakClients.Desktop], RealtimeEndpoints.HubPath);
 
 // The application role's connection pool and the unit of work.
 builder.Services.AddDatabaseSession().BindConfiguration(DatabaseOptions.SectionName);
@@ -41,6 +43,7 @@ if (role == CellRole.App)
 {
     app.MapOrganizationEndpoints();
     app.MapMessagingEndpoints();
+    app.MapRealtimeHub();
 }
 
 CellHostLog.Starting(app.Logger, role);

@@ -10,6 +10,15 @@
           "Grpc.Core.Api": "2.85.0"
         }
       },
+      "MessagePack": {
+        "type": "Transitive",
+        "resolved": "2.5.303",
+        "contentHash": "kpIHwsflNKnWD8OyA8BjPspMG5PYXycxuftnkJk0e5sW8OLHa3CMovuYiRI/4NJ4al1AyW88Ai2g+WCwTaWzFg==",
+        "dependencies": {
+          "MessagePack.Annotations": "2.5.303",
+          "Microsoft.NET.StringTools": "17.6.3"
+        }
+      },
       "Microsoft.Bcl.Cryptography": {
         "type": "Transitive",
         "resolved": "10.0.2",
@@ -126,6 +135,11 @@
           "Microsoft.IdentityModel.Logging": "8.23.0"
         }
       },
+      "Microsoft.NET.StringTools": {
+        "type": "Transitive",
+        "resolved": "17.6.3",
+        "contentHash": "N0ZIanl1QCgvUumEL1laasU0a7sOE5ZwLZVTn0pAePnfhq8P7SvTjF8Axq+CnavuQkmdQpGNXQ1efZtu5kDFbA=="
+      },
       "MimeKit.Core": {
         "type": "Transitive",
         "resolved": "5.0.0",
@@ -155,6 +169,11 @@
           "OpenTelemetry.Api": "1.21.0"
         }
       },
+      "Pipelines.Sockets.Unofficial": {
+        "type": "Transitive",
+        "resolved": "2.2.8",
+        "contentHash": "zG2FApP5zxSx6OcdJQLbZDk2AVlN2BNQD6MorwIfV6gVj0RRxWPEp2LXAxqDGZqeNV1Zp0BNPcNaey/GXmTdvQ=="
+      },
       "Polly.Core": {
         "type": "Transitive",
         "resolved": "8.4.2",
@@ -174,6 +193,14 @@
         "contentHash": "ehTImQ/eUyO07VYW2WvwSmU9rRH200SKJ/3jku9rOkyWE0A2JxNFmAVms8dSn49QLSjmjFRRSgfNyOgr/2PSmA==",
         "dependencies": {
           "Polly.Core": "8.4.2"
+        }
+      },
+      "StackExchange.Redis": {
+        "type": "Transitive",
+        "resolved": "2.7.27",
+        "contentHash": "Uqc2OQHglqj9/FfGQ6RkKFkZfHySfZlfmbCl+hc+u2I/IqunfelQ7QJi7ZhvAJxUtu80pildVX6NPLdDaUffOw==",
+        "dependencies": {
+          "Pipelines.Sockets.Unofficial": "2.2.8"
         }
       },
       "System.Diagnostics.DiagnosticSource": {
@@ -319,12 +346,20 @@
         }
       },
       "backroom.modules.realtime.contracts": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "MessagePack.Annotations": "[2.5.307, )"
+        }
       },
       "backroom.modules.realtime.infrastructure": {
         "type": "Project",
         "dependencies": {
-          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )"
+          "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Messaging.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Organization.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
+          "Microsoft.AspNetCore.SignalR.Protocols.MessagePack": "[10.0.15, )",
+          "Microsoft.AspNetCore.SignalR.StackExchangeRedis": "[10.0.15, )"
         }
       },
       "backroom.servicedefaults": {
@@ -369,6 +404,12 @@
           "MimeKit.Core": "5.0.0"
         }
       },
+      "MessagePack.Annotations": {
+        "type": "CentralTransitive",
+        "requested": "[2.5.307, )",
+        "resolved": "2.5.307",
+        "contentHash": "kIGiwydfCKWRim1ZoFbZ1qVHDHrQfXdJ+FEFVPEqse/XzvPT7lVUjIb1LOuocP3Tx1+PtFEdEandRhxB64Xd4A=="
+      },
       "Microsoft.AspNetCore.Authentication.JwtBearer": {
         "type": "CentralTransitive",
         "requested": "[10.0.15, )",
@@ -376,6 +417,25 @@
         "contentHash": "Y8VbPrQuABpTkMrqO/K2URdfqBBheri/YDcB+sO530arpqsy7vsd/go/YfEP8XaRkACWPQV2gPxedl7dnxp0zg==",
         "dependencies": {
           "Microsoft.IdentityModel.Protocols.OpenIdConnect": "8.19.2"
+        }
+      },
+      "Microsoft.AspNetCore.SignalR.Protocols.MessagePack": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "6J4lJ4/+W3g96XXhlK92rtt5GlHO/dFOz7ibl/uRyPc/dMsWzIwhX5LgHXgTot51Gwla0yx8lKb2Oj6Y+0SdxA==",
+        "dependencies": {
+          "MessagePack": "2.5.303"
+        }
+      },
+      "Microsoft.AspNetCore.SignalR.StackExchangeRedis": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "84yj3vuRGqOzjN+E0ZJXa2oR8cVRYNNnraJDV+ISWajYS6SFmqsSgln2v0ixIZi391ESYnqBbh0NK6nxHLR9YQ==",
+        "dependencies": {
+          "MessagePack": "2.5.303",
+          "StackExchange.Redis": "2.7.27"
         }
       },
       "Microsoft.EntityFrameworkCore": {

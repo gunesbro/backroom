@@ -1,3 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- The payloads are MessagePack objects with camelCase keys, as clients read them (docs/contracts/phase-1.md, "Live events"). -->
+
+  <ItemGroup>
+    <PackageReference Include="MessagePack.Annotations" />
+  </ItemGroup>
+
 </Project>

@@ -82,6 +82,9 @@
   <Folder Name="/tests/Modules/Permissions/">
     <Project Path="tests/Modules/Permissions/Backroom.Modules.Permissions.IntegrationTests/Backroom.Modules.Permissions.IntegrationTests.csproj" />
   </Folder>
+  <Folder Name="/tests/Modules/Realtime/">
+    <Project Path="tests/Modules/Realtime/Backroom.Modules.Realtime.IntegrationTests/Backroom.Modules.Realtime.IntegrationTests.csproj" />
+  </Folder>
   <Folder Name="/tests/Modules/Messaging/">
     <Project Path="tests/Modules/Messaging/Backroom.Modules.Messaging.IntegrationTests/Backroom.Modules.Messaging.IntegrationTests.csproj" />
   </Folder>

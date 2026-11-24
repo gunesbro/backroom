@@ -53,7 +53,9 @@ public static class ServiceDefaultsExtensions
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
                 // Maintenance job rows, failed runs, backlog and oldest due age (Backroom.BuildingBlocks.Infrastructure.Maintenance).
-                .AddMeter("Backroom.Maintenance"))
+                .AddMeter("Backroom.Maintenance")
+                // Hub connections, subscriptions and live event publishes (Backroom.Modules.Realtime.Infrastructure).
+                .AddMeter("Backroom.Realtime"))
             .WithTracing(tracing => tracing
                 .AddSource(builder.Environment.ApplicationName)
                 // Npgsql's built-in activity source: one span per command (SQL text, no parameter values).
@@ -69,10 +71,21 @@ public static class ServiceDefaultsExtensions
                 // The control plane's invitation expiry and retention runs (Backroom.Modules.Directory.Application.Invitations).
                 .AddSource("Backroom.Directory")
                 .AddAspNetCoreInstrumentation(options =>
+                {
+                    // A SignalR WebSocket carries its access token in the query string: never into a trace.
+                    options.EnrichWithHttpRequest = static (activity, request) =>
+                    {
+                        if (request.QueryString.HasValue)
+                        {
+                            activity.SetTag("url.query", QueryRedaction.Redact(request.QueryString.Value!));
+                        }
+                    };
+
                     // Health probes would flood the traces.
                     options.Filter = context =>
                         !context.Request.Path.StartsWithSegments(HealthEndpointPath, StringComparison.OrdinalIgnoreCase)
-                        && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath, StringComparison.OrdinalIgnoreCase))
+                        && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath, StringComparison.OrdinalIgnoreCase);
+                })
                 .AddHttpClientInstrumentation());
 
         if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))

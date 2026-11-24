@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The SignalR gateway on test servers (two app nodes) sharing a real Valkey, with real Keycloak and PostgreSQL (Docker). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Messaging\Backroom.Modules.Messaging.Infrastructure\Backroom.Modules.Messaging.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Messaging\Backroom.Modules.Messaging.Presentation\Backroom.Modules.Messaging.Presentation.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Organization\Backroom.Modules.Organization.Infrastructure\Backroom.Modules.Organization.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Permissions\Backroom.Modules.Permissions.Infrastructure\Backroom.Modules.Permissions.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Modules\Realtime\Backroom.Modules.Realtime.Infrastructure\Backroom.Modules.Realtime.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Backroom.Testing\Backroom.Testing.csproj" />
+  </ItemGroup>
+
+  <!-- The development realm, imported into a Keycloak container. -->
+  <ItemGroup>
+    <None Include="..\..\..\..\src\Aspire\Backroom.AppHost\keycloak-dev\backroom-realm.json" Link="keycloak\backroom-realm.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

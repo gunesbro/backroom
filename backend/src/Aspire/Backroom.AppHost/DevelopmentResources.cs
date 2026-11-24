@@ -6,4 +6,5 @@ internal sealed record DevelopmentResources(
     IResourceBuilder<PostgresServerResource> Postgres,
     IResourceBuilder<ParameterResource> ControlPlaneAdminSecret,
     IResourceBuilder<RabbitMQServerResource> RabbitMq,
-    IResourceBuilder<MailPitContainerResource> Mailpit);
+    IResourceBuilder<MailPitContainerResource> Mailpit,
+    IResourceBuilder<ValkeyResource> Valkey);

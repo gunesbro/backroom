@@ -352,11 +352,6 @@
           "Microsoft.NET.StringTools": "17.6.3"
         }
       },
-      "MessagePack.Annotations": {
-        "type": "Transitive",
-        "resolved": "2.5.307",
-        "contentHash": "kIGiwydfCKWRim1ZoFbZ1qVHDHrQfXdJ+FEFVPEqse/XzvPT7lVUjIb1LOuocP3Tx1+PtFEdEandRhxB64Xd4A=="
-      },
       "Microsoft.Extensions.AI.Abstractions": {
         "type": "Transitive",
         "resolved": "10.5.2",
@@ -862,6 +857,12 @@
         "requested": "[2.85.0, )",
         "resolved": "2.85.0",
         "contentHash": "JpACpJuD56v9MBlgJEakwBLbbDifYwE3fpktbsKMPOI3yvs/VFFQVGnmWatu6mgZSNo7gzFe+TDmda9SOKg+NQ=="
+      },
+      "MessagePack.Annotations": {
+        "type": "CentralTransitive",
+        "requested": "[2.5.307, )",
+        "resolved": "2.5.307",
+        "contentHash": "kIGiwydfCKWRim1ZoFbZ1qVHDHrQfXdJ+FEFVPEqse/XzvPT7lVUjIb1LOuocP3Tx1+PtFEdEandRhxB64Xd4A=="
       },
       "Microsoft.Extensions.Hosting.Abstractions": {
         "type": "CentralTransitive",

@@ -1,4 +1,10 @@
+using MessagePack;
+
 namespace Backroom.Modules.Realtime.Contracts;
 
 /// <summary>A channel as live clients receive it.</summary>
-public sealed record LiveChannel(Guid Id, string Name, DateTimeOffset CreatedAt);
+[MessagePackObject]
+public sealed record LiveChannel(
+    [property: Key("id")] Guid Id,
+    [property: Key("name")] string Name,
+    [property: Key("createdAt")] DateTimeOffset CreatedAt);
