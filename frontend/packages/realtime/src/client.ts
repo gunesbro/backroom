@@ -65,6 +65,9 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
 
   let status: ConnectionStatus = 'stopped';
   let started = false;
+  // Bumped by every start and stop: a connect attempt overtaken while its hub was still being built (stop, then
+  // start, as React StrictMode does) must not open a second connection next to the new attempt.
+  let generation = 0;
   let hub: Hub | undefined;
   let cancelRetry: (() => void) | undefined;
   let attempt = 0;
@@ -128,10 +131,12 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
   const connect = async (): Promise<void> => {
     cancelRetry = undefined;
     if (!started) return;
+    const mine = generation;
     const reconnected = everConnected;
     let current: Hub | undefined;
     try {
       const created = await hubFactory(url, options.getAccessToken);
+      if (mine !== generation) return;
       current = created;
       for (const name of EVENT_NAMES) {
         created.on(name, (payload) => {
@@ -181,11 +186,13 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     start: () => {
       if (started) return;
       started = true;
+      generation += 1;
       setStatus('connecting');
       void connect();
     },
     stop: async () => {
       started = false;
+      generation += 1;
       cancelRetry?.();
       cancelRetry = undefined;
       const current = hub;
