@@ -12,6 +12,8 @@
     <ProjectReference Include="..\..\Modules\Organization\Backroom.Modules.Organization.Infrastructure\Backroom.Modules.Organization.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Organization\Backroom.Modules.Organization.Presentation\Backroom.Modules.Organization.Presentation.csproj" />
     <ProjectReference Include="..\..\Modules\Permissions\Backroom.Modules.Permissions.Infrastructure\Backroom.Modules.Permissions.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Presence\Backroom.Modules.Presence.Infrastructure\Backroom.Modules.Presence.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Presence\Backroom.Modules.Presence.Presentation\Backroom.Modules.Presence.Presentation.csproj" />
     <ProjectReference Include="..\..\Modules\Email\Backroom.Modules.Email.Infrastructure\Backroom.Modules.Email.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\ControlPlaneConnector\Backroom.Modules.ControlPlaneConnector.Infrastructure\Backroom.Modules.ControlPlaneConnector.Infrastructure.csproj" />
     <InternalsVisibleTo Include="Backroom.Cell.Host.UnitTests" />

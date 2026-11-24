@@ -202,6 +202,8 @@ internal sealed partial class DownstreamDelivery(IServiceScopeFactory scopes, Ti
                 DispatchAsync(services, new CellMessage<InvitationAccepted>(messageId, cellId, message.InvitationAccepted), rejectedCode, cancellationToken),
             ConnectResponse.PayloadOneofCase.MembershipSnapshotRequested =>
                 DispatchAsync(services, new CellMessage<MembershipSnapshotRequested>(messageId, cellId, message.MembershipSnapshotRequested), rejectedCode, cancellationToken),
+            ConnectResponse.PayloadOneofCase.AccountStatusChanged =>
+                DispatchAsync(services, new CellMessage<AccountStatusChanged>(messageId, cellId, message.AccountStatusChanged), rejectedCode, cancellationToken),
             _ => throw new InvalidOperationException($"{message.PayloadCase} is not a durable downstream message."),
         };
 

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Technical module (no Domain or Application; no PostgreSQL schema, owner decision 16): automatic presence from the hub's
+    connections, the copy of account statuses, all in Valkey with expiry.
+  -->
+
+  <ItemGroup>
+    <!-- Hosted services and options; the cell host is an ASP.NET Core app. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\Backroom.Modules.Presence.Contracts\Backroom.Modules.Presence.Contracts.csproj" />
+    <ProjectReference Include="..\..\Realtime\Backroom.Modules.Realtime.Contracts\Backroom.Modules.Realtime.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Backroom.Modules.Realtime.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

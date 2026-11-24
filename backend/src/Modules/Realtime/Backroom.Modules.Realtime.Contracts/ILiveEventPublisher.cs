@@ -17,6 +17,9 @@ public interface ILiveEventPublisher
     /// <summary>Sends <c>ChannelCreated</c> to the organization's group.</summary>
     Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken);
 
+    /// <summary>Sends <c>PresenceChanged</c> to the person's presence group in the payload's organization.</summary>
+    Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken);
+
     /// <summary>
     /// Takes the account's connections out of the conversation's group on every node, after the commit that ended its
     /// membership. Best effort and bounded like a publish (it never throws): the durable path is Realtime's consumer of

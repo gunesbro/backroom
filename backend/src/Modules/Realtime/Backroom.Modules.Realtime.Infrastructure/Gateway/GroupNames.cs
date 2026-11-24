@@ -11,6 +11,10 @@ internal static class GroupNames
     public static string Organization(string cellId, Guid organizationId) =>
         string.Create(CultureInfo.InvariantCulture, $"cell:{cellId}:org:{organizationId:D}");
 
+    /// <summary>One person's presence in one organization, joined by the connections that watch them there.</summary>
+    public static string Presence(string cellId, Guid organizationId, Guid accountId) =>
+        string.Create(CultureInfo.InvariantCulture, $"cell:{cellId}:org:{organizationId:D}:presence:{accountId:D}");
+
     /// <summary>A conversation of any kind (replaces Phase 1's <c>channel:{id}</c>); thread events go to the parent's group.</summary>
     public static string Conversation(string cellId, Guid organizationId, Guid conversationId) =>
         string.Create(CultureInfo.InvariantCulture, $"cell:{cellId}:org:{organizationId:D}:conversation:{conversationId:D}");

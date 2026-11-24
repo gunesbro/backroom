@@ -5,9 +5,12 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Backroom.BuildingBlocks.Application.Accounts;
+using Backroom.BuildingBlocks.Presentation.Errors;
 using Backroom.BuildingBlocks.Presentation.RateLimiting;
 using Backroom.Modules.Identity.Application;
 
@@ -22,7 +25,16 @@ public static class IdentityEndpoints
     /// </summary>
     public const string BackchannelLogoutPath = "/internal/keycloak/backchannel-logout";
 
+    /// <summary>The own account status (docs/contracts/phase-2.md, "Control plane"), behind <see cref="PresenceFlag"/>.</summary>
+    public const string StatusPath = "/api/v1/me/status";
+
+    /// <summary>The feature flag of presence and status (the cells' flag has the same name).</summary>
+    public const string PresenceFlag = "Features:Presence";
+
     private const string RateLimit = "backchannel-logout";
+
+    /// <summary>A status: an emoji, 100 characters of text (up to four bytes each, more when the JSON escapes them), dates and a zone.</summary>
+    private const long MaxStatusRequestBytes = 4 * 1024;
 
     /// <summary>A form with one token of at most 8 KB.</summary>
     private const long MaxRequestBytes = 16 * 1024;
@@ -40,6 +52,7 @@ public static class IdentityEndpoints
             options.AddPolicy(RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 ClientNetwork.PartitionKey(context),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 3000, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            options.AddPolicy<string, AccountStatusRateLimitPolicy>(AccountStatusRateLimitPolicy.Name);
         });
     }
 
@@ -52,7 +65,36 @@ public static class IdentityEndpoints
             .RequireRateLimiting(RateLimit)
             .WithMetadata(new RequestSizeLimitAttribute(MaxRequestBytes))
             .ExcludeFromDescription();
+
+        // Off until presence is finished (CLAUDE.md: unfinished features ship behind a flag); bearer tokens only, so no CSRF.
+        if (endpoints.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>(PresenceFlag))
+        {
+            endpoints.MapGet(StatusPath, GetStatusAsync).RequireAuthorization();
+            endpoints.MapPut(StatusPath, SetStatusAsync)
+                .RequireAuthorization()
+                .RequireRateLimiting(AccountStatusRateLimitPolicy.Name)
+                .WithMetadata(new RequestSizeLimitAttribute(MaxStatusRequestBytes));
+        }
+
         return endpoints;
+    }
+
+    private static async Task<IResult> GetStatusAsync(HttpResponse response, ICurrentAccount account, AccountStatuses statuses, CancellationToken cancellationToken)
+    {
+        // Personal data that changes: never cached on the way.
+        response.Headers.CacheControl = "no-store";
+        var status = await statuses.GetAsync(account.AccountId, cancellationToken);
+        return TypedResults.Ok(AccountStatusResponse.From(status));
+    }
+
+    private static async Task<IResult> SetStatusAsync(
+        SetAccountStatusRequest request, HttpResponse response, ICurrentAccount account, AccountStatuses statuses, CancellationToken cancellationToken)
+    {
+        response.Headers.CacheControl = "no-store";
+        var custom = request.CustomStatus;
+        var result = await statuses.SetAsync(
+            account.AccountId, request.DndUntil, custom is not null, custom?.Emoji, custom?.Text, custom?.ExpiresAt, request.TimeZone, cancellationToken);
+        return result.ToHttpResult(status => TypedResults.Ok(AccountStatusResponse.From(status)));
     }
 
     private static async Task<IResult> BackchannelLogoutAsync(

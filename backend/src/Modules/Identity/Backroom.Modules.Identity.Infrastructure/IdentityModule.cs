@@ -13,7 +13,7 @@ public static class IdentityModule
         services.AddModuleDbContext<IdentityDbContext>(IdentityDbContext.Schema, organizationScoped: false);
 
     /// <summary>
-    /// Session revocation: the store, the fan-out to the cells and the revocations <c>FullSync</c> reports. Needs
+    /// Session revocation and account status: the stores, the fan-out to the cells and what <c>FullSync</c> reports. Needs
     /// CellManagement (<c>ICellLinkOutbox</c>) and Directory (<c>IDirectoryQueries</c>) and the host's database session.
     /// </summary>
     public static IServiceCollection AddIdentity(this IServiceCollection services)
@@ -25,6 +25,11 @@ public static class IdentityModule
         services.TryAddScoped<SessionRevocations>();
         services.TryAddScoped<IRevokedSessionQueries, RevokedSessionQueries>();
         services.TryAddSingleton<RevokedSessionCleanup>();
+
+        // Account status (docs/contracts/phase-2.md, flow 9): the own status and its fan-out, and the statuses FullSync reports.
+        services.TryAddScoped<IAccountStatusStore, AccountStatusStore>();
+        services.TryAddScoped<AccountStatuses>();
+        services.TryAddScoped<IAccountStatusQueries, AccountStatusQueries>();
         return services;
     }
 

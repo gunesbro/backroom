@@ -249,6 +249,7 @@
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.ControlPlane.Contracts": "[1.0.0, )",
           "Backroom.Modules.Organization.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Presence.Contracts": "[1.0.0, )",
           "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
           "Grpc.Net.Client": "[2.85.0, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )"
@@ -370,6 +371,25 @@
           "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
         }
       },
+      "backroom.modules.presence.contracts": {
+        "type": "Project"
+      },
+      "backroom.modules.presence.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Presence.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
+          "StackExchange.Redis": "[2.13.23, )"
+        }
+      },
+      "backroom.modules.presence.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Presence.Contracts": "[1.0.0, )"
+        }
+      },
       "backroom.modules.realtime.contracts": {
         "type": "Project",
         "dependencies": {
@@ -382,6 +402,7 @@
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Messaging.Contracts": "[1.0.0, )",
           "Backroom.Modules.Organization.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Presence.Contracts": "[1.0.0, )",
           "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
           "MessagePack": "[2.5.307, )",
           "Microsoft.AspNetCore.SignalR.Protocols.MessagePack": "[10.0.15, )",

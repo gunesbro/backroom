@@ -25,6 +25,16 @@ internal sealed class DirectoryQueries(NpgsqlDataSource dataSource) : IDirectory
         WHERE m.account_id = ANY($1) AND o.cell_id = $2 AND m.status IN ('pending', 'active') AND o.status <> 'failed'
         """;
 
+    // Keyset pages by account id; each organization of the cell is read through memberships_org_id_idx.
+    private const string AccountsOfCellSql = """
+        SELECT DISTINCT m.account_id
+        FROM directory.memberships m
+        JOIN directory.organizations o ON o.id = m.org_id
+        WHERE o.cell_id = $1 AND o.status <> 'failed' AND m.status IN ('pending', 'active') AND m.account_id > $2
+        ORDER BY m.account_id
+        LIMIT $3
+        """;
+
     private const string OrganizationsOfCellSql = """
         SELECT id, name
         FROM directory.organizations
@@ -69,6 +79,25 @@ internal sealed class DirectoryQueries(NpgsqlDataSource dataSource) : IDirectory
         }
 
         return members;
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListAccountsOfCellAsync(string cellId, Guid after, int limit, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(cellId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(limit, IDirectoryQueries.MaxAccountsPerPage);
+        await using var command = dataSource.CreateCommand(AccountsOfCellSql);
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = cellId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = after });
+        command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = limit });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var accounts = new List<Guid>(Math.Min(limit, 256));
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            accounts.Add(reader.GetGuid(0));
+        }
+
+        return accounts;
     }
 
     public async Task<IReadOnlyList<CellOrganization>> ListOrganizationsOfCellAsync(string cellId, int limit, CancellationToken cancellationToken)

@@ -61,6 +61,27 @@ internal sealed class LogoutTokenIssuer : IDisposable
         return new JsonWebTokenHandler().CreateToken(payload.ToJsonString(), credentials);
     }
 
+    /// <summary>
+    /// An access token of the web client for the control plane, shaped like Keycloak's, valid for five minutes of real time (the JWT
+    /// handler checks the lifetime against the system clock, not the test's fake one).
+    /// </summary>
+    public string CreateAccessToken(Guid accountId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var payload = new JsonObject
+        {
+            ["iss"] = Issuer,
+            ["aud"] = "control-plane",
+            ["azp"] = "web",
+            ["typ"] = "Bearer",
+            ["sub"] = accountId.ToString("D"),
+            ["sid"] = Guid.NewGuid().ToString("D"),
+            ["iat"] = now.ToUnixTimeSeconds(),
+            ["exp"] = now.AddMinutes(5).ToUnixTimeSeconds(),
+        };
+        return new JsonWebTokenHandler().CreateToken(payload.ToJsonString(), new SigningCredentials(TrustedKey, SecurityAlgorithms.RsaSha256));
+    }
+
     /// <summary>An unsigned token (<c>alg: none</c>) with the payload of a valid one.</summary>
     public string CreateUnsigned(DateTimeOffset now, Guid accountId)
     {

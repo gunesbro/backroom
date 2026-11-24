@@ -43,6 +43,8 @@ var controlPlane = builder.AddProject<Projects.Backroom_ControlPlane_Host>("cont
     .WithEnvironment("Features__OrganizationCreation", "true")
     .WithWebOrigins()
     .WithEnvironment("Features__Invitations", "true")
+    // Presence and status (docs/contracts/phase-2.md, flow 9) are behind a flag; on in development, as in the cells.
+    .WithEnvironment("Features__Presence", "true")
     .WithEnvironment("Directory__Invitations__EmailHmacKey", emailHmacKey)
     .WaitFor(keycloak)
     .WithHttpHealthCheck("/health");
@@ -100,6 +102,7 @@ for (var i = 0; i < cells.Count; i++)
         .WithEnvironment("Cell__Role", "app")
         // Invitations (flow 3) are behind a flag; on in development, as on the control plane.
         .WithEnvironment("Features__Invitations", "true")
+        .WithEnvironment("Features__Presence", "true")
         .WithWebOrigins()
         .WithEnvironment("Authentication__Authority", authority)
         // Live events: the SignalR backplane and the member-removal channel (docs/contracts/phase-1.md, "Live events"),

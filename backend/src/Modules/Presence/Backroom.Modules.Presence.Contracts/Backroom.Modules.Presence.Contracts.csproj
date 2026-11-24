@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- What other modules may ask Presence (docs/contracts/phase-2.md, flow 9): presence and status reads, the hub's connection
+       events, and the account status copy the link applies. No package references: the contract carries plain types. -->
+
+</Project>

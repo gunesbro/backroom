@@ -64,3 +64,12 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 - **Metrics**: `backroom.realtime.revoked_requests`, `.revocation_checks_unavailable` (tag `outcome`), `.revoked_connections`.
 - **Deploy phase**: Valkey ACL must allow the keys `backroom:cell:{id}:revoked:*` and the channel for the nodes only; anyone who can write them can lock people out or (by deleting keys) un-revoke within the cache TTL.
 - Tests (`Backroom.Modules.Realtime.IntegrationTests`): `RevocationCheckerTests` (fake store and clock: cache TTL, push, stale tolerance, fail closed, backoff, bounds, account revocations), `SessionRevocationTests` (two nodes on a real Valkey, own-signed and real Keycloak tokens: 401 on both nodes, hub connect refused, `SessionRevoked` received and connections closed on both nodes, other sessions untouched, expiry by `keep_until`, a node started later, cells kept apart), `RevocationOutageTests` (dead Valkey: `503` quickly, fail open by setting, revoking throws).
+
+## Presence on the hub (Phase 2 step 28)
+
+**Human review required** (privacy). Contract: [phase-2.md](../../../../docs/contracts/phase-2.md), flow 9 and "Live events".
+
+- Methods `WatchPresence(orgId, accountIds)` (active member; replaces the connection's watch set; at most 200 ids; ids of people who are not active members there are dropped without a word; counts as a subscribe call) and `ReportActivity("active" | "idle")` (at most one per 10 s per connection, extras dropped). Both answer `realtime.not_found` while `Features:Presence` is off. Connect and disconnect go to `IPresenceTracker` (Presence.Contracts; a no-op fallback when the Presence module is not added).
+- Groups `cell:{cellId}:org:{orgId}:presence:{accountId}`, tracked per connection with their organization, so member removal drops them too. Limits: 600 groups per connection (conversations plus presence), receive size 16 KB (200 ids).
+- `PresenceChanged { orgId, accountId, state, dndUntil?, customStatus? }` (timestamps as ISO 8601 strings) through `ILiveEventPublisher` to the person's presence group.
+- The member-removed consumer also calls `IPresenceMemberships.ForgetAsync`, so the person's presence stops reaching that organization at once.

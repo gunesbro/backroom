@@ -61,6 +61,13 @@ internal sealed partial class ValkeyLiveEventPublisher : ILiveEventPublisher, ID
             LiveEventNames.ChannelCreated, GroupNames.Organization(_options.CellId, payload.OrgId), payload, payload.OrgId, cancellationToken);
     }
 
+    public Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return PublishAsync(
+            LiveEventNames.PresenceChanged, GroupNames.Presence(_options.CellId, payload.OrgId, payload.AccountId), payload, payload.OrgId, cancellationToken);
+    }
+
     public async Task RemoveFromConversationAsync(Guid orgId, Guid conversationId, Guid accountId, CancellationToken cancellationToken)
     {
         // Bounded like a publish (the request waits for it); the consumer of the durable event repeats it when this is lost.
