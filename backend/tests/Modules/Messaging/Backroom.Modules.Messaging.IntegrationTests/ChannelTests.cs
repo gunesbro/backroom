@@ -69,6 +69,8 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
     [InlineData("tab\there")]
     [InlineData("line\nbreak")]
     [InlineData("nul\0here")]
+    [InlineData("zero\x200Bwidth")]
+    [InlineData("\x3164")]
     [InlineData("separator\x2028here")]
     public async Task Create_WithAnInvalidName_IsRefusedAsync(string? name)
     {
@@ -109,6 +111,23 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
         (await ReadJsonAsync(second))["code"]!.GetValue<string>().Should().Be("messaging.channel_name_taken");
         (await QuerySingleAsync("SELECT count(*) FROM messaging.channels WHERE org_id = $1", organizationId))[0].Should().Be(1L);
         Publisher.Channels.Should().ContainSingle("the refused request announces nothing");
+    }
+
+    [Fact]
+    public async Task Create_WithNamesThatDifferOnlyByNormalizationOrNonAsciiCase_IsAConflictAsync()
+    {
+        using var scope = CultureScope.Turkish();
+        var organizationId = await ProvisionForAsync(Alice);
+
+        using var composed = await PostAsync($"/api/v1/orgs/{organizationId}/channels", Alice, new { name = "Café" });
+        using var decomposed = await PostAsync($"/api/v1/orgs/{organizationId}/channels", Alice, new { name = "Cafe" + (char)0x301 });
+        using var upper = await PostAsync($"/api/v1/orgs/{organizationId}/channels", Alice, new { name = "ÇAĞ" });
+        using var lower = await PostAsync($"/api/v1/orgs/{organizationId}/channels", Alice, new { name = "çağ" });
+
+        composed.StatusCode.Should().Be(HttpStatusCode.Created);
+        decomposed.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        upper.StatusCode.Should().Be(HttpStatusCode.Created);
+        lower.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]

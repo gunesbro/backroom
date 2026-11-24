@@ -1,36 +1,20 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
 
 namespace Backroom.Modules.Messaging.Application.Channels;
 
-/// <summary>A channel's name: trimmed, Unicode NFC, 1 to <see cref="MaxLength"/> characters, no control characters.</summary>
+/// <summary>
+/// A channel name: the same rule as other names people see (<see cref="DisplayText"/>: NFC, trimmed, a visible
+/// character, no control or invisible format characters), 1 to <see cref="MaxLength"/> characters.
+/// </summary>
 internal static class ChannelName
 {
     public const int MaxLength = 80;
 
     public static bool TryNormalize(string? raw, [NotNullWhen(true)] out string? name)
     {
-        name = null;
-        if (raw is null)
-        {
-            return false;
-        }
-
-        // Trim() and Normalize() are culture-independent.
-        var candidate = raw.Trim();
-        if (candidate.Length is 0 or > MaxLength * 2 || !TextRules.IsClean(candidate, allowLayoutControls: false))
-        {
-            return false;
-        }
-
-        candidate = candidate.Normalize(NormalizationForm.FormC);
-        if (candidate.Length > MaxLength)
-        {
-            return false;
-        }
-
-        name = candidate;
-        return true;
+        var valid = DisplayText.TryNormalize(raw, MaxLength, out var normalized);
+        name = valid ? normalized : null;
+        return valid;
     }
 
     /// <summary>

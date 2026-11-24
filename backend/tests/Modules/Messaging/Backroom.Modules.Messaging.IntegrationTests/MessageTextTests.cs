@@ -8,14 +8,22 @@ public sealed class MessageTextTests
     [Theory]
     [InlineData("plain", "plain")]
     [InlineData("  padded \n", "padded")]
-    [InlineData("<a href=\"x\">&'</a>", "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;")]
-    [InlineData("one\r\ntwo\tthree", "one\ntwo\tthree")]
+    [InlineData("<a href=\"x\">&'</a>", "<a href=\"x\">&'</a>")]
+    [InlineData("one\r\ntwo\tthree", "one\r\ntwo\tthree")]
     [InlineData("Ünïcödé ✓ 👍", "Ünïcödé ✓ 👍")]
-    public void TryPrepare_WithAValidText_TrimsAndEscapes(string raw, string expected)
+    public void TryPrepare_WithAValidText_TrimsAndKeepsItRaw(string raw, string expected)
     {
-        MessageText.TryPrepare(raw, out var stored).Should().BeTrue();
+        MessageText.TryPrepare(raw, out var text).Should().BeTrue();
 
-        stored.Should().Be(expected);
+        text.Should().Be(expected);
+    }
+
+    [Fact]
+    public void TryPrepare_NormalizesToNfc()
+    {
+        MessageText.TryPrepare("cafe" + (char)0x301, out var text).Should().BeTrue();
+
+        text.Should().Be("café");
     }
 
     [Theory]
@@ -41,17 +49,20 @@ public sealed class MessageTextTests
     {
         MessageText.TryPrepare(new string('a', MessageText.MaxLength), out _).Should().BeTrue();
         MessageText.TryPrepare(new string('a', MessageText.MaxLength + 1), out _).Should().BeFalse();
-        MessageText.TryPrepare(new string('"', MessageText.MaxLength), out var stored).Should().BeTrue();
-        stored!.Length.Should().Be(MessageText.MaxStoredLength);
+        MessageText.TryPrepare(new string('"', MessageText.MaxLength), out var text).Should().BeTrue();
+        text!.Length.Should().Be(MessageText.MaxLength);
     }
 
     [Fact]
-    public void ToBlocks_ReturnsOneParagraphWithTheText()
+    public void ToBlocks_ReturnsOneParagraphWithOneTextNodeHoldingThePlainText()
     {
-        var blocks = System.Text.Json.Nodes.JsonNode.Parse(MessageText.ToBlocks("a &lt; b"))!.AsArray();
+        var blocks = System.Text.Json.Nodes.JsonNode.Parse(MessageText.ToBlocks("a < b & c"))!.AsArray();
 
         blocks.Should().ContainSingle();
         blocks[0]!["type"]!.GetValue<string>().Should().Be("paragraph");
-        blocks[0]!["text"]!.GetValue<string>().Should().Be("a &lt; b");
+        var children = blocks[0]!["children"]!.AsArray();
+        children.Should().ContainSingle();
+        children[0]!["type"]!.GetValue<string>().Should().Be("text");
+        children[0]!["text"]!.GetValue<string>().Should().Be("a < b & c");
     }
 }

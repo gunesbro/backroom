@@ -47,7 +47,11 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
 
     internal CapturingLoggerProvider Logs { get; } = new();
 
+    internal ScriptedIdGenerator IdScript { get; } = new();
+
     protected PostgresDatabase Database => database;
+
+    protected IServiceProvider Services => _cell.Services;
 
     public async ValueTask InitializeAsync()
     {
@@ -66,6 +70,7 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         builder.Services.AddPermissions();
         builder.Services.AddOrganization();
         builder.Services.AddSingleton<ILiveEventPublisher>(Publisher);
+        builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Identifiers.IIdGenerator>(IdScript);
         builder.Services.AddMessaging();
         // Development would throw on a bad query string before the filters; production answers through them.
         builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);

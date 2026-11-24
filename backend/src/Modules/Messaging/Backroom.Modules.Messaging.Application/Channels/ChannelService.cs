@@ -60,7 +60,7 @@ internal sealed partial class ChannelService(
         }
 
         // One more than asked for tells whether another page follows.
-        var found = await channels.ListAsync(after ?? Guid.Empty, pageSize + 1, cancellationToken);
+        var found = await channels.ListAsync(OrganizationId, after ?? Guid.Empty, pageSize + 1, cancellationToken);
         return found.Count > pageSize
             ? new ChannelPage([.. found.Take(pageSize)], found[pageSize - 1].Id)
             : new ChannelPage(found, null);

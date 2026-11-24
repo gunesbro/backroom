@@ -13,7 +13,7 @@ namespace Backroom.Modules.Messaging.Application.Messages;
 /// <summary>
 /// Plain-text messages in public channels (docs/contracts/phase-1.md, flow 4, steps 2 and 3). The endpoint has checked
 /// the membership; Phase 1 channels are public, so every active member may read and write every open channel. The
-/// message and its outbox row are written in the request's unit of work; the live event is held until it commits.
+/// message and its outbox row are written in the request unit of work; the live event is held until it commits.
 /// </summary>
 internal sealed partial class MessageService(
     IMessageStore messages,
@@ -28,9 +28,6 @@ internal sealed partial class MessageService(
     public const int DefaultPageSize = 50;
     public const int MaxPageSize = 100;
 
-    /// <summary>The largest <c>before</c> there is: a UUID compares bytewise, so no message id is above it.</summary>
-    private static readonly Guid s_newest = new("ffffffff-ffff-ffff-ffff-ffffffffffff");
-
     public static readonly Error ChannelNotFound =
         Error.NotFound("messaging.channel_not_found", "The channel was not found.");
 
@@ -38,26 +35,36 @@ internal sealed partial class MessageService(
         Error.Validation("messaging.message_invalid", "The message needs a client message id and 1 to 4000 characters of text without control characters.");
 
     public static readonly Error PageInvalid =
-        Error.Validation("messaging.page_invalid", "Use either before or after, and a page size between 1 and 100.");
+        Error.Validation("messaging.page_invalid", "Use either before or after, a cursor of 0 or more, and a page size between 1 and 100.");
 
     public async Task<Result<SentMessage>> SendAsync(Guid authorAccountId, Guid channelId, Guid? clientMessageId, string? text, CancellationToken cancellationToken)
     {
         var organizationId = OrganizationId;
-        if (clientMessageId is not { } clientId || clientId == Guid.Empty || !MessageText.TryPrepare(text, out var stored))
+        if (clientMessageId is not { } clientId || clientId == Guid.Empty || !MessageText.TryPrepare(text, out var prepared))
         {
             return MessageInvalid;
         }
 
-        if (!await channels.ExistsAsync(channelId, cancellationToken))
+        // A repeat (a retry after a lost answer) is answered before any lock is taken. This and the unique index rely on
+        // READ COMMITTED (the default, checked by a test): a concurrent repeat that waits for the first send to commit
+        // then sees its row.
+        if (await messages.FindAsync(channelId, authorAccountId, clientId, cancellationToken) is { } stored)
+        {
+            return new SentMessage(stored, Created: false);
+        }
+
+        // Takes the channel row lock until commit: sequence numbers follow commit order, which catch-up relies on.
+        if (await channels.NextSequenceAsync(organizationId, channelId, cancellationToken) is not { } seq)
         {
             return ChannelNotFound;
         }
 
         var now = StoredTime.Now(timeProvider);
-        var message = new NewMessage(ids.NewId(), organizationId, channelId, authorAccountId, clientId, stored, MessageText.ToBlocks(stored), now);
+        var message = new NewMessage(ids.NewId(), organizationId, channelId, seq, authorAccountId, clientId, prepared, MessageText.ToBlocks(prepared), now);
         if (!await messages.AddAsync(message, cancellationToken))
         {
-            // A repeat (a retry after a lost answer): the first one stays, nothing is published again.
+            // Another send of the same client message id committed between the check above and the lock; the first stays
+            // (the sequence number taken here is left unused: sequences have gaps, clients never assume otherwise).
             var existing = await messages.FindAsync(channelId, authorAccountId, clientId, cancellationToken)
                 ?? throw new InvalidOperationException("The message exists by its unique index but could not be read.");
             return new SentMessage(existing, Created: false);
@@ -66,20 +73,20 @@ internal sealed partial class MessageService(
         await outbox.AddAsync(
             new MessagePosted(ids.NewId(), organizationId, now, channelId, message.Id, authorAccountId, now),
             cancellationToken);
-        liveEvents.Add(new MessagePostedPayload(organizationId, channelId, new LiveMessage(message.Id, clientId, authorAccountId, stored, now)));
+        liveEvents.Add(new MessagePostedPayload(organizationId, channelId, new LiveMessage(message.Id, seq, clientId, authorAccountId, prepared, now)));
         LogPosted(logger, message.Id, channelId, organizationId, authorAccountId);
-        return new SentMessage(new MessageEntry(message.Id, clientId, authorAccountId, stored, now), Created: true);
+        return new SentMessage(new MessageEntry(message.Id, seq, clientId, authorAccountId, prepared, now), Created: true);
     }
 
-    public async Task<Result<MessagePage>> ListAsync(Guid channelId, Guid? before, Guid? after, int? limit, CancellationToken cancellationToken)
+    public async Task<Result<MessagePage>> ListAsync(Guid channelId, long? before, long? after, int? limit, CancellationToken cancellationToken)
     {
         var pageSize = limit ?? DefaultPageSize;
-        if (pageSize is < 1 or > MaxPageSize || (before is not null && after is not null))
+        if (pageSize is < 1 or > MaxPageSize || (before is not null && after is not null) || before < 0 || after < 0)
         {
             return PageInvalid;
         }
 
-        if (!await channels.ExistsAsync(channelId, cancellationToken))
+        if (!await channels.ExistsAsync(OrganizationId, channelId, cancellationToken))
         {
             return ChannelNotFound;
         }
@@ -87,9 +94,9 @@ internal sealed partial class MessageService(
         // One more than asked for tells whether another page follows.
         var found = after is { } cursor
             ? await messages.ListAfterAsync(channelId, cursor, pageSize + 1, cancellationToken)
-            : await messages.ListBeforeAsync(channelId, before ?? s_newest, pageSize + 1, cancellationToken);
+            : await messages.ListBeforeAsync(channelId, before ?? long.MaxValue, pageSize + 1, cancellationToken);
         return found.Count > pageSize
-            ? new MessagePage([.. found.Take(pageSize)], found[pageSize - 1].Id)
+            ? new MessagePage([.. found.Take(pageSize)], found[pageSize - 1].Seq)
             : new MessagePage(found, null);
     }
 

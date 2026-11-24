@@ -4,7 +4,7 @@ using Backroom.Modules.Messaging.Application.Channels;
 
 namespace Backroom.Modules.Messaging.Infrastructure;
 
-/// <summary>Channels; row-level security limits every statement to the entered organization.</summary>
+/// <summary>Channels; row-level security limits every statement to the entered organization, and each query also names it so the indexes lead with it.</summary>
 internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
 {
     private const string AddSql = """
@@ -16,12 +16,16 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
     private const string ListSql = """
         SELECT id, name, created_at
         FROM messaging.channels
-        WHERE archived_at IS NULL AND id > $1
+        WHERE org_id = $1 AND archived_at IS NULL AND id > $2
         ORDER BY id
-        LIMIT $2
+        LIMIT $3
         """;
 
-    private const string ExistsSql = "SELECT 1 FROM messaging.channels WHERE id = $1 AND archived_at IS NULL";
+    private const string ExistsSql = "SELECT 1 FROM messaging.channels WHERE org_id = $1 AND id = $2 AND archived_at IS NULL";
+
+    // The row lock this takes is held until the transaction ends.
+    private const string NextSequenceSql =
+        "UPDATE messaging.channels SET last_seq = last_seq + 1 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING last_seq";
 
     public async Task<bool> AddAsync(NewChannel channel, CancellationToken cancellationToken)
     {
@@ -35,9 +39,10 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
-    public async Task<IReadOnlyList<ChannelEntry>> ListAsync(Guid after, int count, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ChannelEntry>> ListAsync(Guid organizationId, Guid after, int count, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(ListSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = after });
         command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = count });
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -50,10 +55,19 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         return channels;
     }
 
-    public async Task<bool> ExistsAsync(Guid channelId, CancellationToken cancellationToken)
+    public async Task<bool> ExistsAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(ExistsSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
         return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    public async Task<long?> NextSequenceAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(NextSequenceSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
+        return await command.ExecuteScalarAsync(cancellationToken) is long seq ? seq : null;
     }
 }

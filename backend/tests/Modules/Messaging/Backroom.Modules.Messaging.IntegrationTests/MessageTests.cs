@@ -16,7 +16,7 @@ namespace Backroom.Modules.Messaging.IntegrationTests;
 public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keycloak) : MessagingTestBase(database, keycloak)
 {
     [Fact]
-    public async Task Send_AsAMember_StoresTheMessageEscapedWithBlocksDerivedOnTheServerAsync()
+    public async Task Send_AsAMember_StoresTheRawTextWithBlocksDerivedOnTheServerAsync()
     {
         var (organizationId, channelId) = await ChannelAsync();
         var clientMessageId = Guid.NewGuid();
@@ -28,17 +28,17 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = (await ReadJsonAsync(response)).AsObject();
-        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "clientMessageId", "authorAccountId", "text", "createdAt"]);
-        const string Escaped = "&lt;b&gt;Hi&lt;/b&gt; &amp; &quot;bye&quot; &#39;x&#39;\nnext";
-        body["text"]!.GetValue<string>().Should().Be(Escaped);
+        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "seq", "clientMessageId", "authorAccountId", "text", "createdAt"]);
+        const string Stored = "<b>Hi</b> & \"bye\" 'x'\r\nnext";
+        body["text"]!.GetValue<string>().Should().Be(Stored);
         body["clientMessageId"]!.GetValue<Guid>().Should().Be(clientMessageId);
         body["authorAccountId"]!.GetValue<Guid>().Should().Be(await AccountAsync(Alice));
         var id = body["id"]!.GetValue<Guid>();
         id.Version.Should().Be(7);
 
         var row = await QuerySingleAsync(
-            "SELECT org_id, channel_id, text, jsonb_array_length(blocks), blocks->0->>'type', blocks->0->>'text', jsonb_typeof(blocks) FROM messaging.messages WHERE id = $1", id);
-        row.Should().Equal(organizationId, channelId, Escaped, 1, "paragraph", Escaped, "array");
+            "SELECT org_id, channel_id, text, jsonb_array_length(blocks), blocks->0->>'type', blocks->0->'children'->0->>'type', blocks->0->'children'->0->>'text', jsonb_typeof(blocks) FROM messaging.messages WHERE id = $1", id);
+        row.Should().Equal(organizationId, channelId, Stored, 1, "paragraph", "text", Stored, "array");
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         published.Message.Id.Should().Be(message["id"]!.GetValue<Guid>());
         published.Message.ClientMessageId.Should().Be(clientMessageId);
         published.Message.AuthorAccountId.Should().Be(await AccountAsync(Alice));
-        published.Message.Text.Should().Be("hello &lt;all&gt;");
+        published.Message.Text.Should().Be("hello <all>");
         published.Message.CreatedAt.Should().Be(message["createdAt"]!.GetValue<DateTimeOffset>());
     }
 
@@ -182,14 +182,14 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
     }
 
     [Fact]
-    public async Task Send_WithTheLongestText_SucceedsEvenWhenEveryCharacterIsEscapedAsync()
+    public async Task Send_WithTheLongestText_SucceedsAsync()
     {
         var (organizationId, channelId) = await ChannelAsync();
 
-        // 4000 quotes become 24000 characters of &quot;: the stored text may be six times the limit.
+        // Nothing is escaped or expanded: the text is stored as sent.
         var longest = await SendMessageAsync(organizationId, channelId, Alice, new string('"', 4000));
 
-        longest["text"]!.GetValue<string>().Should().HaveLength(24000);
+        longest["text"]!.GetValue<string>().Should().HaveLength(4000);
     }
 
     [Fact]
@@ -265,7 +265,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
             sent.Add((await SendMessageAsync(organizationId, channelId, Alice, $"m{index}"))["id"]!.GetValue<Guid>());
         }
 
-        var body = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?after={Guid.Empty}&limit=100", Alice));
+        var body = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?after=0&limit=100", Alice));
 
         Ids(body).Should().Equal(sent);
     }
@@ -281,7 +281,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         Ids(body).Should().Equal(Enumerable.Reverse(ids));
         body["next"].Should().BeNull();
         body["messages"]![0]!.AsObject().Select(property => property.Key)
-            .Should().BeEquivalentTo(["id", "clientMessageId", "authorAccountId", "text", "createdAt"]);
+            .Should().BeEquivalentTo(["id", "seq", "clientMessageId", "authorAccountId", "text", "createdAt"]);
     }
 
     [Fact]
@@ -291,11 +291,11 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var ids = await SendManyAsync(organizationId, channelId, 7);
 
         var first = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?limit=3", Alice));
-        var second = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?limit=3&before={first["next"]!.GetValue<Guid>()}", Alice));
-        var third = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?limit=3&before={second["next"]!.GetValue<Guid>()}", Alice));
+        var second = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?limit=3&before={first["next"]!.GetValue<long>()}", Alice));
+        var third = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?limit=3&before={second["next"]!.GetValue<long>()}", Alice));
 
         Ids(first).Should().Equal(ids[6], ids[5], ids[4]);
-        first["next"]!.GetValue<Guid>().Should().Be(ids[4]);
+        first["next"]!.GetValue<long>().Should().Be(5);
         Ids(second).Should().Equal(ids[3], ids[2], ids[1]);
         Ids(third).Should().Equal(ids[0]);
         third["next"].Should().BeNull();
@@ -307,12 +307,12 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var (organizationId, channelId) = await ChannelAsync();
         var ids = await SendManyAsync(organizationId, channelId, 7);
 
-        var first = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?after={ids[2]}&limit=2", Alice));
-        var rest = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?after={ids[4]}", Alice));
-        var none = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?after={ids[6]}", Alice));
+        var first = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?after=3&limit=2", Alice));
+        var rest = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?after=5", Alice));
+        var none = await ReadJsonAsync(await GetAsync($"{MessagesPath(organizationId, channelId)}?after=7", Alice));
 
         Ids(first).Should().Equal(ids[3], ids[4]);
-        first["next"]!.GetValue<Guid>().Should().Be(ids[4]);
+        first["next"]!.GetValue<long>().Should().Be(5);
         Ids(rest).Should().Equal(ids[5], ids[6]);
         rest["next"].Should().BeNull();
         Ids(none).Should().BeEmpty();
@@ -325,8 +325,8 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var (organizationId, channelId) = await ChannelAsync();
         await ExecuteAsync(
             """
-            INSERT INTO messaging.messages (id, org_id, channel_id, author_account_id, client_message_id, text, blocks, created_at)
-            SELECT uuidv7(), $1, $2, $3, uuidv7(), 'm', '[]'::jsonb, now() FROM generate_series(1, 120)
+            INSERT INTO messaging.messages (id, org_id, channel_id, seq, author_account_id, client_message_id, text, blocks, created_at)
+            SELECT uuidv7(), $1, $2, n, $3, uuidv7(), 'm', '[]'::jsonb, now() FROM generate_series(1, 120) AS n
             """,
             organizationId, channelId, await AccountAsync(Alice));
 
@@ -357,15 +357,15 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
     {
         var (organizationId, channelId) = await ChannelAsync();
 
-        using var response = await GetAsync($"{MessagesPath(organizationId, channelId)}?before={Guid.NewGuid()}&after={Guid.NewGuid()}", Alice);
+        using var response = await GetAsync($"{MessagesPath(organizationId, channelId)}?before=5&after=3", Alice);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadJsonAsync(response))["code"]!.GetValue<string>().Should().Be("messaging.page_invalid");
     }
 
     [Theory]
-    [InlineData("before=notaguid")]
-    [InlineData("after=notaguid")]
+    [InlineData("before=abc")]
+    [InlineData("after=abc")]
     [InlineData("limit=abc")]
     public async Task List_WithAMalformedQuery_OnlyAMemberLearnsItIsBadAsync(string query)
     {

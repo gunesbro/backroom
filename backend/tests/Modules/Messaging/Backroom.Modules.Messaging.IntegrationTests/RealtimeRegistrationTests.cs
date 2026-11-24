@@ -16,7 +16,7 @@ public sealed class RealtimeRegistrationTests
         var cancellationToken = TestContext.Current.CancellationToken;
 
         var message = new MessagePostedPayload(
-            Guid.NewGuid(), Guid.NewGuid(), new LiveMessage(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "x", DateTimeOffset.UtcNow));
+            Guid.NewGuid(), Guid.NewGuid(), new LiveMessage(Guid.NewGuid(), 1, Guid.NewGuid(), Guid.NewGuid(), "x", DateTimeOffset.UtcNow));
         var channel = new ChannelCreatedPayload(Guid.NewGuid(), new LiveChannel(Guid.NewGuid(), "x", DateTimeOffset.UtcNow));
 
         await publisher.PublishAsync(message, cancellationToken);

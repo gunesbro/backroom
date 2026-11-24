@@ -50,7 +50,7 @@ public static class MessagingEndpoints
         return result.ToHttpResult(channel => TypedResults.Created((string?)null, ToResponse(channel)));
     }
 
-    private static async Task<IResult> ListMessagesAsync(Guid channelId, Guid? before, Guid? after, int? limit, MessageService messages, CancellationToken cancellationToken)
+    private static async Task<IResult> ListMessagesAsync(Guid channelId, long? before, long? after, int? limit, MessageService messages, CancellationToken cancellationToken)
     {
         var result = await messages.ListAsync(channelId, before, after, limit, cancellationToken);
         return result.ToHttpResult(page => TypedResults.Ok(new MessagesResponse([.. page.Messages.Select(ToResponse)], page.Next)));
@@ -67,5 +67,5 @@ public static class MessagingEndpoints
     private static ChannelResponse ToResponse(ChannelEntry channel) => new(channel.Id, channel.Name, channel.CreatedAt);
 
     private static MessageResponse ToResponse(MessageEntry message) =>
-        new(message.Id, message.ClientMessageId, message.AuthorAccountId, message.Text, message.CreatedAt);
+        new(message.Id, message.Seq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.CreatedAt);
 }
