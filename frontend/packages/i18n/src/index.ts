@@ -56,3 +56,19 @@ export function formatDateTime(value: Date, locale: Locale, timeZone?: string): 
     ...(timeZone === undefined ? {} : { timeZone }),
   }).format(value);
 }
+
+/**
+ * When a message was sent: the time ("2:30 PM", "14:30") on the same day as `now`, otherwise the short date and
+ * time ("Nov 21, 2:30 PM", "21 Kas 14:30"); in the person's time zone.
+ */
+export function formatMessageTime(value: Date, locale: Locale, now: Date, timeZone?: string): string {
+  const zone = timeZone === undefined ? {} : { timeZone };
+  const day = (date: Date) =>
+    new Intl.DateTimeFormat(FORMAT_TAGS[locale], { dateStyle: 'short', ...zone }).format(date);
+  return new Intl.DateTimeFormat(FORMAT_TAGS[locale], {
+    ...(day(value) === day(now) ? {} : { month: 'short', day: 'numeric' }),
+    hour: 'numeric',
+    minute: '2-digit',
+    ...zone,
+  }).format(value);
+}

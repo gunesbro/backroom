@@ -226,6 +226,15 @@ export function Account({ name, children }: { name: string; children?: ReactNode
   );
 }
 
+/** The initials of a person in a round avatar; decorative, the name is always written next to it. */
+export function Avatar({ name }: { name: string }) {
+  return (
+    <span className="ph-avatar ph-avatar--person" aria-hidden="true">
+      {initials(name)}
+    </span>
+  );
+}
+
 /** A bordered row naming an account: initials, name and a line below (docs/design: InviteAccept). */
 export function AccountRow({ name, detail }: { name: string; detail: ReactNode }) {
   return (

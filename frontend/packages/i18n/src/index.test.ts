@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateTime, formatDuration, resolveLocale, translate, type Messages } from './index';
+import {
+  formatDateTime,
+  formatDuration,
+  formatMessageTime,
+  resolveLocale,
+  translate,
+  type Messages,
+} from './index';
 
 describe('resolveLocale', () => {
   it('ResolveLocale_WithSeveralPreferences_PicksTheFirstSupported', () => {
@@ -39,5 +46,23 @@ describe('formatDateTime', () => {
 
     expect(formatDateTime(value, 'en', 'UTC')).toBe('November 22, 2026 at 2:30 PM');
     expect(formatDateTime(value, 'tr', 'UTC')).toBe('22 Kasım 2026 14:30');
+  });
+});
+
+describe('formatMessageTime', () => {
+  const now = new Date('2026-11-22T20:00:00Z');
+
+  it('FormatMessageTime_SameDay_ShowsOnlyTheTime', () => {
+    const value = new Date('2026-11-22T14:30:00Z');
+
+    expect(formatMessageTime(value, 'en', now, 'UTC')).toBe('2:30 PM');
+    expect(formatMessageTime(value, 'tr', now, 'UTC')).toBe('14:30');
+  });
+
+  it('FormatMessageTime_EarlierDay_ShowsTheDateToo', () => {
+    const value = new Date('2026-11-21T14:30:00Z');
+
+    expect(formatMessageTime(value, 'en', now, 'UTC')).toBe('Nov 21, 2:30 PM');
+    expect(formatMessageTime(value, 'tr', now, 'UTC')).toBe('21 Kas 14:30');
   });
 });
