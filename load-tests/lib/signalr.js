@@ -97,8 +97,8 @@ export function stampOf(buffer) {
 
 /**
  * Opens the hub, subscribes to the channels and calls onVisible(milliseconds since the stamp) for each message posted.
- * onReady(milliseconds from connecting until the server confirmed every subscription) is called once; a refused
- * subscription calls onError('subscribe'). The connection closes after holdMs.
+ * onReady(milliseconds from connecting until the server confirmed every subscription) is called once, and only if none
+ * was refused; a refused subscription calls onError('subscribe') instead. The connection closes after holdMs.
  * The k6 iteration ends when the connection has closed (the event loop is empty).
  */
 export function listen({ cellUrl, token, orgId, channelIds, holdMs, onReady, onVisible, onError }) {
@@ -109,6 +109,7 @@ export function listen({ cellUrl, token, orgId, channelIds, holdMs, onReady, onV
   let pinger;
   let handshakeDone = false;
   let pending = 0;
+  let refused = false;
 
   ws.onopen = () => ws.send(`{"protocol":"messagepack","version":1}${RECORD_SEPARATOR}`);
   ws.onmessage = (event) => {
@@ -135,8 +136,11 @@ export function listen({ cellUrl, token, orgId, channelIds, holdMs, onReady, onV
     }
     if (pending > 0) {
       for (const [, ok] of completionsOf(event.data)) {
-        if (!ok) onError('subscribe');
-        if (--pending === 0) onReady(Date.now() - started);
+        if (!ok) {
+          refused = true;
+          onError('subscribe');
+        }
+        if (--pending === 0 && !refused) onReady(Date.now() - started);
       }
     }
     const sentAt = stampOf(event.data);
