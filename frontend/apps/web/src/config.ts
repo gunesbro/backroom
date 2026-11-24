@@ -27,6 +27,11 @@ export const config = {
    * (.env.development), off in every other build unless VITE_MESSAGING_ENABLED=true.
    */
   messagingEnabled: import.meta.env.VITE_MESSAGING_ENABLED === 'true',
+  /**
+   * Feature flag: inviting people from the organization view (Phase 1 step 7). Needs messaging, because the cell is
+   * reached through the same per-cell tokens, and the cell's own `Features:Invitations`. On in development.
+   */
+  invitationsUiEnabled: import.meta.env.VITE_INVITATIONS_UI_ENABLED === 'true',
   /** The control plane's origin; empty means this origin (the development server proxies /api). */
   controlPlaneUrl: import.meta.env.VITE_CONTROL_PLANE_URL ?? '',
   /** Data regions offered for new organizations, comma-separated region ids. */

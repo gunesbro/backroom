@@ -21,7 +21,7 @@ const MAX_RESPONSE_CHARS = 1_000_000;
 export async function requestJson<T>(
   url: string,
   getAccessToken: AccessTokenSource,
-  init: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal | undefined } = {},
+  init: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown; signal?: AbortSignal | undefined } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -55,7 +55,8 @@ export async function requestJson<T>(
     throw new ApiError(response.status, problemCode(text, response.status), retryAfter(response.headers));
   }
 
-  return JSON.parse(text) as T;
+  // A 204 has no body.
+  return (text === '' ? undefined : JSON.parse(text)) as T;
 }
 
 function problemCode(text: string, status: number): string {
