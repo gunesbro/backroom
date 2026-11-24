@@ -39,13 +39,20 @@ public sealed class LimitTests(PostgresDatabase database, KeycloakRealm keycloak
     [Fact]
     public async Task Connect_BeyondTheLimitOfAnAccount_ClosesTheExtraConnectionAsync()
     {
-        await ProvisionForAsync(Alice);
-        await ConnectAsync(NodeA, Alice);
-        await ConnectAsync(NodeA, Alice);
+        var organizationId = await ProvisionForAsync(Alice);
+        // The handshake completes before the node registers a connection (OnConnectedAsync), so a connected client is not yet
+        // counted. A call is dispatched only after the registration, so its answer proves the connection holds a place; without
+        // it, the third connection can be registered first and one of these is the one refused.
+        var first = await ConnectAsync(NodeA, Alice);
+        await first.SubscribeOrganizationAsync(organizationId);
+        var second = await ConnectAsync(NodeA, Alice);
+        await second.SubscribeOrganizationAsync(organizationId);
 
         var extra = await ConnectAsync(NodeA, Alice);
 
         await extra.Closed.WaitAsync(HubClient.Deadline, CancellationToken);
+        first.State.Should().Be(HubConnectionState.Connected);
+        second.State.Should().Be(HubConnectionState.Connected);
 
         // The limit is per node: the same account may connect to the other node.
         var other = await ConnectAsync(NodeB, Alice);
