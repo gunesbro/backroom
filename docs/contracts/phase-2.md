@@ -163,7 +163,7 @@ Whatever ADR 0012 decides is written into this section in step 0, before any cha
 - **File quota** (`fileQuotaBytes`): race-safe reservation. Upload start, in one transaction, runs `UPDATE files.org_usage SET reserved_bytes = reserved_bytes + $size WHERE org_id = $org AND used_bytes + reserved_bytes + $size <= $quota` (the row lock serializes concurrent starts); no row updated → `409 files.quota_exceeded { usedBytes, quotaBytes }`. Completion checks the object's real size equals the declared size (else `409 files.upload_incomplete` and the object is deleted) and moves the bytes from reserved to used. Expired, abandoned or rejected (malware) uploads release their reservation. Deleting a file frees its bytes at once, in the delete's transaction (the object is removed later). Thumbnails do not count (they are ours and small). Files attached only to hidden messages still count. Lowering the quota below usage deletes nothing; new uploads are refused until usage falls.
 - **Admin view and transparency.** `GET .../settings/limits` shows members both limits and, with `organization.manage-settings`, the usage (`usedBytes`, `quotaBytes`). The conversation shows at its boundary "Ücretsiz planda son 14 günün mesajları görünür" (with the organization's day count until plans exist); upload start returns `usage` when the quota is set, and at 80 % or more the composer shows it ("5 GB'ın 4,3 GB'ı kullanılıyor").
 - **Abuse brakes** stay: 100 MB per file and the upload rate limits of flow 6. They limit abuse, not storage.
-- **Assumption** (open question B): a file attached to a hidden message is hidden too, in file lists, search and links, but still counts toward the quota.
+- **Hidden files** (owner decision 17): a file attached to a hidden message is hidden too, in file lists, search and links, but still counts toward the quota.
 
 ## Modules
 
@@ -490,10 +490,11 @@ The owner answered the open questions of the first draft; the numbers are those 
 14. **Reports:** metadata only (option (b)).
 15. **Deactivation:** closes the person's sessions in that organization's cell at once; their other organizations are unaffected.
 16. **Presence:** in Valkey outside RLS; the organization context comes from authentication; only members of the same organization see it.
+17. **Hidden files:** a file attached to a hidden message is hidden too (file lists, search, links, downloads) but still counts toward the quota.
 
 ## Open questions for the owner
 
-B. **Hidden files:** this contract assumes a file attached to a hidden message is hidden too (file lists, search, links, downloads) but still counts toward the quota. Confirm.
+None at the moment.
 
 ## Order of implementation (small PRs; each behind its flag)
 
