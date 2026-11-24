@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Spinner, Status } from '@backroom/ui';
+import { Alert, Button, Icon, SoonButton, Spinner, Status } from '@backroom/ui';
 import { CellSignInPendingError, CellSignInPrompt, CellUnavailableError, useAuth } from '@/features/auth';
 import { ApiError } from '@/shared/http';
 import { useLocale, useTranslate } from '@/shared/locale';
@@ -18,27 +18,24 @@ import './messaging.css';
 
 export type WorkspaceOrganization = { id: string; name: string; cell: Cell };
 
-/**
- * The signed-in organization: the channel sidebar and the selected channel's messages (Phase 1, step 7a). Keyed by
- * the organization, so nothing of one (chosen channel, unsent messages, running requests) carries over to another.
- */
-export function Workspace(props: {
+type WorkspaceProps = {
   organization: WorkspaceOrganization;
-  onSwitch: () => void;
-  onInvite?: (() => void) | undefined;
-}) {
+  /** The organization switcher at the start of the top bar; the organization's name when omitted. */
+  switcher?: ReactNode;
+  /** The signed-in account at the foot of the sidebar (its menu signs out). */
+  account?: ReactNode;
+};
+
+/**
+ * The signed-in organization (docs/design: Main): the top bar, the sidebar with the channels and the account, and
+ * the selected channel's messages. Keyed by the organization, so nothing of one (chosen channel, unsent messages,
+ * running requests) carries over to another.
+ */
+export function Workspace(props: WorkspaceProps) {
   return <OrganizationWorkspace key={props.organization.id} {...props} />;
 }
 
-function OrganizationWorkspace({
-  organization,
-  onSwitch,
-  onInvite,
-}: {
-  organization: WorkspaceOrganization;
-  onSwitch: () => void;
-  onInvite?: (() => void) | undefined;
-}) {
+function OrganizationWorkspace({ organization, switcher, account }: WorkspaceProps) {
   const t = useTranslate(messages);
   const factory = useMessagingApiFactory();
   const api = useMemo(
@@ -74,29 +71,49 @@ function OrganizationWorkspace({
   );
 
   return (
-    <div className="bm-workspace">
-      <ChannelSidebar
-        organizationName={organization.name}
-        state={channels}
-        selectedId={selected?.id}
-        onSelect={select}
-        onAdd={() => {
-          setCreating(true);
-        }}
-        onSwitch={onSwitch}
-        onInvite={onInvite}
-        activity={live.activity}
-        connection={live.status}
-      />
-      <section className="bm-main">
-        {channels.signInPending ? (
-          <CellSignInPrompt onDismiss={channels.reload} />
-        ) : selected ? (
-          <ChannelView key={selected.id} api={api} orgId={orgId} channel={selected} pending={pending} />
-        ) : (
-          !channels.loading && !channels.failed && <p className="ph-muted bm-empty">{t('selectChannel')}</p>
-        )}
-      </section>
+    <div className="bm-app">
+      <header className="bm-top">
+        {/* The page's title for screen readers; the switcher shows the name. */}
+        <h1 className="bm-sr-only">{organization.name}</h1>
+        <div className="bm-top__org">
+          {switcher ?? (
+            <span className="bm-top__name" aria-hidden="true">
+              {organization.name}
+            </span>
+          )}
+        </div>
+        <SoonButton className="bm-search" label={t('search')} soon={t('soon')} placement="bottom" showLabel>
+          <span className="bm-search__text">{t('search')}</span>
+        </SoonButton>
+        <SoonButton className="bm-bell" label={t('notifications')} soon={t('soon')} placement="bottom-end">
+          <Icon name="bell" />
+        </SoonButton>
+      </header>
+      <div className="bm-body">
+        <div className="bm-side">
+          <ChannelSidebar
+            organizationName={organization.name}
+            state={channels}
+            selectedId={selected?.id}
+            onSelect={select}
+            onAdd={() => {
+              setCreating(true);
+            }}
+            activity={live.activity}
+            connection={live.status}
+          />
+          {account}
+        </div>
+        <main className="bm-main">
+          {channels.signInPending ? (
+            <CellSignInPrompt onDismiss={channels.reload} />
+          ) : selected ? (
+            <ChannelView key={selected.id} api={api} orgId={orgId} channel={selected} pending={pending} />
+          ) : (
+            !channels.loading && !channels.failed && <p className="ph-muted bm-empty">{t('selectChannel')}</p>
+          )}
+        </main>
+      </div>
       {creating && (
         <CreateChannelDialog
           api={api}
@@ -262,6 +279,15 @@ function ChannelView({
         <h2 className="bm-header__title">
           <span aria-hidden="true">#</span> {channel.name}
         </h2>
+        <SoonButton
+          className="bm-header__button"
+          label={t('channelInfo')}
+          soon={t('soon')}
+          placement="bottom-end"
+          showLabel
+        >
+          {t('channelInfo')}
+        </SoonButton>
       </header>
       {query.isPending && (
         <Status>
@@ -299,6 +325,7 @@ function ChannelView({
             onLoadNewer={loadNewer}
             authorName={authorName}
             ownAccountId={ownAccountId}
+            ownName={user.name}
             locale={locale}
             onRetry={retry}
             onDiscard={discard}

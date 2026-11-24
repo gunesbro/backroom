@@ -1,7 +1,7 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { formatMessageTime, type Locale } from '@backroom/i18n';
-import { Avatar } from '@backroom/ui';
+import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
+import { Avatar, Icon, SoonButton, type IconName } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
 import type { Message } from './api';
 import { messages } from './messages';
@@ -11,6 +11,9 @@ export type Row =
   | { key: string; message: Message; pending?: undefined }
   | { key: string; message?: undefined; pending: PendingMessage };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Message times whose day is remembered; the list keeps a few hundred messages at most. */
+const MAX_CACHED_DAYS = 2000;
 /** Rows are about this tall until measured. */
 const ESTIMATED_ROW_HEIGHT = 64;
 /** Closer than this to the bottom, the list keeps following new messages. */
@@ -33,6 +36,7 @@ export function MessageList({
   onLoadNewer,
   authorName,
   ownAccountId,
+  ownName,
   locale,
   onRetry,
   onDiscard,
@@ -48,6 +52,8 @@ export function MessageList({
   onLoadNewer: () => void;
   authorName: (accountId: string) => string;
   ownAccountId: string | undefined;
+  /** The signed-in account's name, shown on its own messages. */
+  ownName: string;
   locale: Locale;
   onRetry: (clientMessageId: string) => void;
   onDiscard: (clientMessageId: string) => void;
@@ -101,6 +107,28 @@ export function MessageList({
   }, [rows, total, virtualizer, anchorAt]);
 
   const items = virtualizer.getVirtualItems();
+  // Day keys and texts are formatted once per message time and language, not on every scroll; today and yesterday
+  // once per render, so the labels move on at midnight.
+  const days = useRef<{ locale: Locale; byTime: Map<string, { key: string; text: string }> }>({
+    locale,
+    byTime: new Map(),
+  });
+  if (days.current.locale !== locale) days.current = { locale, byTime: new Map() };
+  const now = new Date();
+  const today = formatMessageDay(now, locale, now).key;
+  const yesterday = formatMessageDay(new Date(now.getTime() - DAY_MS), locale, now).key;
+  const dayOf = (createdAt: string) => {
+    const cache = days.current.byTime;
+    let day = cache.get(createdAt);
+    if (!day) {
+      if (cache.size >= MAX_CACHED_DAYS) cache.clear();
+      const { key, text } = formatMessageDay(new Date(createdAt), locale, now);
+      day = { key, text };
+      cache.set(createdAt, day);
+    }
+
+    return day;
+  };
   const firstIndex = items[0]?.index;
   const lastIndex = items.at(-1)?.index;
   useEffect(() => {
@@ -148,6 +176,11 @@ export function MessageList({
         {items.map((item) => {
           const row = rows[item.index];
           if (!row) return null;
+          // A day divider above the first message of each day (docs/design: Main, "Bugün").
+          const day = dayOf(createdAtOf(row));
+          const previous = rows[item.index - 1];
+          const newDay = !previous || dayOf(createdAtOf(previous)).key !== day.key;
+          const dayLabel = day.key === today ? t('today') : day.key === yesterday ? t('yesterday') : day.text;
           return (
             <li
               key={item.key}
@@ -156,10 +189,16 @@ export function MessageList({
               className="bm-row"
               style={{ transform: `translateY(${String(item.start)}px)` }}
             >
+              {newDay && (
+                <p className="bm-day">
+                  <span>{dayLabel}</span>
+                </p>
+              )}
               <MessageRow
                 row={row}
                 authorName={authorName}
                 ownAccountId={ownAccountId}
+                ownName={ownName}
                 locale={locale}
                 onRetry={onRetry}
                 onDiscard={onDiscard}
@@ -172,10 +211,45 @@ export function MessageList({
   );
 }
 
+function createdAtOf(row: Row): string {
+  return row.pending?.createdAt ?? row.message?.createdAt ?? '';
+}
+
+/** The message actions of later phases (docs/design: Main, the bar over a message under the pointer). */
+const MESSAGE_ACTIONS: readonly {
+  key: 'addReaction' | 'reply' | 'startThread' | 'forward' | 'save' | 'more';
+  icon: IconName;
+}[] = [
+  { key: 'addReaction', icon: 'smile' },
+  { key: 'reply', icon: 'reply' },
+  { key: 'startThread', icon: 'thread' },
+  { key: 'forward', icon: 'forward' },
+  { key: 'save', icon: 'bookmark' },
+  { key: 'more', icon: 'more' },
+];
+
+/**
+ * Shown over the message under the pointer; every action is for a later phase. Hidden from screen readers and out
+ * of the tab order, so a long list does not add six inert stops per message.
+ */
+function MessageActions() {
+  const t = useTranslate(messages);
+  return (
+    <div className="bm-actions" aria-hidden="true">
+      {MESSAGE_ACTIONS.map((action) => (
+        <SoonButton key={action.key} label={t(action.key)} soon={t('soon')} tabbable={false}>
+          <Icon name={action.icon} size={16} />
+        </SoonButton>
+      ))}
+    </div>
+  );
+}
+
 const MessageRow = memo(function MessageRow({
   row,
   authorName,
   ownAccountId,
+  ownName,
   locale,
   onRetry,
   onDiscard,
@@ -183,21 +257,35 @@ const MessageRow = memo(function MessageRow({
   row: Row;
   authorName: (accountId: string) => string;
   ownAccountId: string | undefined;
+  ownName: string;
   locale: Locale;
   onRetry: (clientMessageId: string) => void;
   onDiscard: (clientMessageId: string) => void;
 }) {
   const now = new Date();
+  const [hovered, setHovered] = useState(false);
   const t = useTranslate(messages);
   const pending = row.pending;
   const message = row.message;
   const mine = pending !== undefined || message?.authorAccountId === ownAccountId;
-  const name = mine ? t('you') : authorName(message?.authorAccountId ?? '');
+  // Own messages carry the account's name, as everyone else sees them (docs/design: Thread).
+  const authorId = message?.authorAccountId ?? ownAccountId ?? '';
+  const name = mine ? ownName : authorName(authorId);
   const createdAt = pending?.createdAt ?? message?.createdAt ?? '';
   const text = pending?.text ?? message?.text ?? '';
   return (
-    <div className={pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message'}>
-      <Avatar name={name} />
+    <div
+      className={pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message'}
+      // The action bar is built only for the message under the pointer, not for every row in the list.
+      onMouseEnter={() => {
+        setHovered(true);
+      }}
+      onMouseLeave={() => {
+        setHovered(false);
+      }}
+    >
+      {hovered && !pending && <MessageActions />}
+      <Avatar name={name} toneKey={authorId} shape="square" size="lg" />
       <div className="bm-message__body">
         <p className="bm-message__head">
           <b>{name}</b>{' '}

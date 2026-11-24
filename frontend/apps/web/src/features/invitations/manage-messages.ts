@@ -1,11 +1,14 @@
 import type { Messages } from '@backroom/i18n';
 
-// Turkish texts from docs/design (Dialogs, the invite dialog) where it shows them: the email field, its hint, the
-// role field and the buttons. The title is fixed text because a Turkish suffix cannot be put on a name; the list of
-// pending invitations, the errors and the rest are new, as approved in review.
+// Turkish texts from docs/design (Dialogs, the invite dialog) where it shows them: the tabs, the email field, its
+// hint, the role field and the buttons. The title avoids a suffix on the name ("Acme'ye"), which cannot be made
+// right for every name; the list of pending invitations, the errors and the rest are new, as approved in review.
 type Key =
   | 'title'
-  | 'inOrganization'
+  | 'byEmail'
+  | 'byLink'
+  | 'soon'
+  | 'inviteMethods'
   | 'close'
   | 'emailsLabel'
   | 'emailsHint'
@@ -55,8 +58,11 @@ type Key =
 
 export const messages: Messages<Key> = {
   en: {
-    title: 'Invite people',
-    inOrganization: 'Invite to {organization}',
+    title: 'Invite people to {organization}',
+    byEmail: 'By email',
+    byLink: 'Invitation link',
+    soon: 'Coming soon',
+    inviteMethods: 'How to invite',
     close: 'Close',
     emailsLabel: 'Email addresses',
     emailsHint: 'Each invitation is single-use and valid only for the account opened with this email.',
@@ -105,8 +111,11 @@ export const messages: Messages<Key> = {
     invitationGone: 'This invitation no longer exists.',
   },
   tr: {
-    title: 'Kişileri davet et',
-    inOrganization: '{organization} organizasyonuna davet',
+    title: '{organization} için kişi davet et',
+    byEmail: 'E-posta ile',
+    byLink: 'Davet bağlantısı',
+    soon: 'Yakında',
+    inviteMethods: 'Davet yolu',
     close: 'Kapat',
     emailsLabel: 'E-posta adresleri',
     emailsHint: 'Her davet tek kullanımlık ve yalnızca bu e-postayla açılan hesapta geçerli.',

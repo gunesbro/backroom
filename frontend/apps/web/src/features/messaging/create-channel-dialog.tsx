@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type SubmitEvent } from 'react';
+import { useId, useRef, useState, type SubmitEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Heading } from '@backroom/ui';
+import { Alert, Button, Dialog, RadioCards } from '@backroom/ui';
 import { ApiError } from '@/shared/http';
 import { useTranslate } from '@/shared/locale';
 import type { Channel, MessagingApi } from './api';
@@ -9,8 +9,6 @@ import { messages } from './messages';
 const MAX_NAME_CHARACTERS = 80;
 /** The input never takes more than this many UTF-16 units; the check below counts characters people see. */
 const MAX_NAME_UNITS = 800;
-
-const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 /** True when the name is not 1 to 80 user-perceived characters (trimmed, NFC), as the server counts them. */
 function nameProblem(raw: string): boolean {
@@ -22,7 +20,10 @@ function nameProblem(raw: string): boolean {
   );
 }
 
-/** docs/design: Dialogs, "Kanal oluştur". Phase 1 has public channels only, so there is no visibility or member picker. */
+/**
+ * docs/design: Dialogs, "Kanal oluştur". Phase 1 has public channels only: the description and the private choice
+ * are shown for a later phase but cannot be used, and the member picker (private channels only) is left out.
+ */
 export function CreateChannelDialog({
   api,
   orgId,
@@ -35,22 +36,14 @@ export function CreateChannelDialog({
   onCreated: (channel: Channel) => void;
 }) {
   const t = useTranslate(messages);
-  const titleId = useId();
   const inputId = useId();
   const errorId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const descriptionId = useId();
+  const descriptionSoonId = useId();
+  const visibilityName = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
   const [invalid, setInvalid] = useState(false);
-
-  useEffect(() => {
-    // Focus returns to what opened the dialog.
-    const opener = document.activeElement;
-    inputRef.current?.focus();
-    return () => {
-      if (opener instanceof HTMLElement) opener.focus();
-    };
-  }, []);
 
   const mutation = useMutation({
     mutationFn: (value: string) => api.createChannel(orgId, value),
@@ -63,27 +56,6 @@ export function CreateChannelDialog({
     const problem = nameProblem(name);
     setInvalid(problem);
     if (!problem) mutation.mutate(name.trim());
-  };
-
-  const keyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      onClose();
-      return;
-    }
-
-    if (event.key !== 'Tab') return;
-    // Keeps Tab inside the dialog.
-    const items = dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    const first = items?.[0];
-    const last = items?.[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last?.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first?.focus();
-    }
   };
 
   const code = mutation.error instanceof ApiError ? mutation.error.code : undefined;
@@ -100,34 +72,20 @@ export function CreateChannelDialog({
   }
 
   return (
-    <div className="bm-backdrop">
-      <div
-        ref={dialogRef}
-        className="bm-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onKeyDown={keyDown}
-      >
-        <div className="bm-dialog__head">
-          <Heading id={titleId} level={2}>
-            {t('createChannelTitle')}
-          </Heading>
-          <button type="button" className="bm-icon-button" aria-label={t('close')} onClick={onClose}>
-            <span aria-hidden="true">×</span>
-          </button>
-        </div>
-        <form className="ph-form" onSubmit={submit} noValidate aria-busy={mutation.isPending}>
+    <Dialog title={t('createChannelTitle')} closeLabel={t('close')} onClose={onClose} initialFocus={inputRef}>
+      <form className="ph-dialog__form" onSubmit={submit} noValidate aria-busy={mutation.isPending}>
+        <div className="ph-dialog__body">
           <div className="ph-field">
             <label className="ph-field__label" htmlFor={inputId}>
               {t('channelName')}
             </label>
-            <div className="bm-name-input">
-              <span aria-hidden="true">#</span>
+            <div className="ph-prefixed">
+              <span className="ph-prefixed__prefix" aria-hidden="true">
+                #
+              </span>
               <input
                 ref={inputRef}
                 id={inputId}
-                className="ph-input"
                 value={name}
                 maxLength={MAX_NAME_UNITS}
                 autoComplete="off"
@@ -147,15 +105,46 @@ export function CreateChannelDialog({
               </span>
             )}
           </div>
-          {alert && <Alert>{alert}</Alert>}
-          <div className="bm-dialog__actions">
-            <Button onClick={onClose}>{t('cancel')}</Button>
-            <Button type="submit" variant="primary" disabled={mutation.isPending}>
-              {t('create')}
-            </Button>
+          <div className="ph-field">
+            <label className="ph-field__label" htmlFor={descriptionId}>
+              {t('description')} <span className="bm-optional">{t('optional')}</span>
+            </label>
+            {/* Phase 2: channels have no description yet; the field is shown but cannot be used. */}
+            <input
+              id={descriptionId}
+              className="ph-input"
+              readOnly
+              aria-disabled="true"
+              aria-describedby={descriptionSoonId}
+            />
+            <span id={descriptionSoonId} className="ph-field__hint">
+              {t('soon')}
+            </span>
           </div>
-        </form>
-      </div>
-    </div>
+          <RadioCards
+            legend={t('visibility')}
+            name={visibilityName}
+            value="public"
+            onChange={() => undefined}
+            options={[
+              { value: 'public', label: t('visibilityPublic'), description: t('visibilityPublicDetail') },
+              {
+                value: 'private',
+                label: t('visibilityPrivate'),
+                description: t('visibilityPrivateDetail'),
+                soon: t('soon'),
+              },
+            ]}
+          />
+          {alert && <Alert>{alert}</Alert>}
+        </div>
+        <div className="ph-dialog__foot">
+          <Button onClick={onClose}>{t('cancel')}</Button>
+          <Button type="submit" variant="primary" disabled={mutation.isPending}>
+            {t('create')}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

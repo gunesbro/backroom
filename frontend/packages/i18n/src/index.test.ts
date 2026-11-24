@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatDateTime,
   formatDuration,
+  formatMessageDay,
   formatMessageTime,
   resolveLocale,
   translate,
@@ -64,5 +65,31 @@ describe('formatMessageTime', () => {
 
     expect(formatMessageTime(value, 'en', now, 'UTC')).toBe('Nov 21, 2:30 PM');
     expect(formatMessageTime(value, 'tr', now, 'UTC')).toBe('21 Kas 14:30');
+  });
+});
+
+describe('formatMessageDay', () => {
+  const now = new Date('2026-11-22T20:00:00Z');
+
+  it('FormatMessageDay_TodayAndYesterday_AreRelative', () => {
+    expect(formatMessageDay(new Date('2026-11-22T01:00:00Z'), 'en', now, 'UTC').relative).toBe('today');
+    expect(formatMessageDay(new Date('2026-11-21T23:00:00Z'), 'tr', now, 'UTC').relative).toBe('yesterday');
+  });
+
+  it('FormatMessageDay_EarlierDay_ShowsTheFullDate', () => {
+    const day = formatMessageDay(new Date('2026-11-20T14:30:00Z'), 'en', now, 'UTC');
+
+    expect(day.relative).toBeUndefined();
+    expect(day.text).toBe('Friday, November 20, 2026');
+    expect(formatMessageDay(new Date('2026-11-20T14:30:00Z'), 'tr', now, 'UTC').text).toBe(
+      '20 Kasım 2026 Cuma',
+    );
+  });
+
+  it('FormatMessageDay_SameDay_HasTheSameKey', () => {
+    const morning = formatMessageDay(new Date('2026-11-20T08:00:00Z'), 'en', now, 'UTC');
+    const evening = formatMessageDay(new Date('2026-11-20T22:00:00Z'), 'en', now, 'UTC');
+
+    expect(morning.key).toBe(evening.key);
   });
 });

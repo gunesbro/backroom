@@ -226,14 +226,58 @@ export function Account({ name, children }: { name: string; children?: ReactNode
   );
 }
 
-/** The initials of a person in a round avatar; decorative, the name is always written next to it. */
-export function Avatar({ name }: { name: string }) {
+/** Avatar backgrounds (docs/design: Main), picked per person so the same person keeps the same one. */
+const AVATAR_TONES = 5;
+
+/** A stable tone (1–5) for a key such as an account id. */
+function avatarTone(key: string): number {
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
+  return (hash % AVATAR_TONES) + 1;
+}
+
+/**
+ * The initials of a person; decorative, the name is always written next to it. Round by default; a message uses
+ * the square one (docs/design: Main).
+ */
+export function Avatar({
+  name,
+  toneKey,
+  shape = 'round',
+  size = 'md',
+}: {
+  name: string;
+  /** Picks one of the avatar tones, the same for the same key (an account id); the default tone when omitted. */
+  toneKey?: string | undefined;
+  shape?: 'round' | 'square';
+  size?: 'sm' | 'md' | 'lg';
+}) {
   return (
-    <span className="ph-avatar ph-avatar--person" aria-hidden="true">
+    <span
+      className={classes(
+        'ph-avatar ph-avatar--person',
+        shape === 'square' && 'ph-avatar--square',
+        size !== 'md' && `ph-avatar--${size}`,
+        toneKey !== undefined && `ph-avatar--tone${String(avatarTone(toneKey))}`,
+      )}
+      aria-hidden="true"
+    >
       {initials(name)}
     </span>
   );
 }
+
+/** An organization's mark: its initials on a filled square, until organizations can have a logo. */
+export function OrgMark({ name, size = 'md' }: { name: string; size?: 'md' | 'lg' }) {
+  return (
+    <span className={classes('ph-org-mark', size === 'lg' && 'ph-org-mark--lg')} aria-hidden="true">
+      {initials(name)}
+    </span>
+  );
+}
+
+export { Icon, type IconName } from './icons';
+export { Dialog, MenuButton, SoonButton, Toolbar, type MenuEntry, type TipPlacement } from './controls';
 
 /** A bordered row naming an account: initials, name and a line below (docs/design: InviteAccept). */
 export function AccountRow({ name, detail }: { name: string; detail: ReactNode }) {
@@ -260,7 +304,13 @@ export function PageTitle({ children, lead }: { children: ReactNode; lead?: Reac
   );
 }
 
-type RadioOption = { value: string; label: string; description?: string | undefined };
+/** `soon`: a choice for a later phase, shown disabled with this note. */
+type RadioOption = {
+  value: string;
+  label: string;
+  description?: string | undefined;
+  soon?: string | undefined;
+};
 
 /** A choice among a few options, each a bordered row with a label and a description. */
 export function RadioCards({
@@ -286,12 +336,16 @@ export function RadioCards({
             name={name}
             value={option.value}
             checked={option.value === value}
+            disabled={option.soon !== undefined}
             onChange={() => {
               onChange(option.value);
             }}
           />
           <span>
-            <b>{option.label}</b>
+            <b>
+              {option.label}
+              {option.soon && <span className="ph-radio-card__soon"> · {option.soon}</span>}
+            </b>
             {option.description && <small>{option.description}</small>}
           </span>
         </label>

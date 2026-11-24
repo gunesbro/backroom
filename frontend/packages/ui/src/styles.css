@@ -1,11 +1,14 @@
 /*
  * Design tokens and base components, from the design canvas (docs/design/source): IBM Plex Sans, light
- * panels on a grey page, blue accent; the dark theme follows MainDark. Colors come only from these tokens.
+ * panels on a grey page, blue accent; the dark theme follows MainDark. Colors, spaces and radii come only from
+ * these tokens. Colors, font and brand are not final; changing them here changes every screen.
  */
 :root {
   --ph-page: #f6f7f9;
   --ph-panel: #fff;
   --ph-subtle: #eef0f4;
+  /* Sunken fields on a panel: the search box, the composer's toolbar, a dialog's footer (design: --bg). */
+  --ph-sunken: #f6f7f9;
   --ph-line: #d5dae1;
   --ph-ink: #1f2430;
   --ph-muted: #555d6b;
@@ -18,22 +21,68 @@
   /* A person's initials (docs/design: Onboarding). */
   --ph-avatar: #c5d0fa;
   --ph-on-avatar: #1f2430;
+  /* Per-person avatar tones (docs/design: Main); dark text on each in both themes. */
+  --ph-avatar-tone1: #c5d0fa;
+  --ph-avatar-tone2: #ffd8a8;
+  --ph-avatar-tone3: #b2f2bb;
+  --ph-avatar-tone4: #e5dbff;
+  --ph-avatar-tone5: #ffc9c9;
+  --ph-on-avatar-tone: #1f2430;
+  /* An organization's mark (docs/design: Main, the switcher). */
+  --ph-org-mark: #1f2a5c;
+  --ph-on-org-mark: #fff;
   /* Link text; at least 4.5:1 on the panel in both themes. */
   --ph-link: #3b5bdb;
   --ph-note: #eef2ff;
   --ph-on-note: #1f2a5c;
   --ph-danger: #b02525;
   --ph-danger-soft: #fdecec;
+  /* Unread counts and other badges. */
+  --ph-badge: #c92a2a;
+  --ph-on-badge: #fff;
+  /* Rows under the pointer: a sidebar heading, a message. */
+  --ph-hover: rgb(127 135 150 / 12%);
+  --ph-hover-strong: rgb(127 135 150 / 22%);
+  --ph-row-hover: #f5f7fb;
+  --ph-tooltip: #1f2430;
+  --ph-on-tooltip: #fff;
+  /* Focus rings and focused borders: at least 3:1 (WCAG 1.4.11) on the panel, page and sidebar in both themes. */
+  --ph-focus-border: #3b5bdb;
   --ph-focus: 0 0 0 3px var(--ph-accent-soft);
+  --ph-backdrop: rgb(10 12 18 / 45%);
+  --ph-shadow-bar: 0 4px 12px rgb(20 24 33 / 10%);
+  --ph-shadow-pop: 0 14px 36px rgb(20 24 33 / 20%);
+  --ph-shadow-dialog: 0 24px 60px rgb(10 12 18 / 35%);
   --ph-font: 'IBM Plex Sans', system-ui, sans-serif;
+  /* Spaces in px, named by their size. */
+  --ph-space-2: 2px;
+  --ph-space-4: 4px;
+  --ph-space-6: 6px;
+  --ph-space-8: 8px;
+  --ph-space-10: 10px;
+  --ph-space-12: 12px;
+  --ph-space-14: 14px;
+  --ph-space-16: 16px;
+  --ph-space-20: 20px;
+  --ph-space-24: 24px;
+  /* Corner radii. */
+  --ph-radius-xs: 4px;
+  --ph-radius-sm: 6px;
+  --ph-radius-md: 8px;
+  --ph-radius-lg: 10px;
+  --ph-radius-xl: 12px;
+  --ph-radius-2xl: 14px;
+  --ph-radius-3xl: 16px;
+  --ph-radius-full: 999px;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --ph-page: #12151a;
+    --ph-page: #15181e;
     --ph-panel: #1c2028;
     --ph-subtle: #12151a;
+    --ph-sunken: #15181e;
     --ph-line: #2c323d;
     --ph-ink: #e6e9ef;
     --ph-muted: #a3abb9;
@@ -42,20 +91,29 @@
     --ph-accent-strong: #aebfff;
     --ph-avatar: #262f4d;
     --ph-on-avatar: #aebfff;
+    --ph-org-mark: #3b5bdb;
     --ph-link: #6b8afb;
     --ph-on-accent: #fff;
     --ph-note: #262f4d;
     --ph-on-note: #dbe2ff;
     --ph-danger: #ff8a8a;
     --ph-danger-soft: #3a1f22;
+    --ph-row-hover: #222731;
+    --ph-tooltip: #e6e9ef;
+    --ph-on-tooltip: #1f2430;
+    --ph-focus-border: #5c7cfa;
+    --ph-shadow-bar: 0 4px 12px rgb(0 0 0 / 35%);
+    --ph-shadow-pop: 0 16px 40px rgb(0 0 0 / 45%);
+    --ph-shadow-dialog: 0 24px 60px rgb(0 0 0 / 55%);
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --ph-page: #12151a;
+  --ph-page: #15181e;
   --ph-panel: #1c2028;
   --ph-subtle: #12151a;
+  --ph-sunken: #15181e;
   --ph-line: #2c323d;
   --ph-ink: #e6e9ef;
   --ph-muted: #a3abb9;
@@ -64,12 +122,20 @@
   --ph-accent-strong: #aebfff;
   --ph-avatar: #262f4d;
   --ph-on-avatar: #aebfff;
+  --ph-org-mark: #3b5bdb;
   --ph-link: #6b8afb;
   --ph-on-accent: #fff;
   --ph-note: #262f4d;
   --ph-on-note: #dbe2ff;
   --ph-danger: #ff8a8a;
   --ph-danger-soft: #3a1f22;
+  --ph-row-hover: #222731;
+  --ph-tooltip: #e6e9ef;
+  --ph-on-tooltip: #1f2430;
+  --ph-focus-border: #5c7cfa;
+  --ph-shadow-bar: 0 4px 12px rgb(0 0 0 / 35%);
+  --ph-shadow-pop: 0 16px 40px rgb(0 0 0 / 45%);
+  --ph-shadow-dialog: 0 24px 60px rgb(0 0 0 / 55%);
   color-scheme: dark;
 }
 
@@ -492,4 +558,393 @@ body {
 .ph-radio-card:has(input:focus-visible) {
   outline: 1px solid var(--ph-accent);
   box-shadow: var(--ph-focus);
+}
+
+/* Avatar tones and sizes (docs/design: Main). */
+.ph-avatar--tone1,
+.ph-avatar--tone2,
+.ph-avatar--tone3,
+.ph-avatar--tone4,
+.ph-avatar--tone5 {
+  color: var(--ph-on-avatar-tone);
+}
+
+.ph-avatar--tone1 {
+  background: var(--ph-avatar-tone1);
+}
+
+.ph-avatar--tone2 {
+  background: var(--ph-avatar-tone2);
+}
+
+.ph-avatar--tone3 {
+  background: var(--ph-avatar-tone3);
+}
+
+.ph-avatar--tone4 {
+  background: var(--ph-avatar-tone4);
+}
+
+.ph-avatar--tone5 {
+  background: var(--ph-avatar-tone5);
+}
+
+.ph-avatar--square {
+  border-radius: var(--ph-radius-md);
+}
+
+.ph-avatar--sm {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+
+.ph-avatar--lg {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.ph-org-mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ph-radius-md);
+  background: var(--ph-org-mark);
+  color: var(--ph-on-org-mark);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ph-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A control for a later phase (SoonButton): disabled look, a tooltip on hover and keyboard focus. */
+.ph-soon {
+  position: relative;
+  display: inline-flex;
+}
+
+.ph-soon > button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ph-tooltip {
+  position: fixed;
+  z-index: 60;
+  display: block;
+  width: max-content;
+  max-width: 240px;
+  padding: var(--ph-space-4) var(--ph-space-8);
+  border-radius: var(--ph-radius-sm);
+  background: var(--ph-tooltip);
+  color: var(--ph-on-tooltip);
+  font-family: var(--ph-font);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.ph-tooltip[hidden] {
+  display: none;
+}
+
+/* Menus (docs/design: OrgNotif, the organization menu; Thread, the status menu). */
+.ph-menu-anchor {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.ph-menu {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  width: 300px;
+  max-width: calc(100vw - 2 * var(--ph-space-16));
+  max-height: min(520px, calc(100vh - 80px));
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: var(--ph-space-8);
+  border: 1px solid var(--ph-line);
+  border-radius: var(--ph-radius-2xl);
+  background: var(--ph-panel);
+  color: var(--ph-ink);
+  box-shadow: var(--ph-shadow-pop);
+  font-size: 14px;
+}
+
+.ph-menu--below {
+  top: calc(100% + var(--ph-space-6));
+}
+
+.ph-menu--above {
+  bottom: calc(100% + var(--ph-space-10));
+}
+
+.ph-menu__group {
+  padding: var(--ph-space-8) var(--ph-space-8) var(--ph-space-6);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ph-muted);
+}
+
+.ph-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-10);
+  min-height: 38px;
+  padding: var(--ph-space-4) var(--ph-space-10);
+  border-radius: var(--ph-radius-md);
+  cursor: pointer;
+  outline: none;
+}
+
+.ph-menu__item:hover,
+.ph-menu__item:focus-visible {
+  background: var(--ph-hover);
+}
+
+.ph-menu__item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ph-accent);
+}
+
+.ph-menu__item--checked {
+  background: var(--ph-accent-soft);
+}
+
+.ph-menu__item[aria-disabled='true'] {
+  cursor: not-allowed;
+  color: var(--ph-muted);
+}
+
+.ph-menu__item--danger {
+  color: var(--ph-danger);
+}
+
+.ph-menu__icon {
+  display: inline-flex;
+  color: var(--ph-muted);
+}
+
+.ph-menu__label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ph-menu__label small {
+  display: block;
+  font-size: 11px;
+  color: var(--ph-muted);
+}
+
+.ph-menu__soon {
+  flex: none;
+  font-size: 11px;
+  color: var(--ph-muted);
+}
+
+.ph-menu__check {
+  display: inline-flex;
+  color: var(--ph-accent-strong);
+}
+
+.ph-menu__sep {
+  height: 1px;
+  margin: var(--ph-space-6) var(--ph-space-6);
+  background: var(--ph-line);
+}
+
+/* Dialogs (docs/design: Dialogs). */
+.ph-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ph-space-16);
+  background: var(--ph-backdrop);
+}
+
+.ph-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  overflow: hidden;
+  border-radius: var(--ph-radius-3xl);
+  background: var(--ph-panel);
+  color: var(--ph-ink);
+  box-shadow: var(--ph-shadow-dialog);
+  box-sizing: border-box;
+  outline: none;
+}
+
+.ph-dialog--wide {
+  max-width: 520px;
+}
+
+.ph-dialog__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-10);
+  padding: 18px var(--ph-space-20) var(--ph-space-6);
+}
+
+.ph-dialog__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.ph-dialog__close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ph-radius-md);
+  background: none;
+  color: var(--ph-muted);
+  cursor: pointer;
+}
+
+.ph-dialog__close:hover {
+  background: var(--ph-hover);
+}
+
+.ph-dialog__form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ph-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ph-space-12);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--ph-space-6) var(--ph-space-20) var(--ph-space-16);
+}
+
+.ph-dialog__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ph-space-8);
+  padding: var(--ph-space-12) var(--ph-space-20);
+  border-top: 1px solid var(--ph-line);
+  background: var(--ph-sunken);
+}
+
+.ph-dialog__foot .ph-button {
+  height: 38px;
+}
+
+.ph-dialog__close:focus-visible,
+.ph-tab:focus-visible {
+  outline: 1px solid var(--ph-accent);
+  box-shadow: var(--ph-focus);
+}
+
+/* Tabs in a dialog (docs/design: Dialogs, the invite dialog). */
+.ph-tabs {
+  display: flex;
+  gap: var(--ph-space-4);
+  padding: 0 var(--ph-space-20);
+  border-bottom: 1px solid var(--ph-line);
+}
+
+.ph-tab {
+  height: 38px;
+  padding: 0 var(--ph-space-12);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  color: var(--ph-muted);
+  cursor: pointer;
+}
+
+.ph-tab[aria-selected='true'] {
+  border-bottom-color: var(--ph-accent);
+  color: var(--ph-accent-strong);
+  font-weight: 600;
+}
+
+/* A text field with a fixed prefix, such as # before a channel name. */
+.ph-prefixed {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  border: 1px solid var(--ph-line);
+  border-radius: var(--ph-radius-md);
+  background: var(--ph-panel);
+  box-sizing: border-box;
+}
+
+.ph-prefixed:focus-within {
+  border-color: var(--ph-accent);
+  box-shadow: var(--ph-focus);
+}
+
+.ph-prefixed:has(input[aria-invalid='true']) {
+  border-color: var(--ph-danger);
+}
+
+.ph-prefixed__prefix {
+  padding: 0 var(--ph-space-4) 0 var(--ph-space-12);
+  color: var(--ph-muted);
+  font-weight: 600;
+}
+
+.ph-prefixed input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--ph-space-12) 0 var(--ph-space-2);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ph-ink);
+  outline: none;
+}
+
+.ph-radio-card:has(input:disabled) {
+  cursor: not-allowed;
+  color: var(--ph-muted);
+}
+
+.ph-radio-card__soon {
+  font-weight: 400;
+  font-size: 12px;
+}
+
+/* A field for a later phase: shown, read-only and marked disabled. */
+.ph-input[aria-disabled='true'] {
+  background: var(--ph-sunken);
+  cursor: not-allowed;
 }

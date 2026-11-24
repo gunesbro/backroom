@@ -1,7 +1,7 @@
 import type { Messages } from '@backroom/i18n';
 
-// Turkish texts from docs/design (Main: the channel list and composer; Dialogs: create channel) where they show
-// them; the rest as approved in review.
+// Turkish texts from docs/design (Main: the shell, the channel list, the message actions and the composer; Dialogs:
+// create channel) where they show them; the rest as approved in review.
 type Key =
   | 'channels'
   | 'addChannel'
@@ -37,11 +37,55 @@ type Key =
   | 'charactersOver'
   | 'composerHint'
   | 'announceMessage'
-  | 'you'
   | 'member'
   | 'newActivity'
   | 'connecting'
-  | 'reconnecting';
+  | 'reconnecting'
+  | 'soon'
+  | 'search'
+  | 'notifications'
+  | 'rooms'
+  | 'calendar'
+  | 'threads'
+  | 'saved'
+  | 'sectionOptions'
+  | 'sectionAdd'
+  | 'directMessages'
+  | 'allDms'
+  | 'channelInfo'
+  | 'messageActions'
+  | 'addReaction'
+  | 'reply'
+  | 'startThread'
+  | 'forward'
+  | 'save'
+  | 'more'
+  | 'formatting'
+  | 'bold'
+  | 'italic'
+  | 'strikethrough'
+  | 'link'
+  | 'bulletedList'
+  | 'numberedList'
+  | 'quote'
+  | 'code'
+  | 'codeBlock'
+  | 'addMenu'
+  | 'toggleFormatting'
+  | 'emoji'
+  | 'messageTools'
+  | 'mention'
+  | 'attachFile'
+  | 'composerPlaceholder'
+  | 'today'
+  | 'yesterday'
+  | 'description'
+  | 'optional'
+  | 'visibility'
+  | 'visibilityPublic'
+  | 'visibilityPublicDetail'
+  | 'visibilityPrivate'
+  | 'visibilityPrivateDetail';
 
 export const messages: Messages<Key> = {
   en: {
@@ -79,11 +123,55 @@ export const messages: Messages<Key> = {
     charactersOver: '{count} characters over the limit. Shorten the message to send it.',
     composerHint: 'Enter to send · Shift+Enter for a new line',
     announceMessage: '{name}: {text}.',
-    you: 'You',
     member: 'Member',
     newActivity: 'new messages',
     connecting: 'Connecting…',
     reconnecting: 'Connection lost. Reconnecting…',
+    soon: 'Coming soon',
+    search: 'Search: messages, files, people, rooms',
+    notifications: 'Notifications',
+    rooms: 'Rooms',
+    calendar: 'Calendar',
+    threads: 'Threads',
+    saved: 'Saved',
+    sectionOptions: '{name} options',
+    sectionAdd: 'Add to {name}',
+    directMessages: 'Direct messages',
+    allDms: 'All DMs',
+    channelInfo: 'Channel info',
+    messageActions: 'Message actions',
+    addReaction: 'Add reaction',
+    reply: 'Reply',
+    startThread: 'Start thread',
+    forward: 'Forward',
+    save: 'Save',
+    more: 'More',
+    formatting: 'Formatting',
+    bold: 'Bold',
+    italic: 'Italic',
+    strikethrough: 'Strikethrough',
+    link: 'Link',
+    bulletedList: 'Bulleted list',
+    numberedList: 'Numbered list',
+    quote: 'Quote',
+    code: 'Code',
+    codeBlock: 'Code block',
+    addMenu: 'Add',
+    toggleFormatting: 'Show or hide formatting',
+    emoji: 'Emoji',
+    messageTools: 'Message tools',
+    mention: 'Mention someone',
+    attachFile: 'Attach file',
+    composerPlaceholder: 'Message #{name}',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    description: 'Description',
+    optional: '(optional)',
+    visibility: 'Visibility',
+    visibilityPublic: 'Public',
+    visibilityPublicDetail: 'Everyone in the organization can see, search and join it.',
+    visibilityPrivate: 'Private',
+    visibilityPrivateDetail: 'Only the people added can see it.',
   },
   tr: {
     channels: 'Kanallar',
@@ -120,10 +208,54 @@ export const messages: Messages<Key> = {
     charactersOver: 'Sınırı {count} karakter aşıyorsun. Göndermek için mesajı kısalt.',
     composerHint: 'Enter gönderir · Shift+Enter yeni satır',
     announceMessage: '{name}: {text}.',
-    you: 'Sen',
     member: 'Üye',
     newActivity: 'yeni mesajlar',
     connecting: 'Bağlanılıyor…',
     reconnecting: 'Bağlantı koptu. Yeniden bağlanılıyor…',
+    soon: 'Yakında',
+    search: 'Ara: mesaj, dosya, kişi, oda',
+    notifications: 'Bildirimler',
+    rooms: 'Odalar',
+    calendar: 'Takvim',
+    threads: "Thread'ler",
+    saved: 'Kaydedilenler',
+    sectionOptions: '{name} seçenekleri',
+    sectionAdd: '{name} bölümüne ekle',
+    directMessages: 'Doğrudan mesajlar',
+    allDms: "Tüm DM'ler",
+    channelInfo: 'Kanal bilgisi',
+    messageActions: 'Mesaj işlemleri',
+    addReaction: 'Tepki ekle',
+    reply: 'Yanıtla',
+    startThread: 'Thread başlat',
+    forward: 'İlet',
+    save: 'Kaydet',
+    more: 'Diğer',
+    formatting: 'Biçimlendirme',
+    bold: 'Kalın',
+    italic: 'İtalik',
+    strikethrough: 'Üstü çizili',
+    link: 'Bağlantı',
+    bulletedList: 'Madde işaretli liste',
+    numberedList: 'Numaralı liste',
+    quote: 'Alıntı',
+    code: 'Kod',
+    codeBlock: 'Kod bloğu',
+    addMenu: 'Ekle',
+    toggleFormatting: 'Biçimlendirmeyi göster/gizle',
+    emoji: 'Emoji',
+    messageTools: 'Mesaj araçları',
+    mention: 'Kişi an',
+    attachFile: 'Dosya ekle',
+    composerPlaceholder: '#{name} kanalına mesaj yaz…',
+    today: 'Bugün',
+    yesterday: 'Dün',
+    description: 'Açıklama',
+    optional: '(isteğe bağlı)',
+    visibility: 'Görünürlük',
+    visibilityPublic: 'Açık',
+    visibilityPublicDetail: 'Organizasyondaki herkes görür, arar ve katılabilir.',
+    visibilityPrivate: 'Özel',
+    visibilityPrivateDetail: 'Yalnızca eklenen kişiler görür.',
   },
 };

@@ -1,6 +1,7 @@
 import type { Messages } from '@backroom/i18n';
 
-// Turkish texts from docs/design (Onboarding) where it shows them; the rest as approved in review.
+// Turkish texts from docs/design (Onboarding; OrgNotif, the organization menu; Thread, the status menu; Main, the
+// account bar) where they show them; the rest as approved in review.
 type Key =
   | 'loading'
   | 'welcome'
@@ -28,7 +29,25 @@ type Key =
   | 'emailNotVerified'
   | 'limit'
   | 'noCell'
-  | 'generic';
+  | 'generic'
+  | 'switchOrganization'
+  | 'myOrganizations'
+  | 'invitePeopleTo'
+  | 'organizationSettings'
+  | 'createOrganization'
+  | 'joinWithLink'
+  | 'accountMenu'
+  | 'online'
+  | 'away'
+  | 'doNotDisturb'
+  | 'customStatus'
+  | 'backToRoom'
+  | 'profileSettings'
+  | 'microphone'
+  | 'audioOutput'
+  | 'settings'
+  | 'soon'
+  | 'account';
 
 export const messages: Messages<Key> = {
   en: {
@@ -61,6 +80,24 @@ export const messages: Messages<Key> = {
     limit: 'You can set up at most 5 organizations a day. Try again in {time}.',
     noCell: "New organizations can't be set up in this region right now. Try again later.",
     generic: 'Something went wrong. Try again.',
+    switchOrganization: 'Switch organization',
+    myOrganizations: 'Your organizations',
+    invitePeopleTo: 'Invite people to {organization}',
+    organizationSettings: 'Organization settings',
+    createOrganization: 'Create organization',
+    joinWithLink: 'Join with an invitation link',
+    accountMenu: 'Status and profile menu',
+    online: 'Online',
+    away: 'Away',
+    doNotDisturb: 'Do not disturb',
+    customStatus: 'Set a custom status…',
+    backToRoom: 'Back to my room',
+    profileSettings: 'Profile and account settings',
+    microphone: 'Microphone',
+    audioOutput: 'Audio output',
+    settings: 'Settings',
+    soon: 'Coming soon',
+    account: 'Account',
   },
   tr: {
     loading: 'Giriş yapılıyor…',
@@ -92,5 +129,23 @@ export const messages: Messages<Key> = {
     limit: 'Bir günde en fazla 5 organizasyon kurabilirsin. {time} sonra tekrar dene.',
     noCell: 'Bu bölgede şu an yeni organizasyon kurulamıyor. Biraz sonra tekrar dene.',
     generic: 'Bir şeyler ters gitti. Tekrar dene.',
+    switchOrganization: 'Organizasyon değiştir',
+    myOrganizations: 'Organizasyonlarım',
+    invitePeopleTo: '{organization} için kişi davet et',
+    organizationSettings: 'Organizasyon ayarları',
+    createOrganization: 'Organizasyon oluştur',
+    joinWithLink: 'Davet bağlantısıyla katıl',
+    accountMenu: 'Durum ve profil menüsü',
+    online: 'Çevrimiçi',
+    away: 'Boşta',
+    doNotDisturb: 'Rahatsız etme',
+    customStatus: 'Özel durum ayarla…',
+    backToRoom: 'Odama dön',
+    profileSettings: 'Profil ve hesap ayarları',
+    microphone: 'Mikrofon',
+    audioOutput: 'Ses çıkışı',
+    settings: 'Ayarlar',
+    soon: 'Yakında',
+    account: 'Hesap',
   },
 };
