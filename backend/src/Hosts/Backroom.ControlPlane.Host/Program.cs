@@ -1,5 +1,6 @@
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.BuildingBlocks.Presentation.Authentication;
+using Backroom.BuildingBlocks.Presentation.Cors;
 using Backroom.ControlPlane.Host;
 using Backroom.ServiceDefaults;
 
@@ -12,6 +13,7 @@ if (args.Contains(ControlPlaneModules.MigrateCommand, StringComparer.Ordinal))
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+builder.AddWebOriginsCors();
 builder.AddAccessTokenAuthentication(Audiences.ControlPlane, [KeycloakClients.Web, KeycloakClients.Desktop, KeycloakClients.Operations]);
 builder.AddCellTokenAuthentication();
 
@@ -22,6 +24,7 @@ builder.AddControlPlaneModules();
 var app = builder.Build();
 
 app.UseDefaultErrorHandling();
+app.UseWebOriginsCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();

@@ -50,6 +50,7 @@ var controlPlane = builder.AddProject<Projects.Backroom_ControlPlane_Host>("cont
     .WithEnvironment("Authentication__Authority", authority)
     .WithEnvironment("CellManagement__Keycloak__AdminClientSecret", services.ControlPlaneAdminSecret)
     .WithEnvironment("Features__OrganizationCreation", "true")
+    .WithWebOrigins()
     .WithEnvironment("Directory__Invitations__EmailHmacKey", emailHmacKey)
     .WithEnvironment("CellManagement__DevelopmentCells__0__Id", DevelopmentCells.First)
     .WithEnvironment("CellManagement__DevelopmentCells__0__Name", "Development cell A")
@@ -77,6 +78,7 @@ var cellMigrate = builder.AddProject<Projects.Backroom_Cell_Host>(
 var cellApp = builder.AddProject<Projects.Backroom_Cell_Host>("cell-app", launchProfileName: "app")
     .WithEnvironment("Cell__Id", DevelopmentCells.First)
     .WithEnvironment("Cell__Role", "app")
+    .WithWebOrigins()
     .WithEnvironment("Authentication__Authority", authority)
     // Live events: the SignalR backplane and the member-removal channel (docs/contracts/phase-1.md, "Live events"). Cells share the
     // development instance and are separated by a channel prefix.

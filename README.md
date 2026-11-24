@@ -120,6 +120,8 @@ Installers are built by the manually triggered **Desktop packages** workflow (Gi
 
 Keys, passwords and tokens never go into the repository. Use .NET user-secrets or a git-ignored `.env` file. Outside production, all email is delivered to Mailpit.
 
+Browser access: the control plane and each cell answer cross-origin requests only from the origins listed in `Cors:AllowedOrigins` (environment variable `Cors__AllowedOrigins__0`, `__1`, ...). Exact origins only; an empty list allows none. The AppHost sets the local web, ops and desktop origins.
+
 ## License
 
 Backroom is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE) (required notice in [NOTICE](NOTICE)). This is not an OSI-approved open source license.
