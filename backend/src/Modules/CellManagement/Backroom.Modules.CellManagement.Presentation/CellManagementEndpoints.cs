@@ -6,9 +6,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Backroom.BuildingBlocks.Presentation.RateLimiting;
 using Backroom.Modules.CellManagement.Application.Link;
+using Backroom.BuildingBlocks.Application.Accounts;
 using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.BuildingBlocks.Presentation.Errors;
 using Backroom.Modules.CellManagement.Application;
+using Backroom.Modules.CellManagement.Application.Listing;
 using Backroom.Modules.CellManagement.Application.Provisioning;
 using Backroom.Modules.CellManagement.Application.Registration;
 
@@ -66,6 +68,9 @@ public static class CellManagementEndpoints
             .AllowAnonymous()
             .RequireRateLimiting(SharedCellsRateLimit);
 
+        endpoints.MapGet("/api/v1/ops/cells", ListAsync)
+            .RequireAuthorization(AuthorizationPolicies.Operations);
+
         endpoints.MapPost("/api/v1/ops/cells", ProvisionAsync)
             .RequireAuthorization(AuthorizationPolicies.Operations)
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxRequestBytes));
@@ -87,6 +92,22 @@ public static class CellManagementEndpoints
         var ids = await registry.SharedCellIdsAsync(options.Max, cancellationToken);
         httpContext.Response.Headers.CacheControl = "public, max-age=300";
         return TypedResults.Ok(new SharedCellsResponse([.. ids.Select(id => new SharedCell(id))]));
+    }
+
+    private static async Task<IResult> ListAsync(
+        CellListService cells, ICurrentAccount account, string? after, int? limit, CancellationToken cancellationToken)
+    {
+        if (after is { Length: > 64 })
+        {
+            return CellManagementErrors.CellInvalid.ToProblem();
+        }
+
+        var page = await cells.ListAsync(account.AccountId, after, limit ?? CellListService.MaxPageSize, cancellationToken);
+        return TypedResults.Ok(new CellListResponse(
+            [.. page.Cells.Select(cell => new CellSummaryResponse(
+                cell.Id, cell.Type, cell.Region, cell.Status, cell.Version, cell.LinkStatus, cell.LastHeartbeatAt,
+                cell.OrganizationCount, cell.PendingMessages, cell.RejectedMessages))],
+            page.Next));
     }
 
     private static async Task<IResult> ProvisionAsync(

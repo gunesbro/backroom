@@ -26,6 +26,7 @@ public static class DirectoryModule
         services.TryAddScoped<OrganizationCreation>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ICellMessageOutcomeHandler<OrganizationProvisioned>, OrganizationProvisioningOutcome>());
         services.TryAddSingleton<ICellOrganizationScope, CellOrganizationScope>();
+        services.TryAddSingleton<ICellOrganizationCounts, CellOrganizationCounts>();
 
         // Invitations registered and revoked by cells. The email HMAC key is checked at startup: without it the control plane does not start.
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<InvitationEmailHmacOptions>, InvitationEmailHmacOptionsValidator>());

@@ -1,4 +1,5 @@
 using Npgsql;
+using Backroom.Modules.CellManagement.Application.Listing;
 using Backroom.Modules.CellManagement.Application.Registration;
 
 namespace Backroom.Modules.CellManagement.Infrastructure;
@@ -66,6 +67,42 @@ internal sealed class CellRegistry(NpgsqlDataSource dataSource, TimeProvider tim
         ON CONFLICT (key_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at
         WHERE registration_keys.used_at IS NULL AND registration_keys.cell_id = EXCLUDED.cell_id
         """;
+
+    // Counts use outbound_messages_pending_idx and outbound_messages_rejected_idx; one page of cells at most.
+    private const string ListSql = """
+        SELECT c.id, c.type, c.region, c.status, c.version, c.last_heartbeat_at,
+               (SELECT count(*)::int FROM cell_management.outbound_messages m
+                WHERE m.cell_id = c.id AND m.acked_at IS NULL AND m.rejected_code IS NULL),
+               (SELECT count(*)::int FROM cell_management.outbound_messages m
+                WHERE m.cell_id = c.id AND m.rejected_code IS NOT NULL)
+        FROM cell_management.cells c
+        WHERE $1::text IS NULL OR c.id > $1
+        ORDER BY c.id
+        LIMIT $2
+        """;
+
+    public async Task<IReadOnlyList<CellRow>> ListCellsAsync(string? after, int limit, CancellationToken cancellationToken)
+    {
+        await using var command = dataSource.CreateCommand(ListSql);
+        command.Parameters.Add(new NpgsqlParameter<string?> { TypedValue = after, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
+        command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = limit });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var rows = new List<CellRow>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new CellRow(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTimeOffset>(5),
+                reader.GetInt32(6),
+                reader.GetInt32(7)));
+        }
+
+        return rows;
+    }
 
     public async Task SeedDevelopmentCellAsync(NewCell cell, byte[] keyHash, DateTimeOffset expiresAt, CancellationToken cancellationToken)
     {

@@ -14,7 +14,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("C
   - route `Ack`/`Nack` of downstream messages to `ICellMessageOutcomeHandler<T>`; retryable `Nack` → backoff; non-retryable → `rejected`;
   - `FullSync` from `IDirectoryQueries` and Identity's revoked sessions.
 - `ICellLinkOutbox.EnqueueAsync(cellId, message)` in `CellManagement.Contracts`, written in the caller's transaction.
-- Operations panel data: `GET /api/v1/ops/cells` (pending and rejected counts, link status, heartbeat), and an alert when a downstream message stays unacknowledged for more than 2 minutes.
+- Operations panel data: `GET /api/v1/ops/cells` (see Status), and an alert when a downstream message stays unacknowledged for more than 2 minutes.
 
 ## Owns
 
@@ -35,4 +35,5 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("C
 - Shared cells: anonymous `GET /api/v1/cells/shared` (registered shared cells' ids only, oldest registration first, `Cache-Control: public, max-age=300`, 60 requests a minute per client network); clients request these scopes at sign-in. At most `CellManagement:SharedCells:Max` shared cells (default 20, and at most 20 outside Development, until sign-in uses pushed authorization requests), each id at most 16 characters; a pending shared cell holds a slot only while its key can still be used; provisioning refuses more with `cell_management.shared_cell_limit`. Two racing additions past the limit are not guarded (operators add cells one at a time).
 - Contracts: `ICellCatalog` (registered cells' public URLs by id, at most 500 per lookup), used by Directory.
 - Projects: Contracts, Application (registration and provisioning), Infrastructure (hand-written SQL, migrations, Keycloak admin client), Presentation (endpoints, registration rate limit). No Domain project yet.
-- Next: `FullSync`, `GET /api/v1/ops/cells`, the alerts and retention jobs listed above.
+- Operations list: `GET /api/v1/ops/cells` (policy `operations`: client `ops`, realm role `ops`, `amr` with `otp`) returns cells in id order, at most 1,000 per page (`after` = last id, `limit`, `next` cursor), each with type, region, status, version, link status, last heartbeat, organization count and pending and rejected counts. One query with per-cell counts (`outbound_messages_pending_idx`, `outbound_messages_rejected_idx`) plus one grouped Directory query (`ICellOrganizationCounts`, implemented by Directory). Link status is `connected` while the last heartbeat is younger than `ICellCatalog.HealthyHeartbeatAge` (2 min), so it holds with several control-plane instances. Every call logs an audit event (account id, action, result and count only); there is no audit log table yet, a real one comes later.
+- Next: `FullSync`, the alerts and retention jobs listed above.
