@@ -83,14 +83,18 @@ public sealed class WebOriginsCorsTests
     }
 
     [Theory]
-    [InlineData("OPTIONS", "http://localhost:5173")]
-    [InlineData("OPTIONS", "https://evil.example.test")]
-    [InlineData("GET", "http://localhost:5173")]
-    [InlineData("GET", "https://evil.example.test")]
-    public async Task Response_PassingCors_HasExactlyOneVaryOriginAsync(string method, string origin)
+    [InlineData("OPTIONS", "http://localhost:5173", true)]
+    [InlineData("OPTIONS", "http://localhost:5173", false)]
+    [InlineData("OPTIONS", "https://evil.example.test", true)]
+    [InlineData("OPTIONS", "https://evil.example.test", false)]
+    [InlineData("GET", "http://localhost:5173", true)]
+    [InlineData("GET", "http://localhost:5173", false)]
+    [InlineData("GET", "https://evil.example.test", true)]
+    [InlineData("GET", "https://evil.example.test", false)]
+    public async Task Response_PassingCors_HasExactlyOneVaryOriginAsync(string method, string origin, bool severalOrigins)
     {
         // With several configured origins the CORS middleware adds Vary: Origin itself; the host must not add a second one.
-        await using var app = await StartAsync(Allowed, "https://app.example.test");
+        await using var app = severalOrigins ? await StartAsync(Allowed, "https://app.example.test") : await StartAsync(Allowed);
         var preflight = method == "OPTIONS";
 
         using var response = await SendAsync(
