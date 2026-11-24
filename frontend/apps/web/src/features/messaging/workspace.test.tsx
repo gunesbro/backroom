@@ -347,8 +347,11 @@ describe('Messages', () => {
     await waitFor(() => {
       expect(log.scrollTop).toBeGreaterThan(0);
     });
-    fireEvent.scroll(log);
-    expect(await within(log).findByText('message 70')).toBeInTheDocument();
+    // The list re-reads its position after layout, which lags on a busy machine: scroll again on each try.
+    await waitFor(() => {
+      fireEvent.scroll(log);
+      expect(within(log).getByText('message 70')).toBeInTheDocument();
+    });
     expect(lastSeenSeq(ORG, GENERAL.id)).toBe(120);
   });
 

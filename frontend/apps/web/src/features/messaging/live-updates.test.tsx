@@ -333,6 +333,24 @@ describe('Live updates elsewhere', () => {
   });
 });
 
+describe('applyLiveMessage', () => {
+  it('Confirmation_AfterALiveMessageWithAHigherSeq_StaysInSeqOrder', () => {
+    forgetSeqs();
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<MessagePages>(messagesKey(ORG, GENERAL.id), {
+      pages: [{ messages: [message(2), message(1)], next: null }],
+      pageParams: [undefined],
+    });
+
+    applyLiveMessage(queryClient, ORG, GENERAL.id, message(4));
+    // The person's own message (seq 3) is confirmed after someone else's seq 4 arrived live.
+    applyLiveMessage(queryClient, ORG, GENERAL.id, message(3, { authorAccountId: OWN_ID }));
+
+    const data = queryClient.getQueryData<MessagePages>(messagesKey(ORG, GENERAL.id));
+    expect(data?.pages[0]?.messages.map(({ seq }) => seq)).toEqual([4, 3, 2, 1]);
+  });
+});
+
 describe('catchUpChannel', () => {
   const seeded = (newest: number) => {
     forgetSeqs();

@@ -1,7 +1,8 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/shared/http';
-import { addMessageToCache, messagesKey } from './queries';
+import { applyLiveMessage } from './live-cache';
+import { messagesKey } from './queries';
 import type { Message, MessagingApi } from './api';
 
 /**
@@ -65,7 +66,7 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
         });
         // A fetch that started before the answer could return a page without the message and overwrite it.
         await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channelId) });
-        addMessageToCache(queryClient, orgId, channelId, message);
+        applyLiveMessage(queryClient, orgId, channelId, message);
         // Sent before the first page arrived: the cancel left that load unfinished, so load it again.
         if (!queryClient.getQueryData(messagesKey(orgId, channelId))) {
           void queryClient.invalidateQueries({ queryKey: messagesKey(orgId, channelId) });

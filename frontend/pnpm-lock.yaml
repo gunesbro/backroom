@@ -355,11 +355,11 @@ importers:
   packages/realtime:
     dependencies:
       '@microsoft/signalr':
-        specifier: 11.0.0
-        version: 11.0.0
+        specifier: 10.0.11
+        version: 10.0.11
       '@microsoft/signalr-protocol-msgpack':
-        specifier: 11.0.0
-        version: 11.0.0
+        specifier: 10.0.11
+        version: 10.0.11
     devDependencies:
       typescript:
         specifier: 6.0.3
@@ -612,11 +612,11 @@ packages:
   '@livekit/protocol@1.53.0':
     resolution: {integrity: sha512-dM562Q7sEQbJ9ZghjIpcVuRxRApGNwJW/JfXRub+dJT8J1cC2Tep0SyYkDzOawix7+0x969fnjXt0qEZOxkjbQ==}
 
-  '@microsoft/signalr-protocol-msgpack@11.0.0':
-    resolution: {integrity: sha512-cTG9aHX5dcwayQZqCx1jF0fEd3IHGlNCQFU6aHBCs/QcrDvi8wHWM9rFbGJ3EETzTLNmDva/zClso+ma3uNinQ==}
+  '@microsoft/signalr-protocol-msgpack@10.0.11':
+    resolution: {integrity: sha512-7b8SFwexzaD62fPkO3t3AlYTNCaTLy+0GNndlzYIry8mXCcG4qSwbnI2vkwY623I+YyywPby+d97/jkEl3oGLA==}
 
-  '@microsoft/signalr@11.0.0':
-    resolution: {integrity: sha512-NNYwAOYFaVH8HRt3YWUFJYETZ66G8P3K/g3Ch/6Od+Rrdpe/Uafe8iZp81UI7TIM7qRzjDe5DKUAuwsnt391zg==}
+  '@microsoft/signalr@10.0.11':
+    resolution: {integrity: sha512-FulOJ2EEtKvLQcswe/U7v8pzyXyk7Jua5xgWJPPwyQU/2Z9ORvKcVjyO75VvLsem+CJ1ORRexJ+7Bz1FCei2aw==}
 
   '@msgpack/msgpack@2.8.0':
     resolution: {integrity: sha512-h9u4u/jiIRKbq25PM+zymTyW6bhTzELvOoUd+AvYriWOAKpLGnIamaET3pnHYoI5iYphAHBI4ayx0MehR+VVPQ==}
@@ -2276,16 +2276,16 @@ snapshots:
     dependencies:
       '@bufbuild/protobuf': 1.10.1
 
-  '@microsoft/signalr-protocol-msgpack@11.0.0':
+  '@microsoft/signalr-protocol-msgpack@10.0.11':
     dependencies:
-      '@microsoft/signalr': 11.0.0
+      '@microsoft/signalr': 10.0.11
       '@msgpack/msgpack': 2.8.0
     transitivePeerDependencies:
       - bufferutil
       - encoding
       - utf-8-validate
 
-  '@microsoft/signalr@11.0.0':
+  '@microsoft/signalr@10.0.11':
     dependencies:
       abort-controller: 3.0.0
       eventsource: 2.0.2
