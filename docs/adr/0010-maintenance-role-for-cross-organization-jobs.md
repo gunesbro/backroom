@@ -60,4 +60,4 @@ Planned in three PRs, each with its own review:
    - the architecture test;
    - integration tests for the role checks, the timeouts and the runner.
 2. Organization: the invitation expiry and retention jobs become maintenance jobs. A migration adds `email_erased_at`, moves the grants from `backroom_relay` to `backroom_maintenance` and drops `SELECT` on `email`.
-3. Email: retention of stale delivery rows as a maintenance job.
+3. Email: closing stale `pending` delivery rows as `unknown` and deleting deliveries after 90 days, as maintenance jobs.
