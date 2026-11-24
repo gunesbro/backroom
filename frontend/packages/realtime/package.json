@@ -12,5 +12,9 @@
   },
   "devDependencies": {
     "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "10.0.11",
+    "@microsoft/signalr-protocol-msgpack": "10.0.11"
   }
 }

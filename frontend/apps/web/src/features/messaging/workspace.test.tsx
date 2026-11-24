@@ -347,8 +347,11 @@ describe('Messages', () => {
     await waitFor(() => {
       expect(log.scrollTop).toBeGreaterThan(0);
     });
-    fireEvent.scroll(log);
-    expect(await within(log).findByText('message 70')).toBeInTheDocument();
+    // The list re-reads its position after layout, which lags on a busy machine: scroll again on each try.
+    await waitFor(() => {
+      fireEvent.scroll(log);
+      expect(within(log).getByText('message 70')).toBeInTheDocument();
+    });
     expect(lastSeenSeq(ORG, GENERAL.id)).toBe(120);
   });
 
@@ -447,7 +450,8 @@ describe('Composer', () => {
     expect(posted[0]?.body.text).toBe('hello\nworld');
     expect(posted[0]?.body.clientMessageId).toMatch(/^[0-9a-f-]{36}$/);
     expect(posted[0]?.authorization).toBe('Bearer cell-token');
-    expect(lastSeenSeq(ORG, GENERAL.id)).toBe(4);
+    // Only reads of the list move the position (a confirmation is no proof that nothing before it was missed).
+    expect(lastSeenSeq(ORG, GENERAL.id)).toBe(3);
   });
 
   it('Send_OnFailure_OffersRetryWithTheSameClientMessageId', async () => {

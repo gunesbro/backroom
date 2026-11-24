@@ -330,3 +330,18 @@
   align-items: center;
   gap: 4px 16px;
 }
+
+.bm-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--ph-accent);
+}
+
+.bm-connection {
+  min-height: 1.2em;
+  padding: 0 8px;
+  font-size: 12px;
+}

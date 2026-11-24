@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { rememberSeq } from './seq-memory';
 import { useCallback } from 'react';
 import type { Message, MessageCursor, MessagePage, MessagingApi } from './api';
@@ -50,33 +50,6 @@ export function useChannelMessages(api: MessagingApi, orgId: string, channelId: 
   }, [fetchPreviousPage, queryClient, orgId, channelId]);
 
   return { ...query, fetchNewer };
-}
-
-/**
- * Puts a message the server accepted into the newest page, unless it is already there. Only when the newest page
- * is loaded: after pages were dropped the message is shown from the pending list until it is fetched.
- */
-export function addMessageToCache(
-  queryClient: QueryClient,
-  orgId: string,
-  channelId: string,
-  message: Message,
-): void {
-  rememberSeq(orgId, channelId, message.seq);
-  const key = messagesKey(orgId, channelId);
-  queryClient.setQueryData<MessagePages>(key, (data) => {
-    const [first, ...rest] = data?.pages ?? [];
-    if (
-      !data ||
-      !first ||
-      data.pageParams[0] !== undefined ||
-      data.pages.some((page) => page.messages.some(({ id }) => id === message.id))
-    ) {
-      return data;
-    }
-
-    return { ...data, pages: [{ ...first, messages: [message, ...first.messages] }, ...rest] };
-  });
 }
 
 /** The messages oldest first, as drawn. */
