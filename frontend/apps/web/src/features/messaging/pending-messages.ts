@@ -66,6 +66,10 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
         // A fetch that started before the answer could return a page without the message and overwrite it.
         await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channelId) });
         addMessageToCache(queryClient, orgId, channelId, message);
+        // Sent before the first page arrived: the cancel left that load unfinished, so load it again.
+        if (!queryClient.getQueryData(messagesKey(orgId, channelId))) {
+          void queryClient.invalidateQueries({ queryKey: messagesKey(orgId, channelId) });
+        }
         patch({ status: 'confirmed', message });
       } catch (error) {
         patch({ status: 'failed', code: error instanceof ApiError ? error.code : 'client.failed' });

@@ -64,8 +64,12 @@ export function createMessagingApi(cellUrl: string, getAccessToken: AccessTokenS
         getAccessToken,
         { signal },
       );
-      // `after` answers oldest first; pages are kept newest first.
-      return cursor && 'after' in cursor ? { ...page, messages: page.messages.toReversed() } : page;
+      if (!(cursor && 'after' in cursor)) return page;
+      // `after` answers oldest first and its `next` points forward. Pages are kept newest first and a refetch rebuilds
+      // the pages below the first one with `before={next}`, so `next` is made the cursor of the page below this one:
+      // its oldest seq. An empty page has nothing newer, and nothing below it either.
+      const newestFirst = page.messages.toReversed();
+      return { messages: newestFirst, next: newestFirst.at(-1)?.seq ?? null };
     },
     sendMessage: (orgId, channelId, input) =>
       requestJson(`${channel(orgId, channelId)}/messages`, getAccessToken, { method: 'POST', body: input }),

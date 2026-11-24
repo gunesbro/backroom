@@ -577,6 +577,33 @@ describe('Races and isolation', () => {
     expect(within(log).getAllByText('sent during a refetch')).toHaveLength(1);
   });
 
+  it('Send_BeforeTheFirstPageHasLoaded_LoadsTheChannelAndShowsTheMessage', async () => {
+    serveCell();
+    server.use(
+      http.get(messagesUrl, async () => {
+        await delay(200);
+        return HttpResponse.json({ messages: [message(3), message(2), message(1)], next: null });
+      }),
+    );
+    servePost((body) =>
+      HttpResponse.json(
+        { ...message(4, body.text, OWN_ID), clientMessageId: body.clientMessageId },
+        { status: 201 },
+      ),
+    );
+    renderWorkspace();
+    await screen.findByRole('textbox', { name: 'Message #general' });
+
+    fireEvent.change(composer(), { target: { value: 'sent too early' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const log = await screen.findByRole('log', { name: 'Messages in #general' });
+    await waitFor(() => {
+      expect(within(log).getByText('sent too early')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+
   it('ChannelSwitch_KeepsEachChannelsUnsentMessagesAndDraftApart', async () => {
     serveCell({ counts: { [GENERAL.id]: 2, [RANDOM.id]: 2 } });
     servePost(() => HttpResponse.json({ code: 'server.unexpected', traceId: 't' }, { status: 500 }));
