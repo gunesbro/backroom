@@ -7,16 +7,14 @@ namespace Backroom.AppHost;
 /// virtual host <c>cell-{Id}</c>, and its Valkey keys and channels carry the prefix <c>backroom:cell:{Id}:</c> (set by the
 /// cell itself from its id).
 /// </summary>
-internal sealed record DevelopmentCell(string Id, string Name, int AppPort, int WorkerPort, string LaunchProfileSuffix)
+internal sealed record DevelopmentCell(string Id, string Name, string LaunchProfileSuffix)
 {
     public string DatabaseName => "cell_" + Id;
 
     public string VirtualHost => "cell-" + Id;
-
-    public Uri PublicUrl => new($"http://localhost:{AppPort}");
 }
 
-/// <summary>Cells in development. The ports are the ones in the cell host's launch profiles.</summary>
+/// <summary>Cells in development. Their ports are in the cell host's launch profiles (app 5200 and worker 5201 for a, 5202 and 5203 for b).</summary>
 internal static class DevelopmentCells
 {
     /// <summary>Configuration key (environment: <c>Backroom__Cells</c>) for how many cells to run, 1 or 2; default 2.</summary>
@@ -24,8 +22,8 @@ internal static class DevelopmentCells
 
     public static readonly IReadOnlyList<DevelopmentCell> All =
     [
-        new("a", "Development cell A", AppPort: 5200, WorkerPort: 5201, LaunchProfileSuffix: ""),
-        new("b", "Development cell B", AppPort: 5202, WorkerPort: 5203, LaunchProfileSuffix: "-b"),
+        new("a", "Development cell A", LaunchProfileSuffix: ""),
+        new("b", "Development cell B", LaunchProfileSuffix: "-b"),
     ];
 
     /// <summary>The cells to run: all by default, only the first when <see cref="CountKey"/> is 1.</summary>

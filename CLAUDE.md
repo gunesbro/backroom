@@ -174,6 +174,11 @@ Keep this list in sync with the code.
 dotnet build backend/Backroom.slnx
 dotnet test --solution backend/Backroom.slnx
 
+# End-to-end tests: the real AppHost (control plane, two cells) in an isolated run with fresh containers and random
+# ports, safe next to a running AppHost; need Docker and are skipped unless BACKROOM_E2E=true (README, "Tests")
+$env:BACKROOM_E2E = "true"; dotnet test --project backend/tests/Backroom.EndToEndTests --filter-trait "Category=Short"
+$env:BACKROOM_E2E = "true"; dotnet test --project backend/tests/Backroom.EndToEndTests   # full (nightly) set
+
 # Run everything locally with the Aspire dashboard at http://localhost:15000 (requires Docker Desktop)
 # Add `$env:Backroom__Cells = "1"` first to run one cell instead of two (the default).
 # Keycloak: https://localhost:8443, realm backroom; test users alice@example.test and bob@example.test,

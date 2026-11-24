@@ -99,6 +99,22 @@ Passwords and the LiveKit secret are generated on first run and stored in the Ap
 
 PostgreSQL, RabbitMQ and Keycloak apply their password only when their volume is first created. If you reset the user secrets, delete this project's Docker volumes too (`docker volume ls`), or those services will reject the new passwords.
 
+### Tests
+
+```powershell
+dotnet test --solution backend/Backroom.slnx   # unit, integration and architecture tests (integration tests need Docker)
+```
+
+The end-to-end tests (`backend/tests/Backroom.EndToEndTests`) start the real AppHost with Aspire testing: the control plane, both cells and their backing services, and run the Phase 1 flows against them as a client would (sign-in through the Keycloak page, organization creation, a message that reaches a second client over SignalR, catch-up, sign-out; nightly also the invitation through Mailpit). They need Docker, take a few minutes, and are skipped unless `BACKROOM_E2E=true`:
+
+```powershell
+$env:BACKROOM_E2E = "true"
+dotnet test --project backend/tests/Backroom.EndToEndTests --filter-trait "Category=Short"   # the pull request set
+dotnet test --project backend/tests/Backroom.EndToEndTests                                    # everything (nightly)
+```
+
+They run in isolation, so they can run while your own AppHost is running: fresh containers without volumes, random ports, no LiveKit or SeaweedFS (the tests do not use them, and LiveKit's ports are fixed), and the cells' keys in a temporary folder (`Backroom:Isolated`, `Backroom:KeyDirectoryRoot`). The test users' password is the run's `dev-user-password` parameter and is never printed. The **Backend** workflow runs the short set on every pull request that touches the backend (about 70 seconds locally with the images pulled); **End-to-end (nightly)** runs everything every night and on demand.
+
 ### Frontend
 
 ```powershell

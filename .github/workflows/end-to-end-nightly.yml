@@ -1,0 +1,67 @@
+name: End-to-end (nightly)
+
+# The whole end-to-end set: the control plane and two cells started by the AppHost in an isolated run, with every Phase 1
+# flow including the invitation email (docs/requirements.md, "Test stratejisi"). Pull requests run the short set in
+# backend.yml.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: end-to-end-nightly
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  end-to-end:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      # Restore only: caches are saved by backend.yml on main.
+      - name: Restore NuGet packages
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'backend/Directory.Packages.props', 'backend/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore Aspire bundle
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.aspire
+          key: aspire-${{ runner.os }}-${{ hashFiles('backend/src/Aspire/Backroom.AppHost/Backroom.AppHost.csproj') }}
+
+      - name: Restore
+        run: dotnet restore backend/tests/Backroom.EndToEndTests
+
+      - name: Build
+        run: dotnet build backend/tests/Backroom.EndToEndTests --no-restore --configuration Release
+
+      # The worker reaches the control plane over HTTPS (gRPC) with the development certificate. On Linux, trusting it
+      # means pointing OpenSSL at the folder dotnet dev-certs writes it to.
+      - name: Trust the development certificate
+        run: |
+          dotnet dev-certs https --trust
+          echo "SSL_CERT_DIR=$HOME/.aspnet/dev-certs/trust:/usr/lib/ssl/certs" >> "$GITHUB_ENV"
+
+      - name: End-to-end tests (all)
+        env:
+          BACKROOM_E2E: "true"
+        timeout-minutes: 20
+        run: dotnet test --project backend/tests/Backroom.EndToEndTests --no-build --configuration Release

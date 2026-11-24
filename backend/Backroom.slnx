@@ -73,6 +73,7 @@
     <Project Path="tests/Backroom.ArchitectureTests/Backroom.ArchitectureTests.csproj" />
     <Project Path="tests/Backroom.BuildingBlocks.IntegrationTests/Backroom.BuildingBlocks.IntegrationTests.csproj" />
     <Project Path="tests/Backroom.BuildingBlocks.UnitTests/Backroom.BuildingBlocks.UnitTests.csproj" />
+    <Project Path="tests/Backroom.EndToEndTests/Backroom.EndToEndTests.csproj" />
     <Project Path="tests/Backroom.Testing/Backroom.Testing.csproj" />
     <Project Path="tests/Backroom.Testing.UnitTests/Backroom.Testing.UnitTests.csproj" />
   </Folder>

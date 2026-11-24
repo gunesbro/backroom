@@ -31,18 +31,18 @@ internal static class DevelopmentServices
     public const string KeycloakRealm = "backroom";
 
     /// <summary>Adds the backing services; returns those the hosts are wired to.</summary>
-    public static DevelopmentResources AddDevelopmentServices(this IDistributedApplicationBuilder builder)
+    /// <remarks>An isolated run (<see cref="DevelopmentRun"/>) keeps no data and leaves out object storage and LiveKit.</remarks>
+    public static DevelopmentResources AddDevelopmentServices(this IDistributedApplicationBuilder builder, DevelopmentRun run)
     {
-        var postgres = builder.AddPostgres("postgres")
-            .WithDataVolume();
+        ArgumentNullException.ThrowIfNull(run);
+
+        var postgres = builder.AddPostgres("postgres");
 
         var valkey = builder.AddValkey("valkey")
-            .WithImageTag(ValkeyImageTag)
-            .WithDataVolume();
+            .WithImageTag(ValkeyImageTag);
 
         var rabbitMq = builder.AddRabbitMQ("rabbitmq")
-            .WithManagementPlugin()
-            .WithDataVolume();
+            .WithManagementPlugin();
 
         // With a trusted ASP.NET Core development certificate, Aspire mounts it into the container and
         // Keycloak is published over HTTPS on this port; without one, the same port serves plain HTTP.
@@ -65,7 +65,6 @@ internal static class DevelopmentServices
 
         var keycloak = builder.AddKeycloak("keycloak", port: KeycloakPort)
             .WithImageTag(KeycloakImageTag)
-            .WithDataVolume()
             .WithRealmImport("keycloak-dev")
             // Off: the account console and its API (account settings live in our app) and impersonation (no one may
             // act as another person); docs/adr/0009-keycloak-features.md. Deployments set the same.
@@ -83,6 +82,17 @@ internal static class DevelopmentServices
         var mailpit = builder.AddMailPit("mailpit", httpPort: MailpitUiPort, smtpPort: MailpitSmtpPort)
             .WithImageTag(MailpitImageTag)
             .WithEnvironment("MP_MAX_MESSAGES", MailpitMaxMessages.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        var resources = new DevelopmentResources(keycloak, postgres, controlPlaneAdminSecret, rabbitMq, mailpit, valkey);
+        if (run.Isolated)
+        {
+            return resources;
+        }
+
+        postgres.WithDataVolume();
+        valkey.WithDataVolume();
+        rabbitMq.WithDataVolume();
+        keycloak.WithDataVolume();
 
         // S3-compatible object storage. No identities are configured, so the S3 API accepts anonymous
         // requests; it is published on localhost only.
@@ -109,6 +119,6 @@ internal static class DevelopmentServices
             .WithEndpoint(port: LiveKitRtcUdpPort, targetPort: 7882, name: "rtc-udp", scheme: "udp", protocol: ProtocolType.Udp, isProxied: false)
             .WithHttpHealthCheck("/", endpointName: "http");
 
-        return new DevelopmentResources(keycloak, postgres, controlPlaneAdminSecret, rabbitMq, mailpit, valkey);
+        return resources;
     }
 }
