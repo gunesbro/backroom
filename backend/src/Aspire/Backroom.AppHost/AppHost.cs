@@ -57,6 +57,14 @@ var controlPlane = builder.AddProject<Projects.Backroom_ControlPlane_Host>("cont
     .WaitFor(keycloak)
     .WithHttpHealthCheck("/health");
 
+// Keycloak ends a session by calling the control plane (OIDC Back-Channel Logout, docs/contracts/phase-1.md, flow 5). It runs in a
+// container and the control plane on the host, so it reaches it through the container host name, which the control plane must
+// accept (AllowedHosts). Plain HTTP: the container does not trust the development certificate; deployments use https.
+keycloak.WithEnvironment(
+    "BACKROOM_BACKCHANNEL_LOGOUT_URL",
+    ReferenceExpression.Create($"{controlPlane.GetEndpoint("http").Property(EndpointProperty.Url)}/internal/keycloak/backchannel-logout"));
+controlPlane.WithEnvironment("AllowedHosts", "localhost;127.0.0.1;[::1];host.docker.internal");
+
 databases.Add("control_plane", controlPlaneMigrate, controlPlane);
 
 // One cell for now: the same binary runs as the "migrate", "app" and "worker" role.

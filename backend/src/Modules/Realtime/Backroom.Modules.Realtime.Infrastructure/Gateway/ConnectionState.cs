@@ -20,6 +20,25 @@ internal sealed class ConnectionState(string connectionId, Guid accountId)
 
     public SemaphoreSlim Gate { get; } = new(1, 1);
 
+    /// <summary>The token's session id (<c>sid</c>), or <see langword="null"/> when it carries none; set once at connect.</summary>
+    public string? SessionId { get; private set; }
+
+    /// <summary>When the connection's token was issued (<c>iat</c>); a revocation of every session of the account closes the connections whose token is not newer.</summary>
+    public DateTimeOffset IssuedAt { get; private set; }
+
+    private Action? _abort;
+
+    /// <summary>Records what a revocation needs to find and close the connection: its session, token issue time and the hub's abort.</summary>
+    public void Bind(string? sessionId, DateTimeOffset issuedAt, Action abort)
+    {
+        SessionId = sessionId;
+        IssuedAt = issuedAt;
+        _abort = abort;
+    }
+
+    /// <summary>Closes the connection (the client reconnects, and its token is checked again).</summary>
+    public void Abort() => _abort?.Invoke();
+
     private DateTimeOffset _windowStart;
     private int _calls;
     private int _refusals;

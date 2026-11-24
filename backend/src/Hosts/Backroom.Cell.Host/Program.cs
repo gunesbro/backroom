@@ -36,6 +36,12 @@ var app = builder.Build();
 
 app.UseDefaultErrorHandling();
 app.UseAuthentication();
+if (role == CellRole.App)
+{
+    // Tokens of revoked sessions are refused on every request and hub connect (docs/contracts/phase-1.md, "Identity and tokens").
+    app.UseRevokedSessionCheck();
+}
+
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapDefaultEndpoints();

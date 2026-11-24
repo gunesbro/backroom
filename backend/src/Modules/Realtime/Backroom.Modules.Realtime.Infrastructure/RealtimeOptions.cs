@@ -46,6 +46,42 @@ public sealed class RealtimeOptions
 
     public TimeSpan HandshakeTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// How long a "not revoked" answer is trusted before the request path asks Valkey again. With the push (the
+    /// <c>SessionRevoked</c> broadcast updates every node's cache at once) a revocation takes effect at once; this is the bound
+    /// when the push is missed: a revocation stored in Valkey is enforced within this time plus the clock of the check.
+    /// </summary>
+    public TimeSpan RevocationCacheTtl { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How much longer an expired "not revoked" answer may stand in for Valkey while Valkey cannot answer. Past
+    /// <see cref="RevocationCacheTtl"/> plus this, a check that cannot reach Valkey fails closed (the request gets 503, not 401, so a
+    /// client waits and retries instead of signing the person out).
+    /// </summary>
+    public TimeSpan RevocationStaleTolerance { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Entries in a node's revocation cache, per kind (an account entry and one or more session entries per active person; sized for 5,000 users); over the limit the oldest "not revoked" answers are evicted (revocations in force never are).</summary>
+    public int RevocationCacheMaxEntries { get; set; } = 100_000;
+
+    /// <summary>
+    /// What a request gets when the revocation store cannot be read and no recent answer is cached. <see langword="true"/> (the
+    /// default): <c>503</c> with <c>Retry-After</c>, because a revoked session must not be served on a guess. <see langword="false"/>:
+    /// the request is served (fail open), at most until its token expires (five minutes); the cell's API then stays up while Valkey is down.
+    /// </summary>
+    public bool RevocationFailClosed { get; set; } = true;
+
+    /// <summary>
+    /// After a failed read of the revocation store, further reads are skipped for this long and answer "unavailable" at once, so
+    /// a hung Valkey costs one <see cref="CommandTimeout"/> per outage window, not one per request.
+    /// </summary>
+    public TimeSpan RevocationOutageBackoff { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>The longest a revocation is kept in Valkey, whatever its <c>keep_until</c> says (the contract's is 5.5 minutes).</summary>
+    public TimeSpan RevocationMaxRetention { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>How long a connection is given to receive <c>SessionRevoked</c> before the server closes it.</summary>
+    public TimeSpan RevocationCloseGrace { get; set; } = TimeSpan.FromMilliseconds(250);
+
     /// <summary>The wait before the member-removal listener tries to subscribe again after a failure.</summary>
     public TimeSpan ListenerRetryDelay { get; set; } = TimeSpan.FromSeconds(5);
 }

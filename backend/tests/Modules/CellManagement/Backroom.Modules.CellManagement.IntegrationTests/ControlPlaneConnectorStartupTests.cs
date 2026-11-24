@@ -18,9 +18,9 @@ public sealed class ControlPlaneConnectorStartupTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_keyDirectory))
+        if (System.IO.Directory.Exists(_keyDirectory))
         {
-            Directory.Delete(_keyDirectory, recursive: true);
+            System.IO.Directory.Delete(_keyDirectory, recursive: true);
         }
     }
 
@@ -85,6 +85,8 @@ public sealed class ControlPlaneConnectorStartupTests : IDisposable
         builder.Configuration[$"{InvitationKeyOptions.SectionName}:CurrentVersion"] = "1";
         builder.Configuration[$"{InvitationKeyOptions.SectionName}:Keys:1"] = Convert.ToBase64String(new byte[32]);
         builder.Services.AddOrganizationInvitations().BindConfiguration(InvitationKeyOptions.SectionName);
+        // Realtime applies the revoked sessions; its Valkey-backed implementation is not needed to start the connector.
+        builder.Services.AddSingleton<Backroom.Modules.Realtime.Contracts.ISessionRevocation, RecordingSessionRevocation>();
         builder.AddControlPlaneConnector();
         return builder.Build();
     }

@@ -98,6 +98,8 @@ public static class ControlPlaneConnectorModule
         // Downstream handlers call the owning modules' contracts; the host adds those modules.
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<OrganizationProvisioned>, OrganizationProvisionedHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<InvitationAccepted>, InvitationAcceptedHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDownstreamHandler<SessionRevoked>, SessionRevokedHandler>());
+        services.TryAddSingleton<FullSyncRunner>();
         services.TryAddSingleton<CellLinkWorker>();
         services.AddHostedService(provider => provider.GetRequiredService<CellLinkWorker>());
         return builder;

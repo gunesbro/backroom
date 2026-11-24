@@ -8,6 +8,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
     <ProjectReference Include="..\..\..\Contracts\Backroom.ControlPlane.Contracts\Backroom.ControlPlane.Contracts.csproj" />
+    <ProjectReference Include="..\..\Directory\Backroom.Modules.Directory.Contracts\Backroom.Modules.Directory.Contracts.csproj" />
+    <ProjectReference Include="..\..\Identity\Backroom.Modules.Identity.Contracts\Backroom.Modules.Identity.Contracts.csproj" />
     <ProjectReference Include="..\Backroom.Modules.CellManagement.Application\Backroom.Modules.CellManagement.Application.csproj" />
   </ItemGroup>
 

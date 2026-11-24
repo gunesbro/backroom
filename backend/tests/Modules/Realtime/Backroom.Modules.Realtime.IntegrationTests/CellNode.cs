@@ -91,6 +91,7 @@ internal sealed class CellNode : IAsyncDisposable
 
         var app = builder.Build();
         app.UseAuthentication();
+        app.UseRevokedSessionCheck();
         app.UseAuthorization();
         app.MapMessagingEndpoints();
         app.MapRealtimeHub();

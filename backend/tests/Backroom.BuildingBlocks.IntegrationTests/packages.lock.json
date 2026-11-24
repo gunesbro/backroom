@@ -397,6 +397,9 @@
           "Microsoft.AspNetCore.Authentication.JwtBearer": "[10.0.15, )"
         }
       },
+      "backroom.modules.identity.contracts": {
+        "type": "Project"
+      },
       "backroom.testing": {
         "type": "Project",
         "dependencies": {

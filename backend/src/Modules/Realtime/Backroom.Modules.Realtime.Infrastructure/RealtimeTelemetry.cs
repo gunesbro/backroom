@@ -21,6 +21,15 @@ public static class RealtimeTelemetry
     internal static readonly Counter<long> PublishFailures =
         s_meter.CreateCounter<long>("backroom.realtime.publish_failures", "{event}", "Live events dropped (Valkey failed, timed out or the node was saturated).");
 
+    internal static readonly Counter<long> RevokedRequests =
+        s_meter.CreateCounter<long>("backroom.realtime.revoked_requests", "{request}", "Requests and hub connects refused because the token's session was revoked.");
+
+    internal static readonly Counter<long> RevocationChecksUnavailable =
+        s_meter.CreateCounter<long>("backroom.realtime.revocation_checks_unavailable", "{request}", "Requests answered 503 because the revocation store could not be read.");
+
+    internal static readonly Counter<long> RevokedConnections =
+        s_meter.CreateCounter<long>("backroom.realtime.revoked_connections", "{connection}", "Hub connections closed because their session was revoked.");
+
     internal static readonly Counter<long> RejectedSubscriptions =
         s_meter.CreateCounter<long>("backroom.realtime.rejected_subscriptions", "{request}", "Subscribe calls refused (reason tag).");
 }

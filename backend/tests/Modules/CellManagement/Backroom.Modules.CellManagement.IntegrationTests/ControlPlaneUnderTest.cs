@@ -8,6 +8,9 @@ using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.Modules.CellManagement.Infrastructure;
 using Backroom.Modules.CellManagement.Presentation;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure;
+using Backroom.Modules.Directory.Contracts;
+using Backroom.Modules.Directory.Infrastructure;
+using Backroom.Modules.Identity.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure;
 using Backroom.Modules.Permissions.Infrastructure;
 using Backroom.Testing.Keycloak;
@@ -49,6 +52,10 @@ public static class ControlPlaneUnderTest
 
         // Directory provides the real counts in the control plane; the cell list needs some at startup.
         builder.Services.AddSingleton<Backroom.Modules.CellManagement.Contracts.ICellOrganizationCounts, NoOrganizationCounts>();
+        // What FullSync reads: Directory's queries and Identity's revoked sessions (not the rest of Directory, whose handlers
+        // would change what these link tests observe).
+        builder.Services.AddSingleton<IDirectoryQueries, DirectoryQueries>();
+        builder.Services.AddIdentity();
 
         configureServices?.Invoke(builder.Services);
         var app = builder.Build();
@@ -73,6 +80,8 @@ public static class ControlPlaneUnderTest
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddCellManagementDatabase();
+            services.AddDirectoryDatabase();
+            services.AddIdentityDatabase();
 
             // The test cells share this database for the connector's link tables.
             services.AddControlPlaneConnectorDatabase();

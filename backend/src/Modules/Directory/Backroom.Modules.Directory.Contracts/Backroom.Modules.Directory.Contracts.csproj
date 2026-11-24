@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- What other control plane modules and the link may ask Directory (docs/contracts/phase-1.md, "Modules"). -->
+
+</Project>

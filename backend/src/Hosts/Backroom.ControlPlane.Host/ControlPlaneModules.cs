@@ -4,6 +4,8 @@ using Backroom.Modules.CellManagement.Presentation;
 using Backroom.Modules.Directory.Infrastructure;
 using Backroom.Modules.Directory.Infrastructure.Invitations;
 using Backroom.Modules.Directory.Presentation;
+using Backroom.Modules.Identity.Infrastructure;
+using Backroom.Modules.Identity.Presentation;
 
 namespace Backroom.ControlPlane.Host;
 
@@ -13,7 +15,7 @@ internal static class ControlPlaneModules
     public const string MigrateCommand = "migrate";
 
     public static IServiceCollection AddControlPlaneDatabases(this IServiceCollection services) =>
-        services.AddCellManagementDatabase().AddDirectoryDatabase();
+        services.AddCellManagementDatabase().AddDirectoryDatabase().AddIdentityDatabase();
 
     public static IHostApplicationBuilder AddControlPlaneModules(this IHostApplicationBuilder builder)
     {
@@ -22,11 +24,16 @@ internal static class ControlPlaneModules
         builder.Services.AddDirectory().BindConfiguration(InvitationEmailHmacOptions.SectionName);
         builder.Services.AddDirectoryJobs();
         builder.Services.AddDirectoryEndpoints();
+
+        // Keycloak's back-channel logout: revoked sessions go to the cells; expired revocations are deleted.
+        builder.Services.AddIdentity();
+        builder.Services.AddIdentityJobs();
+        builder.Services.AddIdentityEndpoints();
         return builder;
     }
 
     public static IEndpointRouteBuilder MapControlPlaneModules(this IEndpointRouteBuilder endpoints) =>
-        endpoints.MapCellManagementEndpoints().MapDirectoryEndpoints();
+        endpoints.MapCellManagementEndpoints().MapDirectoryEndpoints().MapIdentityEndpoints();
 
     /// <summary>Applies the modules' migrations (command <c>migrate</c>), then returns.</summary>
     public static async Task MigrateAsync(string[] args)

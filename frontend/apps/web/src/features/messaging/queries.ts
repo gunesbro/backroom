@@ -1,5 +1,6 @@
-import { useInfiniteQuery, type InfiniteData, type QueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { rememberSeq } from './seq-memory';
+import { useCallback } from 'react';
 import type { Message, MessageCursor, MessagePage, MessagingApi } from './api';
 
 // Explicit cache keys, per organization and channel.
@@ -18,7 +19,8 @@ export type MessagePages = InfiniteData<MessagePage, MessageCursor>;
  * were dropped (maxPages), `hasPreviousPage` is true and `fetchPreviousPage` loads the page after the newest one.
  */
 export function useChannelMessages(api: MessagingApi, orgId: string, channelId: string) {
-  return useInfiniteQuery({
+  const queryClient = useQueryClient();
+  const query = useInfiniteQuery({
     queryKey: messagesKey(orgId, channelId),
     queryFn: async ({ pageParam, signal }) => {
       const page = await api.listMessages(orgId, channelId, pageParam, signal);
@@ -35,6 +37,19 @@ export function useChannelMessages(api: MessagingApi, orgId: string, channelId: 
     },
     maxPages: MAX_MESSAGE_PAGES,
   });
+
+  const { fetchPreviousPage } = query;
+  /** Loads the page after the newest one held; when nothing is newer, starts over from the channel's newest page. */
+  const fetchNewer = useCallback(async () => {
+    const result = await fetchPreviousPage();
+    const first = result.data?.pages[0];
+    // An empty page cannot be rebuilt by a refetch (it has no cursor): reload the newest messages instead.
+    if (first && first.messages.length === 0) {
+      await queryClient.resetQueries({ queryKey: messagesKey(orgId, channelId) });
+    }
+  }, [fetchPreviousPage, queryClient, orgId, channelId]);
+
+  return { ...query, fetchNewer };
 }
 
 /**

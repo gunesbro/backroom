@@ -30,6 +30,7 @@ internal sealed partial class CellLinkWorker(
     UpstreamDelivery upstream,
     UpstreamOutcomes outcomes,
     DownstreamReceiver downstream,
+    FullSyncRunner fullSync,
     [FromKeyedServices(LinkLease.DataSourceKey)] NpgsqlDataSource leaseDataSource,
     IHttpClientFactory httpClientFactory,
     IOptions<ControlPlaneConnectorOptions> options,
@@ -40,6 +41,9 @@ internal sealed partial class CellLinkWorker(
 
     internal static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan WelcomeTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>The FullSync interval when Welcome names none the cell accepts (the contract: every 15 minutes).</summary>
+    internal static readonly TimeSpan DefaultFullSyncInterval = TimeSpan.FromMinutes(15);
 
     /// <summary>A token with less time left than this is not used for a stream.</summary>
     internal static readonly TimeSpan MinimumStreamLifetime = TimeSpan.FromSeconds(10);
@@ -189,7 +193,7 @@ internal sealed partial class CellLinkWorker(
         try
         {
             await writer.WriteAsync(new ConnectRequest { Hello = new Hello { CellId = settings.CellId, Version = s_version } }, stream.Token);
-            await ReadWelcomeAsync(call.ResponseStream, stream.Token);
+            var fullSyncInterval = await ReadWelcomeAsync(call.ResponseStream, stream.Token);
             _connected = true;
             welcomedAt = timeProvider.GetUtcNow();
             Interlocked.Increment(ref _connections);
@@ -198,16 +202,18 @@ internal sealed partial class CellLinkWorker(
             var heartbeats = SendHeartbeatsAsync(writer, lease, stream.Token);
             var sends = SendDueAsync(writer, inFlight, window, stream.Token);
             var reads = ReadAsync(call.ResponseStream, writer, inFlight, window, stream.Token);
+            // Drift repair: revoked sessions the cell may have missed, now and at the interval the control plane asked for.
+            var fullSyncs = RunFullSyncsAsync(client, token, fullSyncInterval, stream.Token);
             Task first;
             try
             {
-                first = await Task.WhenAny(heartbeats, sends, reads);
+                first = await Task.WhenAny(heartbeats, sends, reads, fullSyncs);
             }
             finally
             {
                 // Whatever ended first, stop and await the other loops before the writer, call and lease are released.
                 await stream.CancelAsync();
-                await Task.WhenAll(heartbeats, sends, reads).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                await Task.WhenAll(heartbeats, sends, reads, fullSyncs).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
 
             // The control plane ended the stream (seen by the reader, whichever loop failed first): only the
@@ -252,7 +258,7 @@ internal sealed partial class CellLinkWorker(
         }
     }
 
-    private async Task ReadWelcomeAsync(IAsyncStreamReader<ConnectResponse> responses, CancellationToken cancellationToken)
+    private async Task<TimeSpan> ReadWelcomeAsync(IAsyncStreamReader<ConnectResponse> responses, CancellationToken cancellationToken)
     {
         using var deadline = new CancellationTokenSource(WelcomeTimeout, timeProvider);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
@@ -260,6 +266,30 @@ internal sealed partial class CellLinkWorker(
         {
             throw new InvalidOperationException("The control plane did not answer Hello with Welcome.");
         }
+
+        // The control plane says how often to repair drift; a value outside one minute to one day falls back to 15 minutes.
+        var seconds = responses.Current.Welcome.FullSyncIntervalSeconds;
+        return seconds is >= 60 and <= 86_400 ? TimeSpan.FromSeconds(seconds) : DefaultFullSyncInterval;
+    }
+
+    // The first FullSync runs at once, the next ones at the interval. A failed run is logged and tried again at the next
+    // interval; it never ends the stream, because SessionRevoked messages are the main path and FullSync only repairs.
+    [SuppressMessage("Design", "CA1031", Justification = "FullSync is a repair; its failure must not end the link.")]
+    private async Task RunFullSyncsAsync(CellLinkService.CellLinkServiceClient client, string token, TimeSpan interval, CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(interval, timeProvider);
+        do
+        {
+            try
+            {
+                await fullSync.RunAsync(client, token, cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                LogFullSyncFailed(logger, exception.GetType().Name);
+            }
+        }
+        while (await timer.WaitForNextTickAsync(cancellationToken));
     }
 
     private async Task SendHeartbeatsAsync(LinkWriter writer, LinkLease lease, CancellationToken cancellationToken)
@@ -387,6 +417,9 @@ internal sealed partial class CellLinkWorker(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Cell {CellId} connected its link to the control plane.")]
     private static partial void LogConnected(ILogger logger, string cellId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "FullSync failed with {ExceptionType}; trying again at the next interval.")]
+    private static partial void LogFullSyncFailed(ILogger logger, string exceptionType);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Another worker holds the link; waiting.")]
     private static partial void LogWaitingForLease(ILogger logger);

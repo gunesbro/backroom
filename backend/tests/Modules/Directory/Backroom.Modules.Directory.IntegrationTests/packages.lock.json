@@ -475,11 +475,15 @@
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.15, )"
         }
       },
+      "backroom.modules.directory.contracts": {
+        "type": "Project"
+      },
       "backroom.modules.directory.infrastructure": {
         "type": "Project",
         "dependencies": {
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
-          "Backroom.Modules.Directory.Application": "[1.0.0, )"
+          "Backroom.Modules.Directory.Application": "[1.0.0, )",
+          "Backroom.Modules.Directory.Contracts": "[1.0.0, )"
         }
       },
       "backroom.modules.directory.presentation": {

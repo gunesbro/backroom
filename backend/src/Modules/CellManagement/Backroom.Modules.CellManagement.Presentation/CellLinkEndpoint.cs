@@ -9,6 +9,8 @@ using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.ControlPlane.Contracts.V1;
 using Backroom.Modules.CellManagement.Application.Link;
 using Backroom.Modules.CellManagement.Application.Registration;
+using Backroom.Modules.Directory.Contracts;
+using Backroom.Modules.Identity.Contracts;
 
 namespace Backroom.Modules.CellManagement.Presentation;
 
@@ -23,6 +25,8 @@ internal sealed partial class CellLinkEndpoint(
     CellLinkSessions sessions,
     DownstreamDelivery delivery,
     UpstreamReceiver upstream,
+    IDirectoryQueries directory,
+    IRevokedSessionQueries revocations,
     TimeProvider timeProvider,
     ILogger<CellLinkEndpoint> logger) : CellLinkService.CellLinkServiceBase
 {
@@ -258,8 +262,45 @@ internal sealed partial class CellLinkEndpoint(
         }
     }
 
-    public override Task<FullSyncResponse> FullSync(FullSyncRequest request, ServerCallContext context) =>
-        throw new RpcException(new Status(StatusCode.Unimplemented, "FullSync is not available yet."));
+    /// <summary>The most organizations one <c>FullSync</c> answer lists (about 1.5 MB; the link's message limit is 4 MB).</summary>
+    internal const int MaxSyncedOrganizations = 10_000;
+
+    // The state the cell must hold (contract, "Drift repair"): its organizations and the revocations in force of accounts
+    // that are members in it. The cell comes from the token, never from the request.
+    public override async Task<FullSyncResponse> FullSync(FullSyncRequest request, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var user = context.GetHttpContext().User;
+        if (!CellClients.TryGetCellId(user, out var cellId))
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "Not a cell token."));
+        }
+
+        if (!await registry.IsRegisteredAsync(cellId, context.CancellationToken))
+        {
+            LogRejected(logger, cellId, "cell not registered");
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "The cell is not registered."));
+        }
+
+        var response = new FullSyncResponse();
+        foreach (var organization in await directory.ListOrganizationsOfCellAsync(cellId, MaxSyncedOrganizations, context.CancellationToken))
+        {
+            response.Organizations.Add(new OrganizationAssignment { OrganizationId = organization.OrganizationId.ToString("D"), Name = organization.Name });
+        }
+
+        foreach (var revoked in await revocations.ListForCellAsync(cellId, context.CancellationToken))
+        {
+            response.RevokedSessions.Add(new SessionRevoked
+            {
+                AccountId = revoked.AccountId.ToString("D"),
+                SessionId = revoked.SessionId ?? string.Empty,
+                RevokedAt = Timestamp.FromDateTimeOffset(revoked.RevokedAt),
+                KeepUntil = Timestamp.FromDateTimeOffset(revoked.KeepUntil),
+            });
+        }
+
+        return response;
+    }
 
     // Waits for Hello until the timeout or the token's expiry, whichever comes first.
     private async Task<Hello> ReadHelloAsync(IAsyncStreamReader<ConnectRequest> requestStream, DateTimeOffset expiresAt, CancellationToken callAborted)

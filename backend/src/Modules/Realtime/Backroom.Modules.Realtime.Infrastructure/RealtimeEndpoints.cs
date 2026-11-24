@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Backroom.Modules.Realtime.Infrastructure.Gateway;
+using Backroom.Modules.Realtime.Infrastructure.Revocation;
 
 namespace Backroom.Modules.Realtime.Infrastructure;
 
@@ -11,6 +12,16 @@ public static class RealtimeEndpoints
 {
     /// <summary>The hub's path (docs/contracts/phase-1.md, "Live events"). Only here may the access token come in the query string.</summary>
     public const string HubPath = "/hubs/realtime";
+
+    /// <summary>
+    /// After <c>UseAuthentication</c>: refuses a token whose session was revoked (<c>401</c>) and, when Valkey cannot be read, any token
+    /// not recently checked (<c>503</c>). Covers every request and hub connect of the app role.
+    /// </summary>
+    public static IApplicationBuilder UseRevokedSessionCheck(this IApplicationBuilder app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        return app.UseMiddleware<RevocationMiddleware>();
+    }
 
     /// <summary>
     /// Maps the hub (app role). It requires an authenticated person like every endpoint; the connection ends when its

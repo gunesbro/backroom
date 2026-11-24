@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- What the link may ask Identity: the revoked sessions a cell must hold (docs/contracts/phase-1.md, "Identity and tokens"). -->
+
+</Project>

@@ -245,6 +245,8 @@
           "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
           "Backroom.ControlPlane.Contracts": "[1.0.0, )",
           "Backroom.Modules.CellManagement.Application": "[1.0.0, )",
+          "Backroom.Modules.Directory.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Identity.Contracts": "[1.0.0, )",
           "Grpc.AspNetCore.Server": "[2.85.0, )"
         }
       },
@@ -255,11 +257,15 @@
           "Backroom.Modules.CellManagement.Contracts": "[1.0.0, )"
         }
       },
+      "backroom.modules.directory.contracts": {
+        "type": "Project"
+      },
       "backroom.modules.directory.infrastructure": {
         "type": "Project",
         "dependencies": {
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
-          "Backroom.Modules.Directory.Application": "[1.0.0, )"
+          "Backroom.Modules.Directory.Application": "[1.0.0, )",
+          "Backroom.Modules.Directory.Contracts": "[1.0.0, )"
         }
       },
       "backroom.modules.directory.presentation": {
@@ -267,6 +273,32 @@
         "dependencies": {
           "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
           "Backroom.Modules.Directory.Application": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.identity.application": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Application": "[1.0.0, )",
+          "Backroom.Modules.CellManagement.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Directory.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Identity.Contracts": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.identity.contracts": {
+        "type": "Project"
+      },
+      "backroom.modules.identity.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Identity.Application": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.identity.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Identity.Application": "[1.0.0, )"
         }
       },
       "backroom.servicedefaults": {

@@ -83,7 +83,10 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:5173/*"
+        "post.logout.redirect.uris": "http://localhost:5173/*",
+        "backchannel.logout.url": "${BACKROOM_BACKCHANNEL_LOGOUT_URL}",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       },
       "optionalClientScopes": [
         "control-plane"
@@ -116,7 +119,10 @@
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "oauth2.device.authorization.grant.enabled": "false",
-        "exclude.issuer.from.auth.response": "false"
+        "exclude.issuer.from.auth.response": "false",
+        "backchannel.logout.url": "${BACKROOM_BACKCHANNEL_LOGOUT_URL}",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       },
       "optionalClientScopes": [
         "control-plane"
@@ -147,7 +153,10 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:5174/*"
+        "post.logout.redirect.uris": "http://localhost:5174/*",
+        "backchannel.logout.url": "${BACKROOM_BACKCHANNEL_LOGOUT_URL}",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       },
       "protocolMappers": [
         {

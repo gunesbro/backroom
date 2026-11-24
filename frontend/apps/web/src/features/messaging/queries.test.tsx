@@ -21,7 +21,8 @@ function fakeApi() {
     const seqs: number[] = [];
     if (cursor && 'after' in cursor) {
       for (let seq = Math.min(cursor.after + PAGE, 200); seq > cursor.after; seq -= 1) seqs.push(seq);
-      return Promise.resolve({ messages: seqs.map(message), next: null });
+      // As createMessagingApi shapes it: newest first, `next` is the cursor of the page below (null when empty).
+      return Promise.resolve({ messages: seqs.map(message), next: seqs.at(-1) ?? null });
     }
 
     const top = cursor ? cursor.before - 1 : 200;
@@ -60,12 +61,80 @@ describe('useChannelMessages', () => {
     expect(result.current.hasPreviousPage).toBe(true);
 
     await act(async () => {
-      await result.current.fetchPreviousPage();
+      await result.current.fetchNewer();
     });
     await waitFor(() => {
       expect(result.current.isFetching).toBe(false);
     });
     expect(listMessages).toHaveBeenLastCalledWith('org', 'ch', { after: newest }, expect.anything());
     expect(result.current.data?.pages[0]?.messages[0]?.seq).toBe(newest + PAGE);
+  });
+
+  it('Refetch_AfterPagingBackAndForward_KeepsOneContiguousRunWithoutDuplicates', async () => {
+    const { api } = fakeApi();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useChannelMessages(api, 'org', 'ch'), { wrapper });
+    await waitFor(() => {
+      expect(result.current.data?.pages).toHaveLength(1);
+    });
+    for (let page = 0; page < MAX_MESSAGE_PAGES + 2; page += 1) {
+      await act(async () => {
+        await result.current.fetchNextPage();
+      });
+      await waitFor(() => {
+        expect(result.current.isFetching).toBe(false);
+      });
+    }
+    await act(async () => {
+      await result.current.fetchNewer();
+    });
+    await waitFor(() => {
+      expect(result.current.isFetching).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    const seqs = result.current.data?.pages.flatMap((page) => page.messages.map(({ seq }) => seq)) ?? [];
+    expect(seqs.length).toBeGreaterThan(0);
+    expect(new Set(seqs).size).toBe(seqs.length);
+    seqs.slice(1).forEach((seq, index) => {
+      expect(seq).toBe((seqs[index] ?? 0) - 1);
+    });
+  });
+
+  it('FetchNewer_WhenNothingIsNewer_StartsOverFromTheNewestPage', async () => {
+    const { api } = fakeApi();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useChannelMessages(api, 'org', 'ch'), { wrapper });
+    await waitFor(() => {
+      expect(result.current.data?.pages).toHaveLength(1);
+    });
+    for (let page = 0; page < MAX_MESSAGE_PAGES + 2; page += 1) {
+      await act(async () => {
+        await result.current.fetchNextPage();
+      });
+      await waitFor(() => {
+        expect(result.current.isFetching).toBe(false);
+      });
+    }
+
+    for (let step = 0; step < 20 && result.current.hasPreviousPage; step += 1) {
+      await act(async () => {
+        await result.current.fetchNewer();
+      });
+      await waitFor(() => {
+        expect(result.current.isFetching).toBe(false);
+      });
+    }
+
+    expect(result.current.hasPreviousPage).toBe(false);
+    expect(result.current.data?.pages[0]?.messages[0]?.seq).toBe(200);
+    expect(result.current.data?.pages.every((page) => page.messages.length > 0)).toBe(true);
   });
 });

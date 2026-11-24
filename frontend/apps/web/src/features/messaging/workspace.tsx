@@ -203,13 +203,13 @@ function ChannelView({
     }
   }, [unknownAuthor, moreMembers, loadingMembers, members.data, fetchMembers]);
 
-  const { fetchNextPage, fetchPreviousPage } = query;
+  const { fetchNextPage, fetchNewer } = query;
   const loadEarlier = useCallback(() => {
     void fetchNextPage();
   }, [fetchNextPage]);
   const loadNewer = useCallback(() => {
-    void fetchPreviousPage();
-  }, [fetchPreviousPage]);
+    void fetchNewer();
+  }, [fetchNewer]);
   const { retry: retryMessage, discard: discardMessage } = pending;
   const retry = useCallback(
     (clientMessageId: string) => {
