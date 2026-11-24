@@ -309,4 +309,48 @@ describe('backoffWithJitter', () => {
     expect(backoffWithJitter(40, () => 1)).toBe(30_000);
     expect(backoffWithJitter(5, () => 0)).toBe(0);
   });
+
+  it('Start_StopThenStartWhileTheFirstHubIsStarting_KeepsOneHubAndSchedulesNoRetry', async () => {
+    const hubs: FakeHub[] = [];
+    const retries: (() => void)[] = [];
+    const client = createRealtimeClient({
+      cellUrl: 'https://cell.example.test/',
+      getAccessToken: () => Promise.resolve('token'),
+      hubFactory: () => {
+        const hub = new FakeHub();
+        if (hubs.length === 0) {
+          // The first start stays in flight and fails when stop is called, as SignalR does.
+          let reject: (error: Error) => void = () => undefined;
+          hub.start = vi.fn(
+            () =>
+              new Promise<void>((_, rejectStart) => {
+                reject = rejectStart;
+              }),
+          );
+          hub.stop = vi.fn(() => {
+            reject(new Error('stopped during start'));
+            return Promise.resolve();
+          });
+        }
+        hubs.push(hub);
+        return Promise.resolve(hub);
+      },
+      schedule: (callback) => {
+        retries.push(callback);
+        return () => undefined;
+      },
+    });
+
+    client.start();
+    await flush();
+    void client.stop();
+    client.start();
+    await flush();
+
+    expect(retries).toHaveLength(0);
+    expect(hubs).toHaveLength(2);
+    expect(hubs[1]?.start).toHaveBeenCalledTimes(1);
+    expect(hubs[1]?.stopped).toBe(false);
+    expect(client.status()).toBe('connected');
+  });
 });

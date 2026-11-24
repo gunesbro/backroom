@@ -136,7 +136,11 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     let current: Hub | undefined;
     try {
       const created = await hubFactory(url, options.getAccessToken);
-      if (mine !== generation) return;
+      if (mine !== generation) {
+        // Overtaken while the hub was being built: it was never started, release it.
+        await created.stop().catch(() => undefined);
+        return;
+      }
       current = created;
       for (const name of EVENT_NAMES) {
         created.on(name, (payload) => {
@@ -166,6 +170,8 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
         return;
       }
     } catch {
+      // An overtaken attempt fails because stop aborted it; the newer attempt owns the connection and the retries.
+      if (mine !== generation) return;
       if (current && hub === current) hub = undefined;
       if (isStarted()) {
         if (everConnected) setStatus('reconnecting');
