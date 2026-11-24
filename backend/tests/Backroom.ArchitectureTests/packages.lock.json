@@ -654,6 +654,8 @@
           "Backroom.Modules.CellManagement.Presentation": "[1.0.0, )",
           "Backroom.Modules.Directory.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Directory.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Identity.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Identity.Presentation": "[1.0.0, )",
           "Backroom.ServiceDefaults": "[1.0.0, )"
         }
       },
@@ -686,6 +688,8 @@
           "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
           "Backroom.ControlPlane.Contracts": "[1.0.0, )",
           "Backroom.Modules.CellManagement.Application": "[1.0.0, )",
+          "Backroom.Modules.Directory.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Identity.Contracts": "[1.0.0, )",
           "Grpc.AspNetCore.Server": "[2.85.0, )"
         }
       },
@@ -695,6 +699,7 @@
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.ControlPlane.Contracts": "[1.0.0, )",
           "Backroom.Modules.Organization.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
           "Grpc.Net.Client": "[2.85.0, )",
           "Microsoft.Extensions.Http": "[10.0.15, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )"
@@ -708,11 +713,15 @@
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.15, )"
         }
       },
+      "backroom.modules.directory.contracts": {
+        "type": "Project"
+      },
       "backroom.modules.directory.infrastructure": {
         "type": "Project",
         "dependencies": {
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
-          "Backroom.Modules.Directory.Application": "[1.0.0, )"
+          "Backroom.Modules.Directory.Application": "[1.0.0, )",
+          "Backroom.Modules.Directory.Contracts": "[1.0.0, )"
         }
       },
       "backroom.modules.directory.presentation": {
@@ -736,6 +745,33 @@
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Email.Application": "[1.0.0, )",
           "MailKit": "[5.0.0, )"
+        }
+      },
+      "backroom.modules.identity.application": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Application": "[1.0.0, )",
+          "Backroom.Modules.CellManagement.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Directory.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Identity.Contracts": "[1.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.15, )"
+        }
+      },
+      "backroom.modules.identity.contracts": {
+        "type": "Project"
+      },
+      "backroom.modules.identity.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
+          "Backroom.Modules.Identity.Application": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.identity.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Identity.Application": "[1.0.0, )"
         }
       },
       "backroom.modules.messaging.application": {

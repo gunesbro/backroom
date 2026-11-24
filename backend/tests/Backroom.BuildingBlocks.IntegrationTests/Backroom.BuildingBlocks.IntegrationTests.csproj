@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\BuildingBlocks\Backroom.BuildingBlocks.Infrastructure\Backroom.BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\BuildingBlocks\Backroom.BuildingBlocks.Presentation\Backroom.BuildingBlocks.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Backroom.Modules.Identity.Contracts\Backroom.Modules.Identity.Contracts.csproj" />
     <ProjectReference Include="..\Backroom.Testing\Backroom.Testing.csproj" />
   </ItemGroup>
 

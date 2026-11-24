@@ -28,6 +28,23 @@ public sealed class KeycloakRealm : IAsyncLifetime
     /// <summary>The same as the AppHost's Keycloak (docs/adr/0009-keycloak-features.md).</summary>
     public const string DisabledFeatures = "account,account-api,impersonation";
 
+    /// <summary>
+    /// The port on this machine where a test can listen for Keycloak's back-channel logout calls (the realm's logout URL points
+    /// at it through <c>host.docker.internal</c>, which the container resolves to the host). It is free when the fixture
+    /// is created; a test that needs it starts its server on it (<c>http://0.0.0.0:{port}</c>).
+    /// </summary>
+    public int BackchannelLogoutPort { get; } = FreePort();
+
+    /// <summary>The path Keycloak calls (the control plane's, <c>IdentityEndpoints.BackchannelLogoutPath</c>).</summary>
+    public const string BackchannelLogoutPath = "/internal/keycloak/backchannel-logout";
+
+    private static int FreePort()
+    {
+        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        return ((IPEndPoint)listener.LocalEndpoint).Port;
+    }
+
     private readonly string _userPassword = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12));
 
     /// <summary>The secret of the control plane's admin client in this realm.</summary>
@@ -44,6 +61,10 @@ public sealed class KeycloakRealm : IAsyncLifetime
             .WithEnvironment("BACKROOM_CONTROL_PLANE_ADMIN_SECRET", ControlPlaneAdminSecret)
             .WithEnvironment("BACKROOM_SMTP_HOST", "localhost")
             .WithEnvironment("BACKROOM_SMTP_PORT", "1025")
+            // The logout URL of the three clients: a test server on this machine (a container reaches the host as host.docker.internal;
+            // the extra host makes that work on Linux too).
+            .WithEnvironment("BACKROOM_BACKCHANNEL_LOGOUT_URL", $"http://host.docker.internal:{BackchannelLogoutPort}{BackchannelLogoutPath}")
+            .WithExtraHost("host.docker.internal", "host-gateway")
             .WithEnvironment("KC_FEATURES_DISABLED", DisabledFeatures)
             .Build();
     }
@@ -80,6 +101,13 @@ public sealed class KeycloakRealm : IAsyncLifetime
     public async Task<string> UserIdAsync(string username) =>
         (await GetJsonAsync(await AdminTokenAsync(), $"/admin/realms/{Name}/users?username={Uri.EscapeDataString(username)}&exact=true"))
             .AsArray().Single()!["id"]!.GetValue<string>();
+
+    /// <summary>
+    /// Ends every session of a user through the admin API; Keycloak then calls the clients' back-channel logout URLs, one logout
+    /// token per session.
+    /// </summary>
+    public async Task LogoutUserAsync(string username) =>
+        await SendAdminAsync(await AdminTokenAsync(), HttpMethod.Post, $"/admin/realms/{Name}/users/{await UserIdAsync(username)}/logout");
 
     /// <summary>Signs in with a password; see <see cref="PasswordGrantAsync"/>.</summary>
     public async Task<(string AccessToken, string IdToken)> SignInAsync(string username, string scope)

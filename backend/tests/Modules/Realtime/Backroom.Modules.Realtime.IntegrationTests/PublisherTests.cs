@@ -125,7 +125,10 @@ public sealed class PublisherTests
     }
 }
 
-/// <summary>A node whose Valkey does not exist: saving a message must still work.</summary>
+/// <summary>
+/// A node whose Valkey does not exist: saving a message must still work. The revocation check is set to fail open here, so the
+/// test isolates the publisher (the default fail-closed behavior is covered by <see cref="RevocationOutageTests"/>).
+/// </summary>
 [Collection(CellCollection.Name)]
 public sealed class PublishFailureTests(PostgresDatabase database, KeycloakRealm keycloak, ValkeyServer valkey)
     : RealtimeTestBase(database, keycloak, valkey)
@@ -140,7 +143,7 @@ public sealed class PublishFailureTests(PostgresDatabase database, KeycloakRealm
             Keycloak.Url,
             CellId,
             "127.0.0.1:1",
-            settings: null,
+            settings: new Dictionary<string, string?> { ["Realtime:RevocationFailClosed"] = "false" },
             cancellationToken: CancellationToken);
         using var metrics = new MetricCounter();
 
