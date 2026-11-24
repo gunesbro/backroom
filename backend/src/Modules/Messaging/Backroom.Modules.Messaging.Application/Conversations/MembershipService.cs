@@ -3,6 +3,7 @@ using Backroom.BuildingBlocks.Application.Identifiers;
 using Backroom.BuildingBlocks.Application.Messaging;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Domain.Errors;
+using Backroom.Modules.Messaging.Application.Live;
 using Backroom.Modules.Messaging.Contracts;
 
 namespace Backroom.Modules.Messaging.Application.Conversations;
@@ -16,6 +17,7 @@ namespace Backroom.Modules.Messaging.Application.Conversations;
 internal sealed partial class MembershipService(
     IConversationStore conversations,
     IOutbox outbox,
+    AfterCommitLiveEvents liveEvents,
     IIdGenerator ids,
     IOrganizationContext context,
     TimeProvider timeProvider,
@@ -89,6 +91,7 @@ internal sealed partial class MembershipService(
         await outbox.AddAsync(
             new ConversationMemberRemoved(ids.NewId(), organizationId, now, conversationId, accountId, accountId),
             cancellationToken);
+        liveEvents.AddRemoval(organizationId, conversationId, accountId);
         LogLeft(logger, accountId, conversationId, organizationId);
         return Result.Success;
     }

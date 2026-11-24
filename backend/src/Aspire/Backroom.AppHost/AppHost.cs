@@ -103,8 +103,6 @@ for (var i = 0; i < cells.Count; i++)
         // Invitations (flow 3) are behind a flag; on in development, as on the control plane.
         .WithEnvironment("Features__Invitations", "true")
         .WithEnvironment("Features__Presence", "true")
-        // Phase 2 conversations (docs/contracts/phase-2.md, decision 27): on in development until the gate passes.
-        .WithEnvironment("Features__Conversations", "true")
         .WithWebOrigins()
         .WithEnvironment("Authentication__Authority", authority)
         // Live events: the SignalR backplane and the member-removal channel (docs/contracts/phase-1.md, "Live events"),

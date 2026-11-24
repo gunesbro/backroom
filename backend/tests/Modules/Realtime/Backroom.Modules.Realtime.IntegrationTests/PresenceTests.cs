@@ -333,6 +333,26 @@ public sealed class PresenceTests(PostgresDatabase database, KeycloakRealm keycl
     }
 
     [Fact]
+    public async Task MemberRemoval_OfAWatcher_LeavesTheOrganizationAccountConversationAndPresenceGroupsTogetherAsync()
+    {
+        var (organizationId, alice, _) = await OrganizationOfTwoAsync();
+        var general = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
+        var bob = await ConnectAsync(NodeB, Bob);
+        await bob.SubscribeOrganizationAsync(organizationId);
+        await bob.SubscribeConversationAsync(organizationId, general);
+        await bob.WatchPresenceAsync(organizationId, alice);
+        (await SubscriptionCountAsync(NodeB, Bob)).Should().Be(4, "organization, account, conversation and presence groups");
+
+        await ExecuteAsync("UPDATE organization.members SET status = 'removed' WHERE org_id = $1 AND account_id = $2", organizationId, await AccountAsync(Bob));
+        await new Backroom.Modules.Realtime.Infrastructure.Gateway.MemberRemovedConsumer(
+            NodeA.Services.GetRequiredService<Backroom.Modules.Realtime.Infrastructure.Gateway.GroupRemovalBroadcast>(),
+            NodeA.Services.GetRequiredService<IPresenceMemberships>())
+            .HandleAsync(new Backroom.Modules.Organization.Contracts.MemberRemoved(Guid.CreateVersion7(), organizationId, DateTimeOffset.UtcNow, await AccountAsync(Bob), 2), CancellationToken);
+
+        await WaitForSubscriptionsAsync(Bob, expected: 0);
+    }
+
+    [Fact]
     public async Task Logs_OfPresenceAndStatus_CarryNoStatusTextEmojiOrTimeZoneAsync()
     {
         var (organizationId, alice, _) = await OrganizationOfTwoAsync();

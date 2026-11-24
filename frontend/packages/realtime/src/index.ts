@@ -13,6 +13,7 @@ export type {
   ConnectionStatus,
   CustomStatus,
   LiveMessage,
+  MembershipChanged,
   MessagePosted,
   PresenceChanged,
   PresenceState,

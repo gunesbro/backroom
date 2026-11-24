@@ -12,4 +12,10 @@ public interface IConversationReadAccess
 {
     /// <summary>Runs in the current unit of work, which row-level security limits to the entered organization.</summary>
     Task<bool> CanReadAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the account holds an open membership of the conversation (of any kind, archived or not), for callers that
+    /// must tell a member from a reader of a public channel (Realtime's late removal). Same unit of work as above.
+    /// </summary>
+    Task<bool> IsMemberAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken);
 }

@@ -11,7 +11,10 @@ public sealed class RealtimeOptions
     /// <summary>The cell's id, part of every group name and Valkey channel (cells share development servers).</summary>
     public string CellId { get; set; } = string.Empty;
 
-    /// <summary>Groups one connection may join (organization, channel and presence groups together; docs/contracts/phase-2.md, "Limits").</summary>
+    /// <summary>
+    /// Groups one connection may join (docs/contracts/phase-2.md, "Limits"): organization, account and conversation groups and the
+    /// presence groups of the watch set together, so a full watch set (<see cref="MaxWatchedPerConnection"/>) leaves 400 for the rest.
+    /// </summary>
     public int MaxSubscriptionsPerConnection { get; set; } = 600;
 
     /// <summary>People one connection may watch with <c>WatchPresence</c> (the contract's 200).</summary>
@@ -32,7 +35,7 @@ public sealed class RealtimeOptions
     /// </summary>
     public TimeSpan PublishTimeout { get; set; } = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>The longest any other Valkey command waits (the member-removal broadcast, which is retried when it fails).</summary>
+    /// <summary>The longest any other Valkey command waits (the group-removal broadcasts of the event consumers, which are retried when they fail).</summary>
     public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromSeconds(2);
 
     /// <summary>Subscribe calls one connection may make per <see cref="SubscribeWindow"/>; the next one aborts the connection.</summary>
@@ -40,7 +43,7 @@ public sealed class RealtimeOptions
 
     public TimeSpan SubscribeWindow { get; set; } = TimeSpan.FromSeconds(10);
 
-    /// <summary>Refused subscribe calls (not a member, no such channel) one connection may collect; the next one aborts it.</summary>
+    /// <summary>Refused subscribe calls (not a member, no such conversation) one connection may collect; the next one aborts it.</summary>
     public int MaxRefusedSubscribesPerConnection { get; set; } = 10;
 
     /// <summary>Publishes in flight on one node; more are dropped instead of queued.</summary>

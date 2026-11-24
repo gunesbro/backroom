@@ -31,15 +31,15 @@ public sealed class MemberRemovalTests(PostgresDatabase database, KeycloakRealm 
         var secondChannel = await CreateChannelAsync(NodeA, second, Bob, "team");
 
         var alice = await ConnectAsync(NodeB, Alice);
-        await alice.SubscribeChannelAsync(first, firstChannel);
+        await alice.SubscribeConversationAsync(first, firstChannel);
         await alice.SubscribeOrganizationAsync(first);
         var bobOnA = await ConnectAsync(NodeA, Bob);
         var bobOnB = await ConnectAsync(NodeB, Bob);
         foreach (var bob in new[] { bobOnA, bobOnB })
         {
             await bob.SubscribeOrganizationAsync(first);
-            await bob.SubscribeChannelAsync(first, firstChannel);
-            await bob.SubscribeChannelAsync(second, secondChannel);
+            await bob.SubscribeConversationAsync(first, firstChannel);
+            await bob.SubscribeConversationAsync(second, secondChannel);
         }
 
         await RemoveMemberAsync(first, Bob);
@@ -61,7 +61,7 @@ public sealed class MemberRemovalTests(PostgresDatabase database, KeycloakRealm 
         (await bobOnB.NextMessageAsync()).Message.Text.Should().Be("still mine");
 
         // Joining again needs the membership he no longer has.
-        var failure = await Assert.ThrowsAsync<HubException>(() => bobOnB.SubscribeChannelAsync(first, firstChannel));
+        var failure = await Assert.ThrowsAsync<HubException>(() => bobOnB.SubscribeConversationAsync(first, firstChannel));
         failure.Message.Should().EndWith("realtime.not_found");
     }
 
@@ -72,7 +72,7 @@ public sealed class MemberRemovalTests(PostgresDatabase database, KeycloakRealm 
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
         var alice = await ConnectAsync(NodeA, Alice);
-        await alice.SubscribeChannelAsync(organizationId, channelId);
+        await alice.SubscribeConversationAsync(organizationId, channelId);
 
         await PublishRemovalAsync(organizationId, await AccountAsync(Bob));
 
@@ -96,35 +96,5 @@ public sealed class MemberRemovalTests(PostgresDatabase database, KeycloakRealm 
         var consumer = new MemberRemovedConsumer(
             NodeA.Services.GetRequiredService<GroupRemovalBroadcast>(), NodeA.Services.GetRequiredService<Backroom.Modules.Presence.Contracts.IPresenceMemberships>());
         await consumer.HandleAsync(new MemberRemoved(Guid.CreateVersion7(), organizationId, DateTimeOffset.UtcNow, accountId, 2), CancellationToken);
-    }
-
-    // The message travels through Valkey to each node's listener; the groups are the only thing to observe, so poll them.
-    private async Task WaitForSubscriptionsAsync(string username, int expected)
-    {
-        using var timeout = new CancellationTokenSource(HubClient.Deadline);
-        while (await SubscriptionCountAsync(NodeA, username) != expected || await SubscriptionCountAsync(NodeB, username) != expected)
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token);
-        }
-    }
-
-    private async Task<int> SubscriptionCountAsync(CellNode node, string username)
-    {
-        var account = await AccountAsync(username);
-        var total = 0;
-        foreach (var state in node.Services.GetRequiredService<ConnectionRegistry>().ConnectionsOf(account))
-        {
-            await state.Gate.WaitAsync(CancellationToken);
-            try
-            {
-                total += state.Count;
-            }
-            finally
-            {
-                state.Gate.Release();
-            }
-        }
-
-        return total;
     }
 }

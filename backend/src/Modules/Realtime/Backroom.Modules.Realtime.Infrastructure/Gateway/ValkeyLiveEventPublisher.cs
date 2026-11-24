@@ -14,20 +14,26 @@ namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 /// </summary>
 internal sealed partial class ValkeyLiveEventPublisher : ILiveEventPublisher, IDisposable
 {
+    // The metric and log name of the group removal; it is not a client event.
+    private const string RemovalEventName = "ConversationMemberRemoved";
+
     private readonly IHubContext<RealtimeHub> _hub;
     private readonly RealtimeOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ValkeyLiveEventPublisher> _logger;
     private readonly SemaphoreSlim _slots;
+    private readonly GroupRemovalBroadcast _removals;
 
     public ValkeyLiveEventPublisher(
         IHubContext<RealtimeHub> hub,
+        GroupRemovalBroadcast removals,
         IOptions<RealtimeOptions> options,
         TimeProvider timeProvider,
         ILogger<ValkeyLiveEventPublisher> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
         _hub = hub;
+        _removals = removals;
         _options = options.Value;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -38,7 +44,7 @@ internal sealed partial class ValkeyLiveEventPublisher : ILiveEventPublisher, ID
     {
         ArgumentNullException.ThrowIfNull(payload);
         return PublishAsync(
-            LiveEventNames.MessagePosted, GroupNames.Channel(_options.CellId, payload.OrgId, payload.ChannelId), payload, payload.OrgId, cancellationToken);
+            LiveEventNames.MessagePosted, GroupNames.Conversation(_options.CellId, payload.OrgId, payload.ChannelId), payload, payload.OrgId, cancellationToken);
     }
 
     public Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken)
@@ -53,6 +59,23 @@ internal sealed partial class ValkeyLiveEventPublisher : ILiveEventPublisher, ID
         ArgumentNullException.ThrowIfNull(payload);
         return PublishAsync(
             LiveEventNames.PresenceChanged, GroupNames.Presence(_options.CellId, payload.OrgId, payload.AccountId), payload, payload.OrgId, cancellationToken);
+    }
+
+    public async Task RemoveFromConversationAsync(Guid orgId, Guid conversationId, Guid accountId, CancellationToken cancellationToken)
+    {
+        // Bounded like a publish (the request waits for it); the consumer of the durable event repeats it when this is lost.
+        try
+        {
+            await _removals.PublishConversationAsync(orgId, conversationId, accountId, _options.PublishTimeout, cancellationToken);
+        }
+#pragma warning disable CA1031 // Best effort: whatever Valkey throws must not reach the caller.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            RealtimeTelemetry.PublishFailures.Add(
+                1, new KeyValuePair<string, object?>("event", RemovalEventName), new KeyValuePair<string, object?>("reason", "error"));
+            LogFailed(_logger, RemovalEventName, exception.GetType().Name, orgId);
+        }
     }
 
     public void Dispose() => _slots.Dispose();

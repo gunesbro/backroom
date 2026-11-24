@@ -11,11 +11,12 @@ using Backroom.Modules.Realtime.Infrastructure.Revocation;
 namespace Backroom.Modules.Realtime.Infrastructure.Gateway;
 
 /// <summary>
-/// The hub at <see cref="RealtimeEndpoints.HubPath"/> (docs/contracts/phase-1.md, "Live events"). Clients only subscribe
+/// The hub at <see cref="RealtimeEndpoints.HubPath"/> (docs/contracts/phase-2.md, "Live events"). Clients only subscribe
 /// and unsubscribe; the server sends everything else (<see cref="Contracts.ILiveEventPublisher"/>). A subscription is
-/// granted after the same checks as a read: an active member of the organization and, for a channel, read access to it
-/// (<c>IConversationReadAccess</c>: an open public channel, or an open conversation the account is a member of). Every
-/// refusal for a missing organization, membership or channel answers the same <c>realtime.not_found</c>, so a client
+/// granted after the same checks as a read: an active member of the organization (which also joins the account's own
+/// group) and, for a conversation, read access to it (<c>IConversationReadAccess</c>: an open public channel, or an
+/// open conversation the account is a member of). Every refusal for a missing organization, membership or conversation
+/// answers the same <c>realtime.not_found</c>, so a client
 /// learns nothing about what it may not see. Errors are <see cref="HubException"/>s
 /// with a stable code and no internals; anything else the client gets is SignalR's generic failure.
 /// </summary>
@@ -114,25 +115,37 @@ internal sealed partial class RealtimeHub(
         }
     }
 
-    public Task SubscribeOrganization(Guid orgId) =>
-        SubscribeAsync(orgId, channelId: null);
+    /// <summary>
+    /// Joins the organization's group and the account's own group in it (for per-person events). The account group is
+    /// the token's account, never an argument, so it only ever holds that account's connections.
+    /// </summary>
+    public Task SubscribeOrganization(Guid orgId)
+    {
+        Require(orgId);
+        var accountId = Current().AccountId;
+        return SubscribeAsync(
+            orgId,
+            conversationId: null,
+            [GroupNames.Organization(options.Value.CellId, orgId), GroupNames.Account(options.Value.CellId, orgId, accountId)]);
+    }
 
     public Task UnsubscribeOrganization(Guid orgId)
     {
         Require(orgId);
-        return UnsubscribeAsync(GroupNames.Organization(options.Value.CellId, orgId));
+        var accountId = Current().AccountId;
+        return UnsubscribeAsync([GroupNames.Organization(options.Value.CellId, orgId), GroupNames.Account(options.Value.CellId, orgId, accountId)]);
     }
 
-    public Task SubscribeChannel(Guid orgId, Guid channelId)
+    public Task SubscribeConversation(Guid orgId, Guid conversationId)
     {
-        ValidateIds(orgId, channelId);
-        return SubscribeAsync(orgId, channelId);
+        ValidateIds(orgId, conversationId);
+        return SubscribeAsync(orgId, conversationId, [GroupNames.Conversation(options.Value.CellId, orgId, conversationId)]);
     }
 
-    public Task UnsubscribeChannel(Guid orgId, Guid channelId)
+    public Task UnsubscribeConversation(Guid orgId, Guid conversationId)
     {
-        ValidateIds(orgId, channelId);
-        return UnsubscribeAsync(GroupNames.Channel(options.Value.CellId, orgId, channelId));
+        ValidateIds(orgId, conversationId);
+        return UnsubscribeAsync([GroupNames.Conversation(options.Value.CellId, orgId, conversationId)]);
     }
 
     /// <summary>
@@ -261,6 +274,15 @@ internal sealed partial class RealtimeHub(
         return presence.ActivityAsync(Context.ConnectionId, active, Context.ConnectionAborted);
     }
 
+    /// <summary>
+    /// The groups other than presence groups one connection may join: the limit less a full watch set when the limit is more than
+    /// twice the watch set (600 less 200 by default), else the whole limit (small limits in tests and constrained deployments).
+    /// </summary>
+    internal static int SubscriptionShare(RealtimeOptions limits) =>
+        limits.MaxSubscriptionsPerConnection > 2 * limits.MaxWatchedPerConnection
+            ? limits.MaxSubscriptionsPerConnection - limits.MaxWatchedPerConnection
+            : limits.MaxSubscriptionsPerConnection;
+
     private static void Require(Guid id)
     {
         if (id == Guid.Empty)
@@ -269,25 +291,17 @@ internal sealed partial class RealtimeHub(
         }
     }
 
-    private static void ValidateIds(Guid organizationId, Guid channelId)
+    private static void ValidateIds(Guid organizationId, Guid conversationId)
     {
-        if (organizationId == Guid.Empty || channelId == Guid.Empty)
+        if (organizationId == Guid.Empty || conversationId == Guid.Empty)
         {
             throw new HubException(InvalidArgument);
         }
     }
 
-    private async Task SubscribeAsync(Guid organizationId, Guid? channelId)
+    private async Task SubscribeAsync(Guid organizationId, Guid? conversationId, string[] groups)
     {
-        if (channelId is null)
-        {
-            Require(organizationId);
-        }
-
         var state = Current();
-        var group = channelId is { } channel
-            ? GroupNames.Channel(options.Value.CellId, organizationId, channel)
-            : GroupNames.Organization(options.Value.CellId, organizationId);
         var cancellationToken = Context.ConnectionAborted;
 
         // The gate is held from the check to the join, so a removal that follows a membership's end cannot slip between them.
@@ -307,18 +321,21 @@ internal sealed partial class RealtimeHub(
                 throw new HubException(RateLimited);
             }
 
-            if (state.Contains(group))
+            var missing = Array.FindAll(groups, group => !state.Contains(group));
+            if (missing.Length == 0)
             {
                 return;
             }
 
-            if (state.Count >= options.Value.MaxSubscriptionsPerConnection)
+            // Presence groups have their own share of the limit, so a full sidebar never blocks watching and a full watch set never
+            // blocks a conversation: with the defaults 400 conversation, organization and account groups plus 200 presence groups.
+            if (state.Count - state.Watched.Count + missing.Length > SubscriptionShare(options.Value))
             {
                 RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "subscription_limit"));
                 throw new HubException(SubscriptionLimit);
             }
 
-            if (!await MayJoinAsync(state.AccountId, organizationId, channelId, cancellationToken))
+            if (!await MayJoinAsync(state.AccountId, organizationId, conversationId, cancellationToken))
             {
                 RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "not_found"));
                 if (state.CountRefusal() >= options.Value.MaxRefusedSubscribesPerConnection)
@@ -330,18 +347,24 @@ internal sealed partial class RealtimeHub(
                 throw new HubException(NotFound);
             }
 
-            state.Add(group, organizationId);
+            // All or nothing: when a join fails, the groups this call joined are left again, so an organization
+            // subscription never holds the organization group without the account group (or the other way round).
+            var joined = new List<string>(missing.Length);
             try
             {
-                await Groups.AddToGroupAsync(Context.ConnectionId, group, cancellationToken);
+                foreach (var group in missing)
+                {
+                    state.Add(group, organizationId);
+                    joined.Add(group);
+                    await Groups.AddToGroupAsync(Context.ConnectionId, group, cancellationToken);
+                    RealtimeTelemetry.Subscriptions.Add(1);
+                }
             }
             catch
             {
-                state.Remove(group);
+                await LeaveAfterFailureAsync(state, joined);
                 throw;
             }
-
-            RealtimeTelemetry.Subscriptions.Add(1);
         }
         finally
         {
@@ -349,21 +372,52 @@ internal sealed partial class RealtimeHub(
         }
     }
 
-    private async Task UnsubscribeAsync(string group)
+    private async Task UnsubscribeAsync(string[] groups)
     {
         var state = Current();
         await state.Gate.WaitAsync(Context.ConnectionAborted);
         try
         {
-            if (state.Remove(group))
+            foreach (var group in groups)
             {
-                RealtimeTelemetry.Subscriptions.Add(-1);
-                await Groups.RemoveFromGroupAsync(Context.ConnectionId, group, Context.ConnectionAborted);
+                if (state.Remove(group))
+                {
+                    RealtimeTelemetry.Subscriptions.Add(-1);
+                    await Groups.RemoveFromGroupAsync(Context.ConnectionId, group, Context.ConnectionAborted);
+                }
             }
         }
         finally
         {
             state.Gate.Release();
+        }
+    }
+
+    // Under the gate. The last group may or may not have been joined when its join failed, so every group is left
+    // (leaving one that was never joined is harmless); a group that cannot be left ends with the connection.
+    private async Task LeaveAfterFailureAsync(ConnectionState state, List<string> joined)
+    {
+        for (var i = 0; i < joined.Count; i++)
+        {
+            var group = joined[i];
+            state.Remove(group);
+            if (i < joined.Count - 1)
+            {
+                RealtimeTelemetry.Subscriptions.Add(-1);
+            }
+
+            try
+            {
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, group, CancellationToken.None);
+            }
+#pragma warning disable CA1031 // The join's failure is what the caller gets; a group that cannot be left goes with the connection.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogRollbackFailed(logger, exception.GetType().Name);
+                Context.Abort();
+                return;
+            }
         }
     }
 
@@ -372,14 +426,14 @@ internal sealed partial class RealtimeHub(
 
     // The organization comes from the argument, and is accepted only after the membership check, like a request's route
     // value; row-level security limits everything the transaction reads to it.
-    private async Task<bool> MayJoinAsync(Guid accountId, Guid organizationId, Guid? channelId, CancellationToken cancellationToken)
+    private async Task<bool> MayJoinAsync(Guid accountId, Guid organizationId, Guid? conversationId, CancellationToken cancellationToken)
     {
         try
         {
             organization.Enter(organizationId);
             await unitOfWork.BeginAsync(cancellationToken);
             var allowed = await membership.IsActiveMemberAsync(accountId, cancellationToken)
-                && (channelId is not { } channel || await conversations.CanReadAsync(organizationId, channel, accountId, cancellationToken));
+                && (conversationId is not { } conversation || await conversations.CanReadAsync(organizationId, conversation, accountId, cancellationToken));
             await unitOfWork.CommitAsync(cancellationToken);
             return allowed;
         }
@@ -431,6 +485,9 @@ internal sealed partial class RealtimeHub(
 
     [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Telling a connection that its session was revoked failed ({ExceptionType}); it is closed anyway.")]
     private static partial void LogNoticeFailed(ILogger logger, string exceptionType);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Leaving the groups of a failed subscription failed ({ExceptionType}); the connection is closed.")]
+    private static partial void LogRollbackFailed(ILogger logger, string exceptionType);
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "The subscription check failed ({ExceptionType}) in organization {OrganizationId}.")]
     private static partial void LogCheckFailed(ILogger logger, string exceptionType, Guid organizationId);

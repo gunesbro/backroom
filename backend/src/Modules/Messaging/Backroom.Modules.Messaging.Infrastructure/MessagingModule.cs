@@ -42,6 +42,7 @@ public static class MessagingModule
         services.TryAddScoped<AfterCommitLiveEvents>();
         services.TryAddScoped<MembershipService>();
         services.TryAddScoped<ChannelService>();
+        services.TryAddScoped<ConversationService>();
         services.TryAddScoped<MessageService>();
         return services;
     }

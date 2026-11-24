@@ -43,6 +43,7 @@ function fakeRealtime() {
     ChannelCreated: [],
     SessionRevoked: [],
     PresenceChanged: [],
+    MembershipChanged: [],
   };
   const statusListeners: ((status: ConnectionStatus, reconnected: boolean) => void)[] = [];
   let status: ConnectionStatus = 'stopped';
@@ -53,8 +54,8 @@ function fakeRealtime() {
     stop: vi.fn(() => Promise.resolve()),
     subscribeOrganization: vi.fn(),
     unsubscribeOrganization: vi.fn(),
-    subscribeChannel: vi.fn(),
-    unsubscribeChannel: vi.fn(),
+    subscribeConversation: vi.fn(),
+    unsubscribeConversation: vi.fn(),
     watchPresence: vi.fn(),
     reportActivity: vi.fn(),
     on: (event: RealtimeEventName, listener: (payload: never) => void) => {
@@ -89,7 +90,10 @@ function fakeApi(count = 3, extra: Partial<MessagingApi> = {}) {
   const calls: MessageCursor[] = [];
   let newest = count;
   const api: MessagingApi = {
-    listChannels: () => Promise.resolve({ channels: [GENERAL, RANDOM], next: null }),
+    listConversations: () => Promise.resolve({ conversations: [GENERAL, RANDOM], next: null }),
+    browseChannels: () => Promise.resolve({ channels: [GENERAL, RANDOM], next: null }),
+    joinConversation: vi.fn(),
+    leaveConversation: vi.fn(),
     createChannel: vi.fn(),
     listMessages: vi.fn((_org: string, _channel: string, cursor: MessageCursor) => {
       calls.push(cursor);
@@ -296,8 +300,8 @@ describe('Live updates in the open channel', () => {
 
     expect(live.spies.start).toHaveBeenCalled();
     expect(live.spies.subscribeOrganization).toHaveBeenCalledWith(ORG);
-    expect(live.spies.subscribeChannel).toHaveBeenCalledWith(ORG, GENERAL.id);
-    expect(live.spies.subscribeChannel).toHaveBeenCalledWith(ORG, RANDOM.id);
+    expect(live.spies.subscribeConversation).toHaveBeenCalledWith(ORG, GENERAL.id);
+    expect(live.spies.subscribeConversation).toHaveBeenCalledWith(ORG, RANDOM.id);
   });
 });
 
@@ -319,17 +323,26 @@ describe('Live updates elsewhere', () => {
     });
   });
 
-  it('ChannelCreated_AddsTheChannelToTheList', async () => {
+  it('ChannelCreated_RefreshesTheBrowseListButNotTheSidebar', async () => {
     const live = fakeRealtime();
-    renderLive(fakeApi(3).api, live.client);
+    const browse = vi.fn(() => Promise.resolve({ channels: [GENERAL, RANDOM], next: null }));
+    renderLive(fakeApi(3, { browseChannels: browse }).api, live.client);
     await openLog();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse channels' }));
+    await waitFor(() => {
+      expect(browse).toHaveBeenCalledTimes(1);
+    });
 
     live.emit('ChannelCreated', {
       orgId: ORG,
       channel: { id: 'c-new', name: 'design', createdAt: '2026-11-22T10:00:00Z' },
     });
 
-    expect(await screen.findByRole('button', { name: 'design' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(browse).toHaveBeenCalledTimes(2);
+    });
+    // Nobody is a member of a new channel but its creator: the person's own list does not change.
+    expect(screen.queryByRole('button', { name: 'design' })).not.toBeInTheDocument();
   });
 
   it('SessionRevoked_SentTwice_SignsOutOnce', async () => {
