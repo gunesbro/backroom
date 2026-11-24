@@ -24,8 +24,9 @@ A client never derives correctness from live events. Every start, reload and rec
 - **What takes a number.** Every change takes the next number: a new message, an edit, a delete, a reaction change, a pin, and a root message's thread summary (reply count, last reply).
   - A message keeps `seq`, the number it took when it was created; `seq` gives the order of the conversation.
   - A message also keeps `version_seq`, the number of its latest change.
-  - A deleted message stays as a tombstone (`deleted_at`, no content) as long as cursors can reach it.
-- **Catch-up.** `GET .../messages?changed_after={n}` returns every message whose `version_seq > n`: new ones, edited ones and tombstones, in `version_seq` order. History paging (`before`/`after` by `seq`) stays as it is.
+  - A deleted message stays as a tombstone for good: its content is erased, while `id`, `seq`, `version_seq` and `deleted_at` remain. Per-conversation cursors never expire, and message history is unlimited (requirements), so a tombstone of a few bytes is the simplest way to keep every cursor valid.
+- **Countable messages.** Each conversation also keeps `last_message_seq`, the `seq` of its newest message. Unlike `change_seq`, it does not move on edits, reactions or pins, so it decides whether a conversation can have unread messages.
+- **Catch-up.** `GET .../messages?changed_after={n}` returns every message whose `version_seq > n`: new ones, edited ones and tombstones, in `version_seq` order, through an index on `(conversation_id, version_seq)`. History paging (`before`/`after` by `seq`) stays as it is.
 - **A thread reply on an old root.** The reply takes a number in the thread's counter. The update to the root's thread summary takes a number in the channel's counter. A client that synced the channel therefore sees the root change, even when the root is 150 messages back.
 - **Phase 1.** Messages are insert-only, so `seq` is also the version: today's `after={seq}` is exactly `changed_after`. Phase 2 adds `version_seq`, tombstones and the `changed_after` name without changing the meaning of `seq`.
 - **Cost.** The lock serializes changes within one conversation, about one change per commit time. That is ample for chat. A conversation that needs more is a broadcast feature with its own design.
@@ -33,18 +34,20 @@ A client never derives correctness from live events. Every start, reload and rec
 ### Cell epoch
 
 - Each cell has an `epoch`, a value that changes whenever its database is restored or a replica is promoted. After an asynchronous failover, a promoted replica can hand out numbers that a client has already seen.
+- The control plane's cell registry is the source of truth, because a value kept in the cell's own database would come back unchanged with a restore or a promoted replica. The failover and restore procedure increments the epoch in the control plane before the cell accepts writes. The cell receives it over the link when it connects, and its app role refuses writes until it has the current epoch.
 - Every cursor the server returns carries the epoch. When a client presents another epoch, or a cursor ahead of the conversation's counter, the server answers that a full resync is needed.
 
 ### Read state on the server
 
 - **The table.** `messaging.read_states (org_id, account_id, conversation_id, last_read_seq, version, updated_at)`.
 - **Reading moves forward only.** Automatic reads (the conversation was shown) only move forward: `last_read_seq = GREATEST(last_read_seq, $seq)`, applied only while the row's `version` is the one the client last saw.
-- **Explicit unread wins.** An explicit "mark unread" sets the value directly and bumps `version`, so an older automatic read from another device cannot undo it.
+- **Explicit actions win.** An explicit "mark unread" or "mark read" sets the value unconditionally and bumps `version`, so an older automatic read from another device cannot undo it.
+- **Version mismatch.** An automatic read that names a stale `version` changes nothing. The answer is 409 with the current read state, and the client adopts that state.
 - **Own messages.** Sending a message advances the sender's own read state in the same transaction.
 - **Unread counts.**
   - They count actual rows: messages after `last_read_seq` that are not deleted, not hidden from the person and not their own.
   - Counting is capped at 100 and shown as "99+".
-  - Only conversations with `change_seq > last_read_seq` are counted, in one `LATERAL` query over the person's conversations.
+  - Only conversations with `last_message_seq > last_read_seq` are counted, in one `LATERAL` query over the person's conversations.
   - The query uses a partial index on `(conversation_id, seq) WHERE deleted_at IS NULL`.
   - Sending a message writes no per-member rows, so the cost of a send does not grow with the size of the channel.
 - **The sidebar.** It draws from the local cache first and then refreshes, so the 100 ms switch budget does not depend on this query.
@@ -56,7 +59,10 @@ A client never derives correctness from live events. Every start, reload and rec
 - **The feed.** `messaging.activity (org_id, account_id, seq, kind, conversation_id, message_id, created_at)` is a personal feed per account in each cell.
   - It records only events that concern that person directly: a reply in a followed thread; a mention of the person; a new DM or group DM message; being added to or removed from a conversation; and read-state changes.
   - Ordinary channel messages never go into it.
-  - Group mentions (everyone in a channel, everyone online, a named group) do not write one row per member. They are one row per conversation in a separate mention list, which members read through their membership.
+  - Group mentions of everyone in a channel do not write one row per member. They are one row per conversation in a separate mention list, which members read through their membership.
+    - Such a mention counts for a person only if it was sent after they joined, the conversation is not muted for them, and they have not turned off group mentions in their settings.
+    - A mention of everyone online is resolved at send time, to the members whose presence is online at that moment. It writes one feed row each and is capped like other bulk notifications.
+    - A named group is expanded to its members at send time, with the same rules.
 - **How rows are written.**
   - The feed has its own commit-ordered `seq` per account, advanced under the lock of a per-account cursor row.
   - Rows are written by a consumer of the messaging events, not in the changing transaction, so changes stay fast. The outbox guarantees that no row is lost.
@@ -67,10 +73,9 @@ A client never derives correctness from live events. Every start, reload and rec
 
 - **The delta.** `GET /api/v1/orgs/{orgId}/sync?since={cursor}` returns, in bounded pages:
   - the feed rows after the cursor;
-  - the conversations whose `change_seq` or read state changed;
-  - the feed writer's **watermark**, the newest event the writer has applied.
-
-  While the writer is behind the newest committed change, the answer says `pending`. A client tells "caught up" from "consumer lag" by this flag and retries shortly, instead of assuming nothing happened.
+  - the conversations whose `change_seq` or read state changed.
+- **Pending events.** Every change that will produce feed rows inserts a row into `messaging.feed_pending (org_id, event_id, created_at)` in its own transaction. The feed writer deletes that row in the transaction that writes the feed rows. The answer says `pending` while the organization has a `feed_pending` row created before the sync request began. Newer events cannot keep it set, so it clears as soon as the writer has caught up with what existed at the request. A client tells "caught up" from "consumer lag" by this flag and retries shortly, instead of assuming nothing happened.
+- **Stuck events.** An event the writer cannot apply goes to the dead-letter queue, keeps its `feed_pending` row and raises an alert. Rows older than a few minutes no longer set `pending`, which would otherwise stay set; they set `degraded` instead. With `degraded` the client relies on the snapshot's unread counts and followed threads, which come from the source tables and are correct without the feed. Only the feed's extra hints, such as the time of the latest mention, may lag until the event is replayed.
 - **Full resync.** It is needed when the cursor is older than the feed's retention, comes from another epoch, is ahead of the server, or is unknown. The snapshot is built from the source tables in one `REPEATABLE READ` transaction and comes with the feed cursor it is consistent with. It contains:
   - the person's conversations and memberships;
   - each conversation's `change_seq` and the person's read state and unread count;
@@ -125,11 +130,11 @@ A client never derives correctness from live events. Every start, reload and rec
 - **Phase 1.** Step 6.1 (PR #33) adds the per-channel `seq`, `after`/`before` by `seq`, and `seq` in `MessagePosted`. In step 7 the web client keeps the last seen `seq` per channel and catches up after reconnecting.
 - **Phase 2:**
   - conversations for DMs, group DMs, private channels and threads;
-  - `change_seq` and `version_seq`, tombstones and `changed_after`;
-  - the cell epoch;
+  - `change_seq`, `last_message_seq` and `version_seq`, permanent tombstones and `changed_after`;
+  - the cell epoch, held by the control plane;
   - `read_states` with forward-only automatic reads;
   - `thread_followers` and the group mention list;
-  - the activity feed, with its consumer, watermark and retention job;
+  - the activity feed, with its consumer, `feed_pending` and retention job;
   - the sync endpoint and the snapshot;
   - search on `messaging.messages`.
 - **Deploy phase:**
