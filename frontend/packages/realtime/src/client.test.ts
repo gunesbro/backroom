@@ -66,6 +66,22 @@ describe('RealtimeClient', () => {
     expect(client.status()).toBe('connected');
   });
 
+  it('Start_WithAPathOrManyTrailingSlashes_ConnectsToTheHubAtTheOrigin', async () => {
+    const urls: string[] = [];
+    const client = createRealtimeClient({
+      cellUrl: `https://cell.example.test/some/path${'/'.repeat(50_000)}`,
+      getAccessToken: () => Promise.resolve('token'),
+      hubFactory: (url) => {
+        urls.push(url);
+        return Promise.resolve(new FakeHub());
+      },
+    });
+    client.start();
+    await flush();
+
+    expect(urls).toEqual(['https://cell.example.test/hubs/realtime']);
+  });
+
   it('Subscribe_BeforeAndAfterConnecting_JoinsTheGroupsOneAtATime', async () => {
     const { client, hubs } = setup();
     client.subscribeOrganization('o1');

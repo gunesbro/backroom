@@ -51,7 +51,8 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
   const hubFactory = options.hubFactory ?? createSignalrHub;
   const retryDelay = options.retryDelay ?? ((attempt: number) => backoffWithJitter(attempt));
   const schedule = options.schedule ?? defaultSchedule;
-  const url = `${options.cellUrl.replace(/\/+$/, '')}/hubs/realtime`;
+  // The hub lives at the cell's origin; URL parsing (not a regular expression) drops any path or trailing slashes.
+  const url = new URL('/hubs/realtime', options.cellUrl).href;
 
   const listeners: { [K in RealtimeEventName]: Set<RealtimeListener<K>> } = {
     MessagePosted: new Set(),
