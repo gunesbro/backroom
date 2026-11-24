@@ -38,7 +38,6 @@ export function createDesktopAuthClient({
   // still missing after that is shown as unavailable until the next sign-in, so it never loops.
   let pending: string | undefined;
   const attempted = new Set<string>();
-  const listeners = new Set<() => void>();
 
   const getAccessToken = async (target: TokenTarget) => {
     const cellId = cellOf(target);
@@ -51,10 +50,8 @@ export function createDesktopAuthClient({
       if (error === 'signed_out') restart();
       if (cellId !== undefined && error === 'scope_not_granted') {
         if (attempted.has(cellId)) throw new CellUnavailableError(cellId);
-        if (pending === undefined) {
-          pending = cellId;
-          for (const listener of listeners) listener();
-        }
+        // The app asks the person to start the browser sign-in; it never opens the browser by itself.
+        pending ??= cellId;
         throw new CellSignInPendingError(cellId);
       }
       // The cell's scope no longer exists at Keycloak.
@@ -122,11 +119,9 @@ export function createDesktopAuthClient({
         cancelled = true;
         return invoke('cancel_sign_in');
       },
-      onCellSignIn: (listener) => {
-        listeners.add(listener);
-        return () => {
-          listeners.delete(listener);
-        };
+      dismissCell: () => {
+        if (pending !== undefined) attempted.add(pending);
+        pending = undefined;
       },
     },
   };

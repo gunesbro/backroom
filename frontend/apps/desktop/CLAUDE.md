@@ -33,4 +33,5 @@ $env:BACKROOM_AUTH_ISSUER = "https://id.example.test/realms/backroom"
 
 ## Not yet
 
+- A settings store in the shell. Until it exists, remembered cell ids live in the web view's `localStorage` (contract, decision 14), not in the app's settings as "Remembered cells" says.
 - Release configuration: the control plane's origin in `VITE_CONTROL_PLANE_URL` and the desktop CSP `connect-src` (until then a release build signs in without the shared cells' scopes).

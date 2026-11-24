@@ -43,10 +43,10 @@ export interface BrowserSignIn {
   /** Stops waiting; `run` then rejects with `cancelled`. */
   cancel: () => Promise<void>;
   /**
-   * Calls `listener` when the signed-in app needs the browser sign-in again to add a cell's scope; the screen then
-   * calls `run` and returns to the app however it ends. Returns the unsubscribe function.
+   * Gives up on the cell waiting for the browser sign-in (CellSignInPendingError); it then shows as unavailable until
+   * the next sign-in. `run` is what adds it.
    */
-  onCellSignIn: (listener: () => void) => () => void;
+  dismissCell: () => void;
 }
 
 /** No session yet: the desktop app shows its browser sign-in screen. */

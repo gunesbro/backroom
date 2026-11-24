@@ -8,6 +8,8 @@ export type Auth = {
   /** A token for one cell only (audience `cell-{cellId}`); the control plane's token never goes to a cell. */
   getCellToken: (cellId: string) => Promise<string>;
   signOut: () => Promise<void>;
+  /** Desktop only: adds a cell's scope through the browser sign-in, which the person starts, or gives up on it. */
+  cellSignIn?: { start: () => void; dismiss: () => void } | undefined;
 };
 
 export const AuthContext = createContext<Auth | null>(null);

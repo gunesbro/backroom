@@ -3,7 +3,7 @@ import { fitsSignIn } from './cell-tokens';
 
 // Cells outside the shared list (customer-run, or registered after a sign-in) that this device needed, so the next
 // sign-in asks for their scopes too (contract, "Remembered cells"). They are hints that grant nothing. Kept in local
-// storage on the web and in the desktop app's web view, which is the app's own profile.
+// storage on the web and, until the shell has a settings store, in the desktop app's web view (contract, decision 14).
 
 const KEY = 'ph.auth.remembered-cells';
 export const MAX_REMEMBERED_CELLS = 10;

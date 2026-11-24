@@ -173,7 +173,7 @@ describe('createDesktopAuthClient', () => {
     expect(invoke).toHaveBeenCalledWith('access_token', { target: 'cell:eu-1' });
   });
 
-  it('GetAccessToken_ForACellNotGranted_AsksForTheBrowserSignInOnceWithTheCell', async () => {
+  it('GetAccessToken_ForACellNotGranted_WaitsForThePersonAndSignsInWithTheCell', async () => {
     let granted = false;
     const { client, invoke } = setup(
       {
@@ -188,12 +188,10 @@ describe('createDesktopAuthClient', () => {
       },
       { cells: [{ id: 'eu-1' }] },
     );
-    const listener = vi.fn();
-    client.browserSignIn?.onCellSignIn(listener);
 
     await expect(client.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellSignInPendingError);
     await expect(client.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellSignInPendingError);
-    expect(listener).toHaveBeenCalledOnce();
+    expect(invoke).not.toHaveBeenCalledWith('sign_in', expect.anything());
 
     await client.browserSignIn?.run('en');
 
@@ -212,14 +210,26 @@ describe('createDesktopAuthClient', () => {
       },
       sign_in: () => undefined,
     });
-    const listener = vi.fn();
-    client.browserSignIn?.onCellSignIn(listener);
     await client.getAccessToken('cell:own-1').catch(() => undefined);
 
     await client.browserSignIn?.run('en');
 
     await expect(client.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellUnavailableError);
-    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('DismissCell_ForTheWaitingCell_ShowsItUnavailableWithoutTheBrowser', async () => {
+    const { client, invoke } = setup({
+      access_token: () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'scope_not_granted';
+      },
+    });
+    await client.getAccessToken('cell:own-1').catch(() => undefined);
+
+    client.browserSignIn?.dismissCell();
+
+    await expect(client.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellUnavailableError);
+    expect(invoke).not.toHaveBeenCalledWith('sign_in', expect.anything());
   });
 
   it('BrowserSignIn_CancelledWhileAuthorizingACell_ShowsItUnavailable', async () => {
@@ -233,7 +243,6 @@ describe('createDesktopAuthClient', () => {
         throw 'cancelled';
       },
     });
-    client.browserSignIn?.onCellSignIn(() => undefined);
     await client.getAccessToken('cell:own-1').catch(() => undefined);
 
     await expect(client.browserSignIn?.run('en')).rejects.toBe('cancelled');

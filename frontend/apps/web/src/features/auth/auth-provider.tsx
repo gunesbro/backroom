@@ -57,16 +57,6 @@ export function AuthProvider({ client, children }: { client: AuthClient; childre
     [client],
   );
 
-  // Desktop: a cell whose scope this sign-in lacks is added through the browser (contract, flow 1).
-  const signedInUser = state.status === 'signed-in' ? state.user : undefined;
-  useEffect(() => {
-    const browser = client.browserSignIn;
-    if (!browser || !signedInUser) return undefined;
-    return browser.onCellSignIn(() => {
-      signInInBrowser(signedInUser);
-    });
-  }, [client, signedInUser, signInInBrowser]);
-
   useEffect(() => {
     mounted.current = true;
     client.start().then(
@@ -87,6 +77,23 @@ export function AuthProvider({ client, children }: { client: AuthClient; childre
     };
   }, [client]);
 
+  // Desktop: a cell whose scope this sign-in lacks is added through the browser once the person starts it
+  // (contract, flow 1); the browser never opens by itself.
+  const signedInUser = state.status === 'signed-in' ? state.user : undefined;
+  const startCellSignIn = useCallback(() => {
+    if (signedInUser) signInInBrowser(signedInUser);
+  }, [signedInUser, signInInBrowser]);
+  const cellSignIn = useMemo(
+    () =>
+      client.browserSignIn && {
+        start: startCellSignIn,
+        dismiss: () => {
+          client.browserSignIn?.dismissCell();
+        },
+      },
+    [client, startCellSignIn],
+  );
+
   const auth = useMemo<Auth | null>(
     () =>
       state.status === 'signed-in'
@@ -96,12 +103,13 @@ export function AuthProvider({ client, children }: { client: AuthClient; childre
             getCellToken: async (cellId: string) => client.getAccessToken(cellTarget(cellId)),
             // If the sign-in server cannot be reached the person stays signed in and can try again.
             signOut: () => client.signOut().catch(() => undefined),
+            cellSignIn,
           }
         : null,
-    [client, state],
+    [client, state, cellSignIn],
   );
 
-  if (auth) {
+  if (state.status === 'signed-in') {
     return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
   }
 
