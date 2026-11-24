@@ -2,7 +2,7 @@ namespace Backroom.Modules.Email.Application.Deliveries;
 
 /// <summary>
 /// What a delivery is for, such as an invitation and its code version: at most one delivery per template name and
-/// reference is pending or sent (a unique index), so a redelivered event cannot send a second email. Ids only.
+/// reference is pending, sent or unknown, that is not failed (a unique index), so a redelivered event cannot send a second email. Ids only.
 /// </summary>
 internal readonly record struct EmailDeliveryReference
 {

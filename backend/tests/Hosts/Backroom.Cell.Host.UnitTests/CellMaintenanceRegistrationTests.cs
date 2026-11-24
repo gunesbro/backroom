@@ -9,7 +9,7 @@ namespace Backroom.Cell.Host.UnitTests;
 public sealed class CellMaintenanceRegistrationTests
 {
     [Fact]
-    public void AddCellModules_ForTheWorker_RegistersTheRunnerAndBothInvitationJobs()
+    public void AddCellModules_ForTheWorker_RegistersTheRunnerAndTheInvitationAndDeliveryJobs()
     {
         var builder = WebApplication.CreateBuilder();
         builder.Configuration["MaintenanceJobs:ConnectionString"] = "Host=db;Username=backroom_maintenance";
@@ -19,7 +19,7 @@ public sealed class CellMaintenanceRegistrationTests
         builder.Services.Should().Contain(descriptor => descriptor.ImplementationType == typeof(MaintenanceJobRunner));
         using var provider = builder.Services.BuildServiceProvider();
         var jobs = provider.GetServices<IMaintenanceJob>().ToList();
-        jobs.Select(job => job.Name).Should().BeEquivalentTo(["organization.invitation-expiry", "organization.invitation-retention"]);
+        jobs.Select(job => job.Name).Should().BeEquivalentTo(["organization.invitation-expiry", "organization.invitation-retention", "email.delivery-stale-pending", "email.delivery-retention"]);
         jobs.Should().OnlyContain(job => job.BatchSize == 250);
     }
 
