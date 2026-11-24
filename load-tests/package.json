@@ -1,0 +1,6 @@
+{
+  "name": "backroom-load-tests",
+  "private": true,
+  "type": "module",
+  "description": "k6 scenarios and Node setup tools; no dependencies (k6 is a separate binary)."
+}
