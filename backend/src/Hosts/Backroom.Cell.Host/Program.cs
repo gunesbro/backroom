@@ -38,6 +38,9 @@ var app = builder.Build();
 
 app.UseDefaultErrorHandling();
 app.UseWebOriginsCors();
+
+// Before authentication, which takes the hub's query token only for a WebSocket upgrade.
+app.UseRealtimeWebSockets();
 app.UseAuthentication();
 if (role == CellRole.App)
 {

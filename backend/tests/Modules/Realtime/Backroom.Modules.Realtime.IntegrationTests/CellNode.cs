@@ -1,5 +1,10 @@
+using System.Net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,20 +29,34 @@ namespace Backroom.Modules.Realtime.IntegrationTests;
 internal sealed class CellNode : IAsyncDisposable
 {
     private readonly WebApplication _app;
+    private readonly TestServer? _server;
 
-    private CellNode(WebApplication app, CapturingLoggerProvider logs)
+    private CellNode(WebApplication app, CapturingLoggerProvider logs, bool kestrel)
     {
         _app = app;
         Logs = logs;
-        Client = app.GetTestClient();
-        Server = app.GetTestServer();
+        if (kestrel)
+        {
+            BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.GetRequiredFeature<IServerAddressesFeature>().Addresses.Single());
+            Client = new HttpClient { BaseAddress = BaseAddress };
+        }
+        else
+        {
+            Client = app.GetTestClient();
+            _server = app.GetTestServer();
+            BaseAddress = _server.BaseAddress;
+        }
     }
 
     public CapturingLoggerProvider Logs { get; }
 
     public HttpClient Client { get; }
 
-    public TestServer Server { get; }
+    /// <summary>The test server; a Kestrel node has none (use <see cref="BaseAddress"/>).</summary>
+    public TestServer Server => _server
+        ?? throw new InvalidOperationException("This node runs on Kestrel and has no test server; connect to BaseAddress instead.");
+
+    public Uri BaseAddress { get; }
 
     public IServiceProvider Services => _app.Services;
 
@@ -49,11 +68,22 @@ internal sealed class CellNode : IAsyncDisposable
         IReadOnlyDictionary<string, string?>? settings = null,
         SecurityKey? extraSigningKey = null,
         TimeProvider? timeProvider = null,
+        bool kestrel = false,
         CancellationToken cancellationToken = default)
     {
         var logs = new CapturingLoggerProvider();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = Environments.Development });
-        builder.WebHost.UseTestServer();
+        if (kestrel)
+        {
+            // Real Kestrel on a free loopback port: unlike the test server's WebSocket client, it does not set the
+            // WebSocket feature itself, so only the pipeline's own middleware can make authentication see the upgrade.
+            builder.WebHost.UseKestrel(options => options.Listen(IPAddress.Loopback, 0));
+        }
+        else
+        {
+            builder.WebHost.UseTestServer();
+        }
+
         builder.Logging.ClearProviders();
         builder.Logging.SetMinimumLevel(LogLevel.Trace);
         builder.Logging.AddProvider(logs);
@@ -90,13 +120,14 @@ internal sealed class CellNode : IAsyncDisposable
         builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 
         var app = builder.Build();
+        app.UseRealtimeWebSockets();
         app.UseAuthentication();
         app.UseRevokedSessionCheck();
         app.UseAuthorization();
         app.MapMessagingEndpoints();
         app.MapRealtimeHub();
         await app.StartAsync(cancellationToken);
-        return new CellNode(app, logs);
+        return new CellNode(app, logs, kestrel);
     }
 
     public async ValueTask DisposeAsync()

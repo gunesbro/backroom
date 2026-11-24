@@ -188,9 +188,11 @@ function SignedIn({
     [messagingEnabled, invitationsUiEnabled, cellTokenSource],
   );
 
+  // Live updates use the same cell token source as the cell API; keyed on `cellTokens` alone (the test-only prop), the
+  // real app never connected.
   const realtime = useMemo(
-    () => (messagingEnabled && cellTokens ? createRealtimeFactory(cellTokens) : null),
-    [messagingEnabled, cellTokens],
+    () => (messagingEnabled ? createRealtimeFactory(cellTokenSource) : null),
+    [messagingEnabled, cellTokenSource],
   );
 
   const queryClient = useQueryClient();
