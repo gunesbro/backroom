@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/shared/http';
-import { fakeAuthClient, fakeOrganizationsApi, organization } from '@/testing/fakes';
+import { fakeAuthClient, fakeOrganizationsApi, fakeRealtimeFactory, organization } from '@/testing/fakes';
 import { App } from './app';
 
 function renderApp(api = fakeOrganizationsApi(), authClient = fakeAuthClient()) {
@@ -69,7 +69,15 @@ describe('App messaging', () => {
       }),
     );
     const cellTokens = vi.fn(() => Promise.resolve('cell-a-token'));
-    render(<App authClient={fakeAuthClient()} createApi={list} cellTokens={cellTokens} messagingEnabled />);
+    render(
+      <App
+        authClient={fakeAuthClient()}
+        createApi={list}
+        cellTokens={cellTokens}
+        messagingEnabled
+        realtime={fakeRealtimeFactory()}
+      />,
+    );
 
     expect(await screen.findByRole('navigation')).toBeInTheDocument();
     await waitFor(() => {
@@ -104,6 +112,7 @@ describe('App workspace shell', () => {
         authClient={authClient}
         createApi={() => fakeOrganizationsApi({ listMine: () => Promise.resolve(organizations) })}
         messagingEnabled
+        realtime={fakeRealtimeFactory()}
         invitationsUiEnabled
       />,
     );
@@ -253,6 +262,7 @@ describe('App', () => {
           fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) })
         }
         messagingEnabled
+        realtime={fakeRealtimeFactory()}
         invitationsUiEnabled
       />,
     );
@@ -337,6 +347,7 @@ describe('App', () => {
           fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) })
         }
         messagingEnabled
+        realtime={fakeRealtimeFactory()}
       />,
     );
 

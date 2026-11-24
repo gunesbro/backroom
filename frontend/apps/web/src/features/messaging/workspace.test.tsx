@@ -757,6 +757,19 @@ describe('Shell', () => {
     expect(tooltip).toHaveAttribute('hidden');
   });
 
+  it('MessageActions_OnlyForTheMessageUnderThePointer', async () => {
+    serveCell();
+    renderWorkspace();
+    const log = await openLog();
+    const text = await within(log).findByText('message 3');
+
+    expect(within(log).queryAllByRole('button', { name: 'Reply', hidden: true })).toHaveLength(0);
+    fireEvent.mouseEnter(text.closest('.bm-message') as HTMLElement);
+    expect(within(log).getAllByRole('button', { name: 'Reply', hidden: true })).toHaveLength(1);
+    fireEvent.mouseLeave(text.closest('.bm-message') as HTMLElement);
+    expect(within(log).queryAllByRole('button', { name: 'Reply', hidden: true })).toHaveLength(0);
+  });
+
   it('Composer_PassiveTools_ShareOneTabStop', async () => {
     serveCell();
     renderWorkspace();

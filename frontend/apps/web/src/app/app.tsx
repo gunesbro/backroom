@@ -33,6 +33,7 @@ import {
   MessagingApiContext,
   RealtimeContext,
   type CellTokenSource,
+  type RealtimeFactory,
   type MessagingApiFactory,
 } from '@/features/messaging';
 import {
@@ -120,6 +121,8 @@ type Services = {
   cellTokens?: CellTokenSource | undefined;
   /** Overrides the messaging feature flag (tests). */
   messagingEnabled?: boolean | undefined;
+  /** Replaces the live connection to cells (tests: no socket leaves jsdom). */
+  realtime?: RealtimeFactory | undefined;
   /** Overrides the invitation UI feature flag (tests). */
   invitationsUiEnabled?: boolean | undefined;
   authClient?: AuthClient | undefined;
@@ -133,6 +136,7 @@ export function App({
   cellTokens,
   messagingEnabled,
   invitationsUiEnabled,
+  realtime,
 }: Services = {}) {
   const hash = useHash();
   const [auth] = useState(() => authClient ?? createAuthClient());
@@ -155,6 +159,7 @@ export function App({
             cellTokens={cellTokens}
             messagingEnabled={messagingEnabled}
             invitationsUiEnabled={invitationsUiEnabled}
+            realtimeFactory={realtime}
           />
         </AuthProvider>
       </QueryClientProvider>
@@ -167,7 +172,10 @@ function SignedIn({
   cellTokens,
   messagingEnabled = config.messagingEnabled,
   invitationsUiEnabled = config.invitationsUiEnabled,
-}: Pick<Services, 'createApi' | 'cellTokens' | 'messagingEnabled' | 'invitationsUiEnabled'>) {
+  realtimeFactory,
+}: Pick<Services, 'createApi' | 'cellTokens' | 'messagingEnabled' | 'invitationsUiEnabled'> & {
+  realtimeFactory?: RealtimeFactory | undefined;
+}) {
   const { getAccessToken, getCellToken } = useAuth();
   const api = useMemo(
     () => (createApi ?? ((tokens) => createOrganizationsApi(config.controlPlaneUrl, tokens)))(getAccessToken),
@@ -191,8 +199,8 @@ function SignedIn({
   // Live updates use the same cell token source as the cell API; keyed on `cellTokens` alone (the test-only prop), the
   // real app never connected.
   const realtime = useMemo(
-    () => (messagingEnabled ? createRealtimeFactory(cellTokenSource) : null),
-    [messagingEnabled, cellTokenSource],
+    () => (messagingEnabled ? (realtimeFactory ?? createRealtimeFactory(cellTokenSource)) : null),
+    [messagingEnabled, realtimeFactory, cellTokenSource],
   );
 
   const queryClient = useQueryClient();

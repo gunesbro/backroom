@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
 import { Avatar, Icon, SoonButton, type IconName } from '@backroom/ui';
@@ -263,6 +263,7 @@ const MessageRow = memo(function MessageRow({
   onDiscard: (clientMessageId: string) => void;
 }) {
   const now = new Date();
+  const [hovered, setHovered] = useState(false);
   const t = useTranslate(messages);
   const pending = row.pending;
   const message = row.message;
@@ -273,8 +274,17 @@ const MessageRow = memo(function MessageRow({
   const createdAt = pending?.createdAt ?? message?.createdAt ?? '';
   const text = pending?.text ?? message?.text ?? '';
   return (
-    <div className={pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message'}>
-      {!pending && <MessageActions />}
+    <div
+      className={pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message'}
+      // The action bar is built only for the message under the pointer, not for every row in the list.
+      onMouseEnter={() => {
+        setHovered(true);
+      }}
+      onMouseLeave={() => {
+        setHovered(false);
+      }}
+    >
+      {hovered && !pending && <MessageActions />}
       <Avatar name={name} toneKey={authorId} shape="square" size="lg" />
       <div className="bm-message__body">
         <p className="bm-message__head">

@@ -1,5 +1,7 @@
 import { vi } from 'vitest';
+import type { RealtimeClient } from '@backroom/realtime';
 import type { AuthClient } from '@/features/auth';
+import type { RealtimeFactory } from '@/features/messaging';
 import type { OrganizationsApi } from '@/features/organizations';
 
 export function fakeAuthClient(overrides: Partial<AuthClient> = {}): AuthClient {
@@ -35,4 +37,22 @@ export function fakeOrganizationsApi(overrides: Partial<OrganizationsApi> = {}):
 
 export function organization(id: string, name: string) {
   return { id, name, cellId: 'a', cellUrl: 'https://a.example.test' };
+}
+
+/** A live connection that never connects anywhere: app tests must not open sockets from jsdom. */
+export function fakeRealtimeFactory(): RealtimeFactory {
+  return () => {
+    const client: RealtimeClient = {
+      start: () => undefined,
+      stop: () => Promise.resolve(),
+      subscribeOrganization: () => undefined,
+      unsubscribeOrganization: () => undefined,
+      subscribeChannel: () => undefined,
+      unsubscribeChannel: () => undefined,
+      on: () => () => undefined,
+      onStatus: () => () => undefined,
+      status: () => 'connected',
+    };
+    return client;
+  };
 }
