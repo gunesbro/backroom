@@ -1,12 +1,18 @@
+import type { ConnectionStatus } from '@backroom/realtime';
 import { Alert, Button, LinkButton, Spinner, Status } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
 import type { Channel } from './api';
+import { ConnectionNotice } from './connection-notice';
 import { messages } from './messages';
 
 export type ChannelsState = {
   channels: readonly Channel[];
   loading: boolean;
   failed: boolean;
+  /** The organization's server cannot be used with this sign-in (its scope is missing). */
+  unavailable: boolean;
+  /** Desktop: the server waits for a browser confirmation, which the main area offers. */
+  signInPending: boolean;
   hasMore: boolean;
   loadingMore: boolean;
   reload: () => void;
@@ -21,6 +27,8 @@ export function ChannelSidebar({
   onSelect,
   onAdd,
   onSwitch,
+  activity,
+  connection,
 }: {
   organizationName: string;
   state: ChannelsState;
@@ -28,6 +36,9 @@ export function ChannelSidebar({
   onSelect: (channel: Channel) => void;
   onAdd: () => void;
   onSwitch: () => void;
+  /** Channels with new messages since they were last open. */
+  activity: ReadonlySet<string>;
+  connection: ConnectionStatus;
 }) {
   const t = useTranslate(messages);
   return (
@@ -48,9 +59,9 @@ export function ChannelSidebar({
             {t('loading')}
           </Status>
         )}
-        {state.failed && (
+        {state.failed && !state.signInPending && (
           <div className="bm-stack">
-            <Alert>{t('generic')}</Alert>
+            <Alert>{t(state.unavailable ? 'serverUnavailable' : 'generic')}</Alert>
             <Button onClick={state.reload}>{t('tryAgain')}</Button>
           </div>
         )}
@@ -70,6 +81,11 @@ export function ChannelSidebar({
               >
                 <span aria-hidden="true">#</span>
                 <span className="bm-channel__name">{channel.name}</span>
+                {activity.has(channel.id) && channel.id !== selectedId && (
+                  <span className="bm-dot">
+                    <span className="bm-sr-only">{t('newActivity')}</span>
+                  </span>
+                )}
               </button>
             </li>
           ))}
@@ -80,6 +96,7 @@ export function ChannelSidebar({
           </LinkButton>
         )}
       </nav>
+      <ConnectionNotice status={connection} />
       <LinkButton onClick={onSwitch}>{t('yourOrganizations')}</LinkButton>
     </aside>
   );

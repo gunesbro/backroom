@@ -1,16 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CellUnavailableError, SessionEndedError } from './cell-tokens';
 import { createOidcAuthClient, returnPath, toAuthUser } from './oidc-auth-client';
 
 const manager = vi.hoisted(() => ({
   signinRedirectCallback: vi.fn(),
   signinRedirect: vi.fn(),
-  signinSilent: vi.fn(),
-  getUser: vi.fn(),
   signoutRedirect: vi.fn(),
   clearStaleState: vi.fn(),
+  removeUser: vi.fn(),
+  metadataService: { getTokenEndpoint: vi.fn() },
 }));
 
-const { ErrorResponse } = vi.hoisted(() => ({ ErrorResponse: class ErrorResponse extends Error {} }));
+const { ErrorResponse } = vi.hoisted(() => ({
+  ErrorResponse: class ErrorResponse extends Error {
+    constructor(
+      readonly error: string,
+      readonly state?: unknown,
+    ) {
+      super(error);
+    }
+  },
+}));
 
 vi.mock('oidc-client-ts', () => ({
   ErrorResponse,
@@ -21,9 +31,60 @@ vi.mock('oidc-client-ts', () => ({
   InMemoryWebStorage: vi.fn(),
 }));
 
+const TOKEN_ENDPOINT = 'https://auth.example.test/realms/test/protocol/openid-connect/token';
+const REMEMBERED_KEY = 'ph.auth.remembered-cells';
+
+/**
+ * Keycloak's token endpoint and the control plane's shared-cell list. Refresh tokens are single-use and a refresh
+ * answers only with a scope granted at sign-in.
+ */
+function endpoints({ granted = ['control-plane'], shared = [] as string[] } = {}) {
+  let valid = 'refresh-0';
+  let issued = 0;
+  const refreshes: { scope: string; refreshToken: string }[] = [];
+  let failNext: string | undefined;
+  const fetch = vi.fn<typeof globalThis.fetch>((input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.endsWith('/api/v1/cells/shared')) {
+      return Promise.resolve(Response.json({ cells: shared.map((id) => ({ id })) }));
+    }
+    const form = new URLSearchParams(init?.body as URLSearchParams);
+    const scope = form.get('scope') ?? '';
+    const refreshToken = form.get('refresh_token') ?? '';
+    refreshes.push({ scope, refreshToken });
+    if (failNext) {
+      const error = failNext;
+      failNext = undefined;
+      return Promise.resolve(Response.json({ error }, { status: 400 }));
+    }
+    if (refreshToken !== valid)
+      return Promise.resolve(Response.json({ error: 'invalid_grant' }, { status: 400 }));
+    issued += 1;
+    valid = `refresh-${String(issued)}`;
+    return Promise.resolve(
+      Response.json({
+        access_token: `access-${scope}-${String(issued)}`,
+        refresh_token: valid,
+        expires_in: 300,
+        scope: granted.includes(scope) ? scope : '',
+      }),
+    );
+  });
+  return {
+    fetch,
+    refreshes,
+    failNextWith: (error: string) => {
+      failNext = error;
+    },
+  };
+}
+
 function user(overrides: Record<string, unknown> = {}) {
   return {
-    access_token: 'token-1',
+    access_token: 'all-audiences',
+    refresh_token: 'refresh-0',
+    id_token: 'id-token',
+    scope: 'openid profile email control-plane',
     expires_in: 300,
     expired: false,
     profile: { email: 'alice@example.test' },
@@ -31,19 +92,50 @@ function user(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function client() {
-  return createOidcAuthClient({ authority: 'https://auth.example.test/realms/test', clientId: 'web' });
+/** The clock of the client under test; tests move it forward. */
+let time = Date.now();
+
+function client(fetch: typeof globalThis.fetch = endpoints().fetch) {
+  return createOidcAuthClient({
+    authority: 'https://auth.example.test/realms/test',
+    clientId: 'web',
+    controlPlaneUrl: 'https://cp.example.test',
+    fetch,
+    now: () => time,
+  });
+}
+
+/** Signs in through a redirect callback that granted `scope`. */
+async function signedIn(fetch: typeof globalThis.fetch, overrides: Record<string, unknown> = {}) {
+  window.history.replaceState(null, '', '/?code=secret-code&state=abc');
+  manager.signinRedirectCallback.mockResolvedValue(user(overrides));
+  const auth = client(fetch);
+  await auth.start();
+  return auth;
+}
+
+function redirectArgs(call = 0) {
+  return manager.signinRedirect.mock.calls[call]?.[0] as {
+    scope: string;
+    state: Record<string, unknown>;
+    prompt?: string;
+  };
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
+  time = Date.now();
   manager.signinRedirect.mockResolvedValue(undefined);
   manager.clearStaleState.mockResolvedValue(undefined);
+  manager.removeUser.mockResolvedValue(undefined);
+  manager.signoutRedirect.mockResolvedValue(undefined);
+  manager.metadataService.getTokenEndpoint.mockResolvedValue(TOKEN_ENDPOINT);
 });
 
 afterEach(() => {
   window.history.replaceState(null, '', '/');
   sessionStorage.clear();
+  localStorage.clear();
 });
 
 describe('createOidcAuthClient', () => {
@@ -51,15 +143,29 @@ describe('createOidcAuthClient', () => {
     window.history.replaceState(null, '', '/?code=secret-code&state=abc');
     manager.signinRedirectCallback.mockResolvedValue(user({ state: { path: '/invite' } }));
 
-    const signedIn = await client().start();
+    const signedInUser = await client().start();
 
-    expect(signedIn).toEqual({
+    expect(signedInUser).toEqual({
       email: 'alice@example.test',
       name: 'alice@example.test',
       givenName: 'alice@example.test',
     });
     expect(window.location.pathname).toBe('/invite');
     expect(window.location.search).toBe('');
+  });
+
+  it('Start_AfterTheCodeExchange_DiscardsItsTokenAndNarrowsToTheControlPlaneAtOnce', async () => {
+    const keycloak = endpoints({ granted: ['control-plane', 'cell:eu-1'] });
+
+    const auth = await signedIn(keycloak.fetch, { scope: 'openid control-plane cell:eu-1' });
+
+    expect(manager.removeUser).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(keycloak.refreshes).toEqual([{ scope: 'control-plane', refreshToken: 'refresh-0' }]);
+    });
+    const token = await auth.getAccessToken('control-plane');
+    expect(token).toBe('access-control-plane-1');
+    expect(token).not.toBe('all-audiences');
   });
 
   it('Start_WhenTheRedirectFails_RemovesTheCodeAndRejects', async () => {
@@ -104,54 +210,180 @@ describe('createOidcAuthClient', () => {
     expect(manager.signinRedirectCallback).toHaveBeenCalledOnce();
   });
 
-  it('Start_WithoutASession_RedirectsToSignInReplacingThisPage', () => {
-    manager.getUser.mockResolvedValue(null);
-    window.history.replaceState(null, '', '/invite');
+  it('Start_WithoutASession_RedirectsWithTheSharedAndRememberedCellsReplacingThisPage', async () => {
+    localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ 'own-1': Date.now() - 1_000 }));
+    window.history.replaceState(null, '', '/invite?tab=2#top');
 
-    void client().start();
+    void client(endpoints({ shared: ['eu-1', 'us-1'] }).fetch).start();
 
-    return vi.waitFor(() => {
+    await vi.waitFor(() => {
       expect(manager.signinRedirect).toHaveBeenCalledWith({
-        state: { path: '/invite' },
+        scope: 'openid profile email control-plane cell:eu-1 cell:us-1 cell:own-1',
+        state: { path: '/invite?tab=2#top' },
         redirectMethod: 'replace',
       });
     });
   });
 
-  it('GetAccessToken_WithTimeLeft_ReturnsTheCurrentToken', async () => {
-    manager.getUser.mockResolvedValue(user());
+  it('GetAccessToken_ForAGrantedCell_CarriesOnlyThatCellsScope', async () => {
+    const keycloak = endpoints({ granted: ['control-plane', 'cell:eu-1'] });
+    const auth = await signedIn(keycloak.fetch, { scope: 'openid control-plane cell:eu-1' });
 
-    await expect(client().getAccessToken()).resolves.toBe('token-1');
-    expect(manager.signinSilent).not.toHaveBeenCalled();
+    await expect(auth.getAccessToken('cell:eu-1')).resolves.toMatch(/^access-cell:eu-1-/);
+    expect(keycloak.refreshes.map((refresh) => refresh.scope)).toEqual(['control-plane', 'cell:eu-1']);
+    expect(manager.signinRedirect).not.toHaveBeenCalled();
   });
 
-  it('GetAccessToken_CloseToExpiry_RenewsOnceForConcurrentCallers', async () => {
-    manager.getUser.mockResolvedValue(user({ expires_in: 10 }));
-    manager.signinSilent.mockResolvedValue(user({ access_token: 'token-2' }));
-    const auth = client();
+  it('GetAccessToken_ForACellNotGranted_AuthorizesItWithoutAPasswordAndRemembersIt', async () => {
+    const keycloak = endpoints({ shared: ['eu-1'] });
+    const auth = await signedIn(keycloak.fetch, { state: { path: '/orgs/1' } });
+    const outcome = vi.fn();
 
-    const tokens = await Promise.all([auth.getAccessToken(), auth.getAccessToken()]);
-
-    expect(tokens).toEqual(['token-2', 'token-2']);
-    expect(manager.signinSilent).toHaveBeenCalledOnce();
-  });
-
-  it('GetAccessToken_WhenTheSessionHasEnded_SignsInAgain', async () => {
-    manager.getUser.mockResolvedValue(user({ expires_in: 0, expired: true }));
-    manager.signinSilent.mockRejectedValue(new ErrorResponse('invalid_grant'));
-
-    void client().getAccessToken();
+    auth.getAccessToken('cell:own-1').then(outcome, outcome);
 
     await vi.waitFor(() => {
       expect(manager.signinRedirect).toHaveBeenCalledOnce();
     });
+    expect(redirectArgs()).toEqual({
+      scope: 'openid profile email control-plane cell:eu-1 cell:own-1',
+      state: { path: '/orgs/1', cell: 'own-1', prompt: 'none' },
+      redirectMethod: 'replace',
+      prompt: 'none',
+    });
+    expect(Object.keys(JSON.parse(localStorage.getItem(REMEMBERED_KEY) ?? '{}') as object)).toEqual([
+      'own-1',
+    ]);
+    expect(outcome).not.toHaveBeenCalled();
+  });
+
+  it('Start_AfterAuthorizingACellThatIsStillMissing_ShowsItUnavailableWithoutRedirectingAgain', async () => {
+    const keycloak = endpoints();
+    const auth = await signedIn(keycloak.fetch, { state: { path: '/', cell: 'own-1', prompt: 'none' } });
+
+    await expect(auth.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellUnavailableError);
+    await expect(auth.getAccessToken('cell:own-1')).rejects.toBeInstanceOf(CellUnavailableError);
+    expect(manager.signinRedirect).not.toHaveBeenCalled();
+  });
+
+  it('GetAccessToken_ForAnotherCellAfterOneWasUnavailable_CarriesThatOneSoItIsNotRetried', async () => {
+    const keycloak = endpoints();
+    const auth = await signedIn(keycloak.fetch, { state: { path: '/', cell: 'own-1', prompt: 'none' } });
+
+    void auth.getAccessToken('cell:own-2');
+
+    await vi.waitFor(() => {
+      expect(manager.signinRedirect).toHaveBeenCalledOnce();
+    });
+    expect(redirectArgs().state).toEqual({
+      path: '/',
+      cell: 'own-2',
+      unavailable: ['own-1'],
+      prompt: 'none',
+    });
+  });
+
+  it('GetAccessToken_WhenKeycloakLeavesOutAGrantedCell_ShowsItUnavailableWithoutRedirecting', async () => {
+    const keycloak = endpoints({ granted: ['control-plane'] });
+    const auth = await signedIn(keycloak.fetch, { scope: 'openid control-plane cell:gone' });
+
+    await expect(auth.getAccessToken('cell:gone')).rejects.toBeInstanceOf(CellUnavailableError);
+    expect(manager.signinRedirect).not.toHaveBeenCalled();
+  });
+
+  it.each(['login_required', 'interaction_required'])(
+    'Start_WhenTheSilentAuthorizationAnswers_%s_FallsBackToTheNormalSignInWithTheCell',
+    async (error) => {
+      window.history.replaceState(null, '', '/?error=x&state=abc');
+      manager.signinRedirectCallback.mockRejectedValue(
+        new ErrorResponse(error, { path: '/orgs/1', cell: 'own-1', prompt: 'none' }),
+      );
+
+      void client().start();
+
+      await vi.waitFor(() => {
+        expect(manager.signinRedirect).toHaveBeenCalledOnce();
+      });
+      expect(redirectArgs()).toEqual({
+        scope: 'openid profile email control-plane cell:own-1',
+        state: { path: '/orgs/1', cell: 'own-1' },
+        redirectMethod: 'replace',
+      });
+    },
+  );
+
+  it('Start_WhenANormalSignInAnswersLoginRequired_RejectsInsteadOfLooping', async () => {
+    window.history.replaceState(null, '', '/?error=x&state=abc');
+    manager.signinRedirectCallback.mockRejectedValue(new ErrorResponse('login_required', { path: '/' }));
+
+    await expect(client().start()).rejects.toThrow('login_required');
+    expect(manager.signinRedirect).not.toHaveBeenCalled();
+  });
+
+  it('Start_WhenAScopeIsUnknown_ForgetsTheRememberedCellsAndRetriesOnceWithoutThem', async () => {
+    localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ gone: Date.now() - 1_000 }));
+    window.history.replaceState(null, '', '/?error=invalid_scope&state=abc');
+    manager.signinRedirectCallback.mockRejectedValue(
+      new ErrorResponse('invalid_scope', { path: '/orgs/1', cell: 'gone', prompt: 'none' }),
+    );
+
+    void client(endpoints({ shared: ['eu-1'] }).fetch).start();
+
+    await vi.waitFor(() => {
+      expect(manager.signinRedirect).toHaveBeenCalledOnce();
+    });
+    expect(localStorage.getItem(REMEMBERED_KEY)).toBeNull();
+    expect(redirectArgs()).toEqual({
+      scope: 'openid profile email control-plane cell:eu-1',
+      state: { path: '/orgs/1', cell: 'gone', prompt: 'none', withoutRemembered: true },
+      redirectMethod: 'replace',
+      prompt: 'none',
+    });
+  });
+
+  it('Start_WhenAScopeIsUnknownAgainAfterTheRetry_Rejects', async () => {
+    window.history.replaceState(null, '', '/?error=invalid_scope&state=abc');
+    manager.signinRedirectCallback.mockRejectedValue(
+      new ErrorResponse('invalid_scope', { path: '/', withoutRemembered: true }),
+    );
+
+    await expect(client().start()).rejects.toThrow('invalid_scope');
+    expect(manager.signinRedirect).not.toHaveBeenCalled();
+  });
+
+  it('GetAccessToken_WhenTheRefreshTokenIsRefused_GetsNewTokensThroughTheSessionOnce', async () => {
+    const keycloak = endpoints();
+    const auth = await signedIn(keycloak.fetch);
+    await auth.getAccessToken('control-plane');
+    keycloak.failNextWith('invalid_grant');
+    time += 10 * 60_000;
+
+    void auth.getAccessToken('control-plane');
+
+    await vi.waitFor(() => {
+      expect(manager.signinRedirect).toHaveBeenCalledOnce();
+    });
+    expect(redirectArgs().prompt).toBeUndefined();
+    expect(sessionStorage.getItem('ph.auth.session-recovery-at')).toBe(String(time));
+  });
+
+  it('GetAccessToken_WhenRefusedAgainRightAfterARecovery_RejectsInsteadOfLooping', async () => {
+    sessionStorage.setItem('ph.auth.session-recovery-at', String(time - 5_000));
+    const keycloak = endpoints();
+    keycloak.failNextWith('invalid_grant');
+    const auth = await signedIn(keycloak.fetch);
+
+    await expect(auth.getAccessToken('control-plane')).rejects.toBeInstanceOf(SessionEndedError);
+    expect(manager.signinRedirect).not.toHaveBeenCalled();
   });
 
   it('GetAccessToken_WhenTheNetworkFails_RejectsWithoutLeaving', async () => {
-    manager.getUser.mockResolvedValue(user({ expires_in: 0, expired: true }));
-    manager.signinSilent.mockRejectedValue(new TypeError('Failed to fetch'));
+    const keycloak = endpoints();
+    const auth = await signedIn(keycloak.fetch);
+    await auth.getAccessToken('control-plane');
+    keycloak.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    time += 10 * 60_000;
 
-    await expect(client().getAccessToken()).rejects.toThrow('Failed to fetch');
+    await expect(auth.getAccessToken('control-plane')).rejects.toThrow('Failed to fetch');
     expect(manager.signinRedirect).not.toHaveBeenCalled();
   });
 
@@ -163,12 +395,25 @@ describe('createOidcAuthClient', () => {
     expect(manager.signinRedirect).toHaveBeenCalledOnce();
   });
 
-  it('SignOut_Always_ReplacesThisPage', async () => {
-    manager.signoutRedirect.mockResolvedValue(undefined);
+  it('SignOut_ForgetsTokensAndRememberedCellsAndReplacesThisPage', async () => {
+    const keycloak = endpoints();
+    const auth = await signedIn(keycloak.fetch);
+    await auth.getAccessToken('control-plane');
+    localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ 'own-1': Date.now() - 1_000 }));
+    const refreshes = keycloak.refreshes.length;
 
-    await client().signOut();
+    await auth.signOut();
 
-    expect(manager.signoutRedirect).toHaveBeenCalledWith({ redirectMethod: 'replace' });
+    expect(manager.signoutRedirect).toHaveBeenCalledWith({
+      redirectMethod: 'replace',
+      id_token_hint: 'id-token',
+    });
+    expect(localStorage.getItem(REMEMBERED_KEY)).toBeNull();
+    void auth.getAccessToken('control-plane');
+    await vi.waitFor(() => {
+      expect(manager.signinRedirect).toHaveBeenCalledOnce();
+    });
+    expect(keycloak.refreshes).toHaveLength(refreshes);
   });
 });
 

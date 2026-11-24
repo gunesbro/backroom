@@ -50,6 +50,8 @@ public static class ControlPlaneUnderTest
         builder.AddCellManagement();
         builder.Services.AddCellManagementEndpoints();
 
+        // Directory provides the real counts in the control plane; the cell list needs some at startup.
+        builder.Services.AddSingleton<Backroom.Modules.CellManagement.Contracts.ICellOrganizationCounts, NoOrganizationCounts>();
         // What FullSync reads: Directory's queries and Identity's revoked sessions (not the rest of Directory, whose handlers
         // would change what these link tests observe).
         builder.Services.AddSingleton<IDirectoryQueries, DirectoryQueries>();
@@ -95,4 +97,10 @@ public static class ControlPlaneUnderTest
             s_migrationLock.Release();
         }
     }
+}
+
+internal sealed class NoOrganizationCounts : Backroom.Modules.CellManagement.Contracts.ICellOrganizationCounts
+{
+    public Task<IReadOnlyDictionary<string, int>> CountByCellAsync(IReadOnlyCollection<string> cellIds, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<string, int>>(new Dictionary<string, int>());
 }

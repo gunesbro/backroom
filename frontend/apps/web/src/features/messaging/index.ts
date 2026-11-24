@@ -11,6 +11,8 @@ export {
   type MessagingApiFactory,
 } from './api';
 
+export { createRealtimeFactory, RealtimeContext, type RealtimeFactory } from './realtime-context';
+
 /** The organization's workspace, loaded only when an organization is opened. */
 export const Workspace = lazy(() =>
   import('./workspace').then(({ Workspace: workspace }) => ({ default: workspace })),

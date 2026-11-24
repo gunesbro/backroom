@@ -19,6 +19,7 @@ type Key =
   | 'loading'
   | 'tryAgain'
   | 'generic'
+  | 'serverUnavailable'
   | 'yourOrganizations'
   | 'messagesLabel'
   | 'loadingEarlier'
@@ -36,7 +37,10 @@ type Key =
   | 'composerHint'
   | 'announceMessage'
   | 'you'
-  | 'member';
+  | 'member'
+  | 'newActivity'
+  | 'connecting'
+  | 'reconnecting';
 
 export const messages: Messages<Key> = {
   en: {
@@ -56,6 +60,7 @@ export const messages: Messages<Key> = {
     loading: 'Loading…',
     tryAgain: 'Try again',
     generic: 'Something went wrong. Try again.',
+    serverUnavailable: "Your organization's server can't be reached right now.",
     yourOrganizations: 'Your organizations',
     messagesLabel: 'Messages in #{name}',
     loadingEarlier: 'Loading earlier messages…',
@@ -74,6 +79,9 @@ export const messages: Messages<Key> = {
     announceMessage: '{name}: {text}.',
     you: 'You',
     member: 'Member',
+    newActivity: 'new messages',
+    connecting: 'Connecting…',
+    reconnecting: 'Connection lost. Reconnecting…',
   },
   tr: {
     channels: 'Kanallar',
@@ -92,6 +100,7 @@ export const messages: Messages<Key> = {
     loading: 'Yükleniyor…',
     tryAgain: 'Tekrar dene',
     generic: 'Bir şeyler ters gitti. Tekrar dene.',
+    serverUnavailable: 'Organizasyonunun sunucusuna şu anda ulaşılamıyor.',
     yourOrganizations: 'Organizasyonların',
     messagesLabel: '#{name} kanalındaki mesajlar',
     loadingEarlier: 'Önceki mesajlar yükleniyor…',
@@ -110,5 +119,8 @@ export const messages: Messages<Key> = {
     announceMessage: '{name}: {text}.',
     you: 'Sen',
     member: 'Üye',
+    newActivity: 'yeni mesajlar',
+    connecting: 'Bağlanılıyor…',
+    reconnecting: 'Bağlantı koptu. Yeniden bağlanılıyor…',
   },
 };

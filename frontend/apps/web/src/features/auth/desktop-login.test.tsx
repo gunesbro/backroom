@@ -1,9 +1,10 @@
 import { StrictMode } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { fakeAuthClient } from '@/testing/fakes';
 import { SignInRequiredError, type BrowserSignIn } from './auth-client';
 import { AuthProvider } from './auth-provider';
+import { CellSignInPrompt } from './cell-sign-in-prompt';
 
 const alice = { email: 'alice@example.test', name: 'Alice Example', givenName: 'Alice' };
 
@@ -13,6 +14,7 @@ function desktopClient(browser: Partial<BrowserSignIn> = {}) {
     reopen: vi.fn(() => Promise.resolve()),
     link: vi.fn(() => Promise.resolve('https://id.example.test/auth?state=x')),
     cancel: vi.fn(() => Promise.resolve()),
+    dismissCell: vi.fn(),
     ...browser,
   };
   const start = vi.fn<() => Promise<typeof alice>>().mockRejectedValue(new SignInRequiredError());
@@ -131,4 +133,59 @@ describe('AuthProvider in the desktop app', () => {
     expect(run).toHaveBeenCalledTimes(2);
     expect(client.signIn).not.toHaveBeenCalled();
   });
+
+  it('CellSignInPrompt_WithoutAClick_NeverOpensTheBrowser', async () => {
+    const client = desktopClient();
+    vi.mocked(client.start).mockResolvedValue(alice);
+    renderPrompt(client);
+
+    expect(await screen.findByRole('heading', { name: 'One more step in your browser' })).toBeInTheDocument();
+    expect(client.browserSignIn?.run).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('CellSignInPrompt_WhenClicked_SignsInThroughTheBrowserAndReturnsToTheAppWhenCancelled', async () => {
+    let cancelRun: (reason: unknown) => void = () => undefined;
+    const client = desktopClient({
+      run: vi.fn(
+        () =>
+          new Promise<void>((_, reject) => {
+            cancelRun = reject;
+          }),
+      ),
+    });
+    vi.mocked(client.start).mockResolvedValue(alice);
+    renderPrompt(client);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with your browser' }));
+
+    expect(await screen.findByRole('heading', { name: 'Sign in in your browser' })).toBeInTheDocument();
+    expect(client.browserSignIn?.run).toHaveBeenCalledOnce();
+    act(() => {
+      cancelRun('cancelled');
+    });
+    expect(await screen.findByRole('heading', { name: 'One more step in your browser' })).toBeInTheDocument();
+  });
+
+  it('CellSignInPrompt_Cancel_GivesUpOnTheCellWithoutTheBrowser', async () => {
+    const client = desktopClient();
+    vi.mocked(client.start).mockResolvedValue(alice);
+    const onDismiss = renderPrompt(client);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    expect(client.browserSignIn?.dismissCell).toHaveBeenCalledOnce();
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(client.browserSignIn?.run).not.toHaveBeenCalled();
+  });
 });
+
+function renderPrompt(client: ReturnType<typeof desktopClient>) {
+  const onDismiss = vi.fn();
+  render(
+    <AuthProvider client={client}>
+      <CellSignInPrompt onDismiss={onDismiss} />
+    </AuthProvider>,
+  );
+  return onDismiss;
+}

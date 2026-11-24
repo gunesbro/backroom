@@ -6,9 +6,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Backroom.BuildingBlocks.Presentation.RateLimiting;
 using Backroom.Modules.CellManagement.Application.Link;
+using Backroom.BuildingBlocks.Application.Accounts;
+using Backroom.BuildingBlocks.Domain.Errors;
 using Backroom.BuildingBlocks.Presentation.Authentication;
 using Backroom.BuildingBlocks.Presentation.Errors;
 using Backroom.Modules.CellManagement.Application;
+using Backroom.Modules.CellManagement.Application.Listing;
 using Backroom.Modules.CellManagement.Application.Provisioning;
 using Backroom.Modules.CellManagement.Application.Registration;
 
@@ -39,6 +42,8 @@ public static class CellManagementEndpoints
             options.EnableDetailedErrors = false;
         });
         services.TryAddSingleton<CellLinkSessions>();
+        // Audits refused operations calls (401 and 403), then answers as usual.
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, OpsAuditAuthorizationHandler>();
         return services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -66,8 +71,13 @@ public static class CellManagementEndpoints
             .AllowAnonymous()
             .RequireRateLimiting(SharedCellsRateLimit);
 
+        endpoints.MapGet("/api/v1/ops/cells", ListAsync)
+            .RequireAuthorization(AuthorizationPolicies.Operations)
+            .WithMetadata(new OpsAction(ListAction));
+
         endpoints.MapPost("/api/v1/ops/cells", ProvisionAsync)
             .RequireAuthorization(AuthorizationPolicies.Operations)
+            .WithMetadata(new OpsAction(ProvisionAction))
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxRequestBytes));
 
         endpoints.MapGrpcService<CellLinkEndpoint>().RequireAuthorization(AuthorizationPolicies.Cell);
@@ -89,19 +99,81 @@ public static class CellManagementEndpoints
         return TypedResults.Ok(new SharedCellsResponse([.. ids.Select(id => new SharedCell(id))]));
     }
 
-    private static async Task<IResult> ProvisionAsync(
-        ProvisionCellRequest request, CellProvisioningService provisioning, HttpContext httpContext, CancellationToken cancellationToken)
+    private const string ListAction = "ops.cells.list";
+
+    private const string ProvisionAction = "ops.cells.provision";
+
+    private static async Task<IResult> ListAsync(
+        CellListService cells, ICurrentAccount account, OpsAudit audit, HttpContext httpContext, string? after, int? limit, CancellationToken cancellationToken)
     {
-        // The response carries the registration key.
+        // Operations data is never kept by a browser or a proxy.
         httpContext.Response.Headers.CacheControl = "no-store";
-        if (!Uri.TryCreate(request.PublicUrl, UriKind.Absolute, out var publicUrl))
+        var accountId = account.AccountId;
+        if (after is { Length: > 64 })
         {
+            audit.Record(accountId, ListAction, OpsAudit.Invalid);
             return CellManagementErrors.CellInvalid.ToProblem();
         }
 
-        var result = await provisioning.ProvisionAsync(new NewCell(request.Id, request.Name, request.Type, request.Region, publicUrl), cancellationToken);
-        return result.ToHttpResult(value => TypedResults.Created(
-            new Uri($"/api/v1/ops/cells/{value.Id}", UriKind.Relative),
-            new ProvisionCellResponse(value.Id, value.RegistrationKey, value.ExpiresAt)));
+        try
+        {
+            var page = await cells.ListAsync(after, limit ?? CellListService.MaxPageSize, cancellationToken);
+            audit.Record(accountId, ListAction, OpsAudit.Success);
+            return TypedResults.Ok(new CellListResponse(
+                [.. page.Cells.Select(cell => new CellSummaryResponse(
+                    cell.Id, cell.Type, cell.Region, cell.Status, cell.Version, cell.LinkStatus, cell.LastHeartbeatAt,
+                    cell.OrganizationCount, cell.PendingMessages, cell.RejectedMessages))],
+                page.Next));
+        }
+        catch (OperationCanceledException)
+        {
+            audit.Record(accountId, ListAction, OpsAudit.Cancelled);
+            throw;
+        }
+        catch (Exception)
+        {
+            audit.Record(accountId, ListAction, OpsAudit.Failed);
+            throw;
+        }
+    }
+
+    private static async Task<IResult> ProvisionAsync(
+        ProvisionCellRequest request,
+        CellProvisioningService provisioning,
+        ICurrentAccount account,
+        OpsAudit audit,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        // The response carries the registration key.
+        httpContext.Response.Headers.CacheControl = "no-store";
+        var accountId = account.AccountId;
+        if (!Uri.TryCreate(request.PublicUrl, UriKind.Absolute, out var publicUrl))
+        {
+            audit.Record(accountId, ProvisionAction, OpsAudit.Invalid);
+            return CellManagementErrors.CellInvalid.ToProblem();
+        }
+
+        try
+        {
+            var result = await provisioning.ProvisionAsync(new NewCell(request.Id, request.Name, request.Type, request.Region, publicUrl), cancellationToken);
+            audit.Record(
+                accountId,
+                ProvisionAction,
+                result.IsSuccess ? OpsAudit.Success : result.Error.Kind == ErrorKind.Validation ? OpsAudit.Invalid : OpsAudit.Rejected);
+            return result.ToHttpResult(value => TypedResults.Created(
+                new Uri($"/api/v1/ops/cells/{value.Id}", UriKind.Relative),
+                new ProvisionCellResponse(value.Id, value.RegistrationKey, value.ExpiresAt)));
+        }
+        catch (OperationCanceledException)
+        {
+            audit.Record(accountId, ProvisionAction, OpsAudit.Cancelled);
+            throw;
+        }
+        catch (Exception)
+        {
+            audit.Record(accountId, ProvisionAction, OpsAudit.Failed);
+            throw;
+        }
     }
 }

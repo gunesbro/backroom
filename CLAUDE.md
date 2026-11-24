@@ -175,6 +175,7 @@ dotnet build backend/Backroom.slnx
 dotnet test --solution backend/Backroom.slnx
 
 # Run everything locally with the Aspire dashboard at http://localhost:15000 (requires Docker Desktop)
+# Add `$env:Backroom__Cells = "1"` first to run one cell instead of two (the default).
 # Keycloak: https://localhost:8443, realm backroom; test users alice@example.test and bob@example.test,
 # whose password is the dashboard's "dev-user-password" parameter.
 dotnet run --project backend/src/Aspire/Backroom.AppHost

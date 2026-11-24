@@ -30,6 +30,7 @@ afterAll(() => {
 });
 
 afterEach(() => {
+  server.resetHandlers();
   window.history.replaceState(null, '', '/');
   localStorage.clear();
   sessionStorage.clear();
@@ -43,30 +44,22 @@ function cellCalls(spy: { mock: { calls: Parameters<typeof fetch>[] } }) {
   });
 }
 
-describe('App messaging flag', () => {
+describe('App messaging', () => {
   const list = () => fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) });
 
-  it('Organization_WithMessagingOff_ShowsOnlyTheNameAndNeverCallsACell', async () => {
+  it('Organization_WithTheFlagOff_ShowsOnlyTheNameAndNeverCallsACell', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    render(<App authClient={fakeAuthClient()} createApi={list} />);
+    const authClient = fakeAuthClient();
+    render(<App authClient={authClient} createApi={list} />);
 
     expect(await screen.findByRole('heading', { name: 'Acme' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(cellCalls(fetchSpy)).toHaveLength(0);
+    expect(authClient.getAccessToken).not.toHaveBeenCalledWith('cell:a');
     fetchSpy.mockRestore();
   });
 
-  it('Organization_WithTheFlagButNoCellTokenSource_StaysOffAndSendsNoToken', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    render(<App authClient={fakeAuthClient()} createApi={list} messagingEnabled />);
-
-    expect(await screen.findByRole('heading', { name: 'Acme' })).toBeInTheDocument();
-    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-    expect(cellCalls(fetchSpy)).toHaveLength(0);
-    fetchSpy.mockRestore();
-  });
-
-  it('Organization_WithTheFlagAndACellTokenSource_CallsTheCellWithItsOwnToken', async () => {
+  it('Organization_WithACellTokenSource_CallsTheCellWithItsOwnToken', async () => {
     const authorizations: (string | null)[] = [];
     server.use(
       http.get('https://a.example.test/api/v1/orgs/1/channels', ({ request }) => {
@@ -75,7 +68,7 @@ describe('App messaging flag', () => {
       }),
     );
     const cellTokens = vi.fn(() => Promise.resolve('cell-a-token'));
-    render(<App authClient={fakeAuthClient()} createApi={list} messagingEnabled cellTokens={cellTokens} />);
+    render(<App authClient={fakeAuthClient()} createApi={list} cellTokens={cellTokens} messagingEnabled />);
 
     expect(await screen.findByRole('navigation')).toBeInTheDocument();
     await waitFor(() => {
@@ -126,6 +119,35 @@ describe('App', () => {
     renderApp(fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) }));
 
     expect(await screen.findByRole('heading', { name: 'Acme' })).toBeInTheDocument();
+  });
+
+  it('OpenOrganization_CallsItsCellWithTheCellsOwnToken', async () => {
+    const authorizations: (string | null)[] = [];
+    server.use(
+      http.get('https://a.example.test/api/v1/orgs/:org/channels', ({ request }) => {
+        authorizations.push(request.headers.get('Authorization'));
+        return HttpResponse.json({ channels: [], next: null });
+      }),
+      http.get('https://a.example.test/api/v1/orgs/:org/members', () =>
+        HttpResponse.json({ members: [], next: null }),
+      ),
+    );
+    const authClient = fakeAuthClient();
+    render(
+      <App
+        authClient={authClient}
+        createApi={() =>
+          fakeOrganizationsApi({ listMine: () => Promise.resolve([organization('1', 'Acme')]) })
+        }
+        messagingEnabled
+      />,
+    );
+
+    await waitFor(() => {
+      expect(authorizations).toContain('Bearer token-cell:a');
+    });
+    expect(authorizations).not.toContain('Bearer token');
+    expect(authClient.getAccessToken).toHaveBeenCalledWith('cell:a');
   });
 
   it('Start_WithSeveralOrganizations_ListsThemAndRemembersTheChoice', async () => {

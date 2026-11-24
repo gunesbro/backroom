@@ -20,4 +20,9 @@
     <None Include="..\..\src\Aspire\Backroom.AppHost\keycloak-themes\backroom\login\*.ftl;..\..\src\Aspire\Backroom.AppHost\keycloak-themes\backroom\login\upstream-templates.sha256" LinkBase="keycloak\theme" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Compiled here: a pure AppHost helper (no Aspire types), tested without starting the AppHost. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Aspire\Backroom.AppHost\DevelopmentKeyDirectories.cs" Link="apphost\DevelopmentKeyDirectories.cs" />
+  </ItemGroup>
+
 </Project>

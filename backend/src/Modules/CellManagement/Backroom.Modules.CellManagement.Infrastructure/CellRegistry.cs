@@ -1,4 +1,5 @@
 using Npgsql;
+using Backroom.Modules.CellManagement.Application.Listing;
 using Backroom.Modules.CellManagement.Application.Registration;
 
 namespace Backroom.Modules.CellManagement.Infrastructure;
@@ -54,18 +55,60 @@ internal sealed class CellRegistry(NpgsqlDataSource dataSource, TimeProvider tim
         LIMIT $1
         """;
 
-    // Development: the cell exists, and while it is pending its key (from the AppHost) is valid again.
+    // Development: the cell exists with the AppHost's address, and while it is pending its key (from the AppHost) is valid again.
     private const string SeedSql = """
         WITH cell AS (
             INSERT INTO cell_management.cells (id, name, type, region, public_url, status, created_at)
             VALUES ($1, $2, $3, $4, $5, 'pending', $6)
-            ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
+            ON CONFLICT (id) DO UPDATE SET public_url = EXCLUDED.public_url
             RETURNING id, status)
         INSERT INTO cell_management.registration_keys (key_hash, cell_id, expires_at)
         SELECT $7, id, $8 FROM cell WHERE status = 'pending'
         ON CONFLICT (key_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at
         WHERE registration_keys.used_at IS NULL AND registration_keys.cell_id = EXCLUDED.cell_id
         """;
+
+    // Counts are capped (10001 means "more than 10000") and use outbound_messages_pending_idx and
+    // outbound_messages_rejected_idx. Two statements, so that the cursor is a primary-key range scan.
+    private const string ListColumns = """
+        SELECT c.id, c.type, c.region, c.status, c.version, c.last_heartbeat_at,
+               (SELECT count(*)::int FROM (SELECT 1 FROM cell_management.outbound_messages m
+                WHERE m.cell_id = c.id AND m.acked_at IS NULL AND m.rejected_code IS NULL LIMIT 10001) p),
+               (SELECT count(*)::int FROM (SELECT 1 FROM cell_management.outbound_messages m
+                WHERE m.cell_id = c.id AND m.rejected_code IS NOT NULL LIMIT 10001) r)
+        FROM cell_management.cells c
+        """;
+
+    private const string ListFirstSql = ListColumns + "\nORDER BY c.id LIMIT $1";
+
+    private const string ListAfterSql = ListColumns + "\nWHERE c.id > $1 ORDER BY c.id LIMIT $2";
+
+    public async Task<IReadOnlyList<CellRow>> ListCellsAsync(string? after, int limit, CancellationToken cancellationToken)
+    {
+        await using var command = dataSource.CreateCommand(after is null ? ListFirstSql : ListAfterSql);
+        if (after is not null)
+        {
+            command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = after });
+        }
+
+        command.Parameters.Add(new NpgsqlParameter<int> { TypedValue = limit });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var rows = new List<CellRow>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new CellRow(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTimeOffset>(5),
+                reader.GetInt32(6),
+                reader.GetInt32(7)));
+        }
+
+        return rows;
+    }
 
     public async Task SeedDevelopmentCellAsync(NewCell cell, byte[] keyHash, DateTimeOffset expiresAt, CancellationToken cancellationToken)
     {

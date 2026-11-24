@@ -7,6 +7,7 @@ using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.CellManagement.Application.Provisioning;
 using Backroom.Modules.CellManagement.Application.Registration;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Health;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Link;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Registration;
 using Npgsql;
@@ -35,6 +36,9 @@ internal sealed class TestCell : IAsyncDisposable
     public RecordingSessionRevocation Revocations => _provider.GetRequiredService<RecordingSessionRevocation>();
 
     public CellRegistrationWorker Worker => _provider.GetRequiredService<CellRegistrationWorker>();
+
+    /// <summary>Whether the cell is rejected; what its health check reports.</summary>
+    public CellLinkStatus Status => _provider.GetRequiredService<CellLinkStatus>();
 
     public CellCredentials Credentials => _provider.GetRequiredService<CellCredentials>();
 
@@ -96,6 +100,7 @@ internal sealed class TestCell : IAsyncDisposable
             LinkLeaseRetryInterval = TimeSpan.FromMilliseconds(200),
         }));
         services.AddSingleton<CellKeyStore>();
+        services.AddSingleton<CellLinkStatus>();
         services.AddSingleton<CellCredentials>();
         services.AddSingleton<CellRegistrationWorker>();
         services.AddHttpClient(CellCredentials.HttpClientName);

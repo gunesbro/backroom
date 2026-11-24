@@ -9,6 +9,7 @@ using Backroom.BuildingBlocks.Infrastructure.Messaging;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.ControlPlane.Contracts.V1;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Events;
+using Backroom.Modules.ControlPlaneConnector.Infrastructure.Health;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Link;
 using Backroom.Modules.ControlPlaneConnector.Infrastructure.Registration;
 using InvitationCreated = Backroom.Modules.Organization.Contracts.InvitationCreated;
@@ -54,6 +55,9 @@ public static class ControlPlaneConnectorModule
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<CellKeyStore>();
+        // A rejected registration or credentials make the worker unhealthy (Health/CellLinkStatus); a mere outage does not.
+        services.TryAddSingleton<CellLinkStatus>();
+        services.AddHealthChecks().AddCheck<CellLinkHealthCheck>(CellLinkHealthCheck.Name);
         services.TryAddSingleton<CellCredentials>();
         services.AddHttpClient(CellCredentials.HttpClientName);
         services.AddHttpClient(CellRegistrationWorker.HttpClientName);
