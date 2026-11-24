@@ -10,9 +10,12 @@ namespace Backroom.Modules.Files.Infrastructure.Scanning;
 /// <summary>
 /// <see cref="IFileScanner"/> over clamd's <c>INSTREAM</c> command (a plain TCP socket; no client library). The content
 /// is streamed in chunks of <see cref="ClamAvOptions.ChunkSize"/> and never held whole; the whole scan has one
-/// deadline. Anything but a clear "OK" or "FOUND" answer, and every network failure, is
-/// <see cref="ScannerUnavailableException"/>. The daemon's <c>StreamMaxLength</c> must be at least the largest file
-/// (100 MB): above it clamd answers an error, which is never read as clean. Nothing the scanner or the file says is logged.
+/// deadline. Only the exact answers "stream: OK" and "stream: {name} FOUND", each ended by a NUL, are verdicts; every
+/// other reply (errors, truncated or unterminated text) and every network failure is
+/// <see cref="ScannerUnavailableException"/>. The content must have exactly the recorded size. The daemon's limits
+/// (<c>StreamMaxLength</c>, <c>MaxFileSize</c>, <c>MaxScanSize</c>) must cover the largest file (100 MB) and it must
+/// run with <c>AlertExceedsMax</c> and <c>AlertEncrypted</c>, so what it cannot scan fully is reported as found and
+/// never as clean. Nothing the scanner or the file says is logged.
 /// </summary>
 internal sealed class ClamAvScanner(IOptions<ClamAvOptions> options) : IFileScanner
 {
@@ -26,15 +29,20 @@ internal sealed class ClamAvScanner(IOptions<ClamAvOptions> options) : IFileScan
         var settings = options.Value;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(settings.ScanTimeout);
+        using var client = new TcpClient { NoDelay = true };
         try
         {
-            using var client = new TcpClient { NoDelay = true };
-            using (var connect = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token))
-            {
-                connect.CancelAfter(settings.ConnectTimeout);
-                await client.ConnectAsync(settings.Host, settings.Port, connect.Token);
-            }
+            await ConnectAsync(client, settings, deadline.Token);
+        }
+        catch (Exception exception) when ((exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            || exception is IOException or SocketException or ObjectDisposedException)
+        {
+            // Nothing was sent: the scanner is down or unreachable, which says nothing about the file.
+            throw new ScannerUnavailableException("The scanner could not be reached.", exception) { IsOutage = true };
+        }
 
+        try
+        {
             var stream = client.GetStream();
             await StreamContentAsync(stream, content, length, settings.ChunkSize, deadline.Token);
             return Parse(await ReadAnswerAsync(stream, deadline.Token));
@@ -53,17 +61,28 @@ internal sealed class ClamAvScanner(IOptions<ClamAvOptions> options) : IFileScan
     internal static ScanVerdict Parse(string answer)
     {
         ArgumentNullException.ThrowIfNull(answer);
-        if (answer.EndsWith(" OK", StringComparison.Ordinal))
+        if (answer == "stream: OK")
         {
             return ScanVerdict.Clean;
         }
 
-        if (answer.EndsWith(" FOUND", StringComparison.Ordinal))
+        const string Prefix = "stream: ";
+        const string Suffix = " FOUND";
+        if (answer.Length > Prefix.Length + Suffix.Length
+            && answer.StartsWith(Prefix, StringComparison.Ordinal)
+            && answer.EndsWith(Suffix, StringComparison.Ordinal))
         {
             return ScanVerdict.Infected;
         }
 
         throw new ScannerUnavailableException("The scanner answered with an error.");
+    }
+
+    private static async Task ConnectAsync(TcpClient client, ClamAvOptions settings, CancellationToken cancellationToken)
+    {
+        using var connect = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        connect.CancelAfter(settings.ConnectTimeout);
+        await client.ConnectAsync(settings.Host, settings.Port, connect.Token);
     }
 
     private static async Task StreamContentAsync(NetworkStream stream, Stream content, long length, int chunkSize, CancellationToken cancellationToken)
@@ -91,6 +110,11 @@ internal sealed class ClamAvScanner(IOptions<ClamAvOptions> options) : IFileScan
                 BinaryPrimitives.WriteInt32BigEndian(buffer, read);
                 await stream.WriteAsync(buffer.AsMemory(0, 4 + read), cancellationToken);
             }
+
+            if (sent != length)
+            {
+                throw new InvalidDataException("The object is shorter than its recorded size.");
+            }
         }
         finally
         {
@@ -114,12 +138,14 @@ internal sealed class ClamAvScanner(IOptions<ClamAvOptions> options) : IFileScan
             }
 
             total += read;
-            if (buffer.AsSpan(0, total).Contains((byte)0))
+            var end = buffer.AsSpan(0, total).IndexOf((byte)0);
+            if (end >= 0)
             {
-                break;
+                return Encoding.ASCII.GetString(buffer, 0, end).TrimEnd('\n');
             }
         }
 
-        return Encoding.ASCII.GetString(buffer, 0, total).TrimEnd('\0', '\n', ' ');
+        // No terminator: the reply was cut off or is too long, so it is no answer.
+        throw new ScannerUnavailableException("The scanner's reply was truncated.");
     }
 }

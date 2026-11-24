@@ -12,6 +12,8 @@ public sealed class ClamAvVersionTests
         var appHost = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apphost", "DevelopmentServices.cs"));
 
         appHost.Should().Contain($"ClamAvImageTag = \"{ClamAvServer.Version}\"");
+        appHost.Should().Contain($"ClamAvImageDigest = \"{ClamAvServer.Digest}\"");
+        appHost.Should().Contain("CLAMD_CONF_AlertExceedsMax").And.Contain("CLAMD_CONF_AlertEncrypted").And.Contain("127.0.0.1:");
     }
 
     [Fact]

@@ -11,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Backroom.Modules.Files.Application.Scanning;
 using Backroom.Modules.Files.Application.Storage;
 using Backroom.Modules.Files.Infrastructure.Scanning;
 using Backroom.BuildingBlocks.Application.Organizations;
@@ -57,6 +58,10 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
     protected IServiceProvider Services => _cell.Services;
 
     protected SeaweedFsServer Storage => storage;
+
+    protected string ScannerHost => scanner.Host;
+
+    protected int ScannerPort => scanner.MappedPort;
 
     /// <summary>A client outside the cell, as a browser or the desktop app talks to object storage.</summary>
     protected HttpClient StorageClient { get; } = new();
@@ -203,21 +208,24 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
     }
 
     /// <summary>Runs the worker's scan job as the maintenance role until no file waits (ClamAV in its container, or at <paramref name="port"/>).</summary>
-    protected async Task RunScanJobAsync(int? port = null)
+    internal async Task RunScanJobAsync(int? port = null, IFileScanner? scannerOverride = null)
     {
         var options = Options.Create(new ClamAvOptions { Host = scanner.Host, Port = port ?? scanner.MappedPort, ScanTimeout = TimeSpan.FromSeconds(20) });
-        var job = new FileScanJob(Services.GetRequiredService<IFileStorageProvider>(), new ClamAvScanner(options), TimeProvider.System, new LoggerFactory([Logs]).CreateLogger<FileScanJob>());
+        using var job = new FileScanJob(Services.GetRequiredService<IFileStorageProvider>(), scannerOverride ?? new ClamAvScanner(options), TimeProvider.System, new LoggerFactory([Logs]).CreateLogger<FileScanJob>());
         await using var connection = new NpgsqlConnection(database.MaintenanceConnectionString);
         await connection.OpenAsync(CancellationToken);
-        for (var batch = 0; batch < 50; batch++)
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(120);
+        while (DateTimeOffset.UtcNow < deadline)
         {
             await using var transaction = await connection.BeginTransactionAsync(CancellationToken);
             var handled = await job.RunBatchAsync(connection, transaction, CancellationToken);
             await transaction.CommitAsync(CancellationToken);
-            if (handled == 0)
+            if (handled == 0 && job.PendingWork == 0)
             {
                 break;
             }
+
+            await Task.Delay(50, CancellationToken);
         }
     }
 

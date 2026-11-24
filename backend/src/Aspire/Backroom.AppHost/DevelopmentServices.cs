@@ -16,6 +16,7 @@ internal static class DevelopmentServices
     public const string SeaweedFsImageTag = "4.50";
     public const string ClamAvImage = "clamav/clamav";
     public const string ClamAvImageTag = "1.5.4";
+    public const string ClamAvImageDigest = "sha256:7054e3f34308c384ea43cd786ea17abf899bd44af40af9f1b099853d7a5c214e";
     public const string LiveKitImage = "livekit/livekit-server";
     public const string LiveKitImageTag = "v1.13.11";
     public const string LiveKitApiKey = "backroom-dev";
@@ -123,13 +124,17 @@ internal static class DevelopmentServices
         // ClamAV (clamd over TCP), the malware scanner behind IFileScanner; a separate process, so its license does not
         // touch our code. It downloads its signatures on first start (a minute or two); until then scans fail and files
         // stay unscanned. StreamMaxLength must cover the largest file (100 MB). Published on localhost only.
-        var clamAv = builder.AddContainer("clamav", ClamAvImage, ClamAvImageTag);
+        var clamAv = builder.AddContainer("clamav", ClamAvImage, ClamAvImageTag).WithImageSHA256(ClamAvImageDigest);
         clamAv
+            // What clamd cannot scan fully (over a limit, encrypted archives) is reported as found, never as clean.
+            .WithEnvironment("CLAMD_CONF_AlertExceedsMax", "yes")
+            .WithEnvironment("CLAMD_CONF_AlertEncrypted", "yes")
             .WithEnvironment("CLAMD_CONF_StreamMaxLength", "100M")
             .WithEnvironment("CLAMD_CONF_MaxFileSize", "100M")
             .WithEnvironment("CLAMD_CONF_MaxScanSize", "200M")
             .WithVolume(VolumeNameGenerator.Generate(clamAv, "signatures"), "/var/lib/clamav")
-            .WithEndpoint(port: ClamAvPort, targetPort: ClamAvPort, name: "clamd", scheme: "tcp", isProxied: false);
+            // Published on the loopback address only (no endpoint: the worker uses localhost and the port).
+            .WithContainerRuntimeArgs("--publish", $"127.0.0.1:{ClamAvPort}:{ClamAvPort}");
 
         // Local LiveKit in dev mode. Media uses a single UDP port; --node-ip makes the advertised
         // ICE candidates reachable from the host through Docker's port mapping.

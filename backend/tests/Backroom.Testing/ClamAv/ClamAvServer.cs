@@ -20,7 +20,10 @@ public sealed class ClamAvServer : IAsyncLifetime
     /// <summary>The standard anti-malware test string; every scanner reports it as infected and it is harmless.</summary>
     public const string Eicar = @"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
 
-    private const string Image = "clamav/clamav:" + Version;
+    /// <summary>The image digest, also pinned in the AppHost (checked by <c>ClamAvVersionTests</c>).</summary>
+    public const string Digest = "sha256:7054e3f34308c384ea43cd786ea17abf899bd44af40af9f1b099853d7a5c214e";
+
+    private const string Image = "clamav/clamav:" + Version + "@" + Digest;
     private const int Port = 3310;
 
     // MD5 of the EICAR string, its length and a name: a hash signature that makes the daemon start and detect it.
@@ -29,13 +32,23 @@ public sealed class ClamAvServer : IAsyncLifetime
     private readonly IContainer _container;
 
     public ClamAvServer()
+        : this("100M", "200M")
+    {
+    }
+
+    /// <summary>A daemon with its own file and scan size limits, to test what happens above them.</summary>
+    public static ClamAvServer WithLimits(string maxFileSize, string maxScanSize) => new(maxFileSize, maxScanSize);
+
+    private ClamAvServer(string maxFileSize, string maxScanSize)
     {
         _container = new ContainerBuilder(Image)
             .WithEnvironment("CLAMAV_NO_FRESHCLAMD", "true")
             .WithEnvironment("CLAMAV_NO_FRESHCLAM", "true")
+            .WithEnvironment("CLAMD_CONF_AlertExceedsMax", "yes")
+            .WithEnvironment("CLAMD_CONF_AlertEncrypted", "yes")
             .WithEnvironment("CLAMD_CONF_StreamMaxLength", "100M")
-            .WithEnvironment("CLAMD_CONF_MaxFileSize", "100M")
-            .WithEnvironment("CLAMD_CONF_MaxScanSize", "200M")
+            .WithEnvironment("CLAMD_CONF_MaxFileSize", maxFileSize)
+            .WithEnvironment("CLAMD_CONF_MaxScanSize", maxScanSize)
             .WithResourceMapping(Encoding.ASCII.GetBytes(EicarSignature), "/var/lib/clamav/eicar.hdb")
             .WithPortBinding(Port, assignRandomHostPort: true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("socket found, clamd started"))

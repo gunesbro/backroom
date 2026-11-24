@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Backroom.Modules.Files.Application.Scanning;
+using Backroom.Modules.Files.Infrastructure.Scanning;
 using Backroom.Modules.Permissions.Contracts;
 using Backroom.Modules.Files.Application.Storage;
 using Backroom.Testing.ClamAv;
@@ -76,10 +77,10 @@ public sealed class ScanTests(PostgresDatabase database, KeycloakRealm keycloak,
         var fileId = await CompleteUnscannedAsync(organizationId, channelId, TestFiles.Text(ClamAvServer.Eicar), "text/plain");
 
         // Nothing listens on the port, so the connection is refused.
-        var act = async () => await RunScanJobAsync(port: FreePort());
+        await RunScanJobAsync(port: FreePort());
 
-        await act.Should().ThrowAsync<ScannerUnavailableException>();
         (await StatusAsync(fileId)).Should().Be("scanning", "no answer is never read as clean");
+        (await ScalarAsync("SELECT scan_attempts FROM files.files WHERE id = $1", fileId)).Should().Be(0, "an outage does not count against the file");
         (await ObjectSizeAsync(organizationId, fileId)).Should().NotBeNull();
         using var download = await DownloadAsync(organizationId, fileId, Alice);
         download.StatusCode.Should().Be(HttpStatusCode.Conflict);
@@ -122,6 +123,87 @@ public sealed class ScanTests(PostgresDatabase database, KeycloakRealm keycloak,
         await RunScanJobAsync();
 
         string.Join(Environment.NewLine, Logs.Entries).Should().NotContain("Secret plan").And.NotContain("EICAR");
+    }
+
+    [Fact]
+    public async Task Scan_WhenAFileCannotBeScanned_DoesNotBlockLaterFilesAndIsRejectedAfterFiveAttemptsAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        var channelId = await CreateChannelAsync(organizationId, Alice);
+        var stuck = await CompleteUnscannedAsync(organizationId, channelId, TestFiles.Text("STUCK and never answered"), "text/plain");
+        var later = await CompleteUnscannedAsync(organizationId, channelId, TestFiles.Pdf());
+        var realScanner = new ClamAvScanner(Microsoft.Extensions.Options.Options.Create(new ClamAvOptions { Host = ScannerHost, Port = ScannerPort }));
+
+        await RunScanJobAsync(scannerOverride: new StuckScanner(realScanner));
+
+        (await StatusAsync(later)).Should().Be("ready", "the file behind a stuck one is scanned");
+        (await StatusAsync(stuck)).Should().Be("scanning");
+        (await ScalarAsync("SELECT scan_attempts FROM files.files WHERE id = $1", stuck)).Should().Be(1);
+        (await ScalarAsync("SELECT scan_next_at > now() + interval '4 minutes' FROM files.files WHERE id = $1", stuck)).Should().Be(true, "the claim backs the next attempt off");
+        using var download = await DownloadAsync(organizationId, stuck, Alice);
+        download.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // The fifth attempt has been made and is due again: the sixth claim gives up.
+        await ExecuteAsync("UPDATE files.files SET scan_attempts = 5, scan_next_at = '-infinity' WHERE id = $1", stuck);
+        await RunScanJobAsync(scannerOverride: new StuckScanner(realScanner));
+
+        (await StatusAsync(stuck)).Should().Be("rejected");
+        (await ObjectSizeAsync(organizationId, stuck)).Should().BeNull("the object of a file that was never scanned is deleted");
+    }
+
+    private sealed class StuckScanner(IFileScanner inner) : IFileScanner
+    {
+        public async Task<ScanVerdict> ScanAsync(Stream content, long length, CancellationToken cancellationToken)
+        {
+            var head = new byte[5];
+            var read = await content.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, cancellationToken);
+            if (read == 5 && head.AsSpan().SequenceEqual("STUCK"u8))
+            {
+                throw new ScannerUnavailableException("This file cannot be answered for.");
+            }
+
+            return await inner.ScanAsync(new PrefixedStream(head.AsMemory(0, read), content), length, cancellationToken);
+        }
+    }
+
+    private sealed class PrefixedStream(ReadOnlyMemory<byte> prefix, Stream rest) : Stream
+    {
+        private int _taken;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_taken < prefix.Length)
+            {
+                var count = Math.Min(buffer.Length, prefix.Length - _taken);
+                prefix.Slice(_taken, count).CopyTo(buffer);
+                _taken += count;
+                return count;
+            }
+
+            return await rest.ReadAsync(buffer, cancellationToken);
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private static int FreePort()

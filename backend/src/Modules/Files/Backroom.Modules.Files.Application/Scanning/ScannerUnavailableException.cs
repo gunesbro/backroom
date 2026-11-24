@@ -16,4 +16,10 @@ internal sealed class ScannerUnavailableException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <summary>
+    /// True when the scanner itself could not be reached (nothing was scanned), so the failure says nothing about the
+    /// file and its attempt is not counted. False when the scanner took the file and failed or refused it.
+    /// </summary>
+    public bool IsOutage { get; init; }
 }
