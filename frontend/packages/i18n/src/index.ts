@@ -56,3 +56,41 @@ export function formatDateTime(value: Date, locale: Locale, timeZone?: string): 
     ...(timeZone === undefined ? {} : { timeZone }),
   }).format(value);
 }
+
+const messageFormats = new Map<string, Intl.DateTimeFormat>();
+
+/** Building a formatter is costly and lists format many times, so each kind is built once. */
+function messageFormat(
+  locale: Locale,
+  kind: 'day' | 'time' | 'dateTime',
+  timeZone: string | undefined,
+): Intl.DateTimeFormat {
+  const key = `${locale}|${kind}|${timeZone ?? ''}`;
+  let format = messageFormats.get(key);
+  if (!format) {
+    const options: Intl.DateTimeFormatOptions =
+      kind === 'day'
+        ? { dateStyle: 'short' }
+        : kind === 'time'
+          ? { hour: 'numeric', minute: '2-digit' }
+          : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+    format = new Intl.DateTimeFormat(FORMAT_TAGS[locale], {
+      ...options,
+      ...(timeZone === undefined ? {} : { timeZone }),
+    });
+    messageFormats.set(key, format);
+  }
+
+  return format;
+}
+
+/**
+ * When a message was sent: the time ("2:30 PM", "14:30") on the same day as `now`, otherwise the short date and
+ * time ("Nov 21, 2:30 PM", "21 Kas 14:30"); in the person's time zone.
+ */
+export function formatMessageTime(value: Date, locale: Locale, now: Date, timeZone?: string): string {
+  const day = messageFormat(locale, 'day', timeZone);
+  return messageFormat(locale, day.format(value) === day.format(now) ? 'time' : 'dateTime', timeZone).format(
+    value,
+  );
+}

@@ -10,13 +10,14 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
-    "@fontsource/ibm-plex-sans": "5.3.0",
     "@backroom/api-client": "workspace:*",
     "@backroom/i18n": "workspace:*",
     "@backroom/local-store": "workspace:*",
     "@backroom/realtime": "workspace:*",
     "@backroom/ui": "workspace:*",
+    "@fontsource/ibm-plex-sans": "5.3.0",
     "@tanstack/react-query": "5.107.1",
+    "@tanstack/react-virtual": "3.14.26",
     "@tauri-apps/api": "2.12.4",
     "livekit-client": "2.24.1",
     "oidc-client-ts": "3.5.0",

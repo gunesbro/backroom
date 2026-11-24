@@ -130,9 +130,14 @@ export function createOidcAuthClient({ authority, clientId }: OidcSettings): Aut
 }
 
 export function toAuthUser(user: Pick<User, 'profile'>): AuthUser {
-  const { email = '', name, given_name: givenName, family_name: familyName } = user.profile;
+  const { email = '', name, given_name: givenName, family_name: familyName, sub } = user.profile;
   const fullName = name?.trim() || [givenName, familyName].filter(Boolean).join(' ').trim() || email;
-  return { email, name: fullName, givenName: givenName?.trim() || fullName };
+  return {
+    email,
+    name: fullName,
+    givenName: givenName?.trim() || fullName,
+    ...(sub ? { accountId: sub } : {}),
+  };
 }
 
 /** When a redirect without known state last started a new sign-in; a second one soon after is shown as a failure. */

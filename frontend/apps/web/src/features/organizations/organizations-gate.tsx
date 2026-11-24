@@ -1,7 +1,8 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { Suspense, useCallback, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, Heading, LinkButton, Spinner, Status } from '@backroom/ui';
 import { config } from '@/config';
+import { useMessagingEnabled, Workspace } from '@/features/messaging';
 import { readItem, writeItem } from '@/shared/storage';
 import { useTranslate } from '@/shared/locale';
 import { useOrganizationsApi, type AccountOrganization } from './api';
@@ -155,7 +156,10 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-/** A placeholder for the workspace until messaging arrives (Phase 1, step 7). */
+/**
+ * The organization's channels and messages (docs/design: Main), loaded when an organization is opened. Behind the
+ * messaging feature flag; with it off the organization shows only its name, as before step 7a.
+ */
 function OrganizationHome({
   organization,
   onSwitch,
@@ -164,10 +168,35 @@ function OrganizationHome({
   onSwitch: () => void;
 }) {
   const t = useTranslate(messages);
+  const messagingEnabled = useMessagingEnabled();
+  if (!messagingEnabled) {
+    return (
+      <Shell>
+        <Heading>{organization.name}</Heading>
+        <LinkButton onClick={onSwitch}>{t('yourOrganizations')}</LinkButton>
+      </Shell>
+    );
+  }
+
   return (
-    <Shell>
-      <Heading>{organization.name}</Heading>
-      <LinkButton onClick={onSwitch}>{t('yourOrganizations')}</LinkButton>
-    </Shell>
+    <SignedInPage>
+      <Suspense
+        fallback={
+          <Status>
+            <Spinner />
+            {t('loading')}
+          </Status>
+        }
+      >
+        <Workspace
+          organization={{
+            id: organization.id,
+            name: organization.name,
+            cell: { id: organization.cellId, url: organization.cellUrl },
+          }}
+          onSwitch={onSwitch}
+        />
+      </Suspense>
+    </SignedInPage>
   );
 }
