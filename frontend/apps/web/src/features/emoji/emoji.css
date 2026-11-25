@@ -1,0 +1,106 @@
+/* The emoji picker. Not drawn in docs/design; it uses the tokens and the focus ring of the dialogs. */
+
+.be-picker {
+  --be-cell: 34px;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--ph-space-8);
+  /* Eight emoji and the scrollbar; narrower screens shrink the cells instead. */
+  width: calc(8 * var(--be-cell) + 16px);
+  max-width: 100%;
+}
+
+.be-picker__top {
+  display: flex;
+  gap: var(--ph-space-6);
+}
+
+.be-picker__search {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+}
+
+.be-picker__tone {
+  flex: none;
+  width: 64px;
+  height: 34px;
+  padding: 0 var(--ph-space-6);
+}
+
+.be-picker__tabs {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ph-line);
+}
+
+.be-picker__tab,
+.be-picker__emoji {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ph-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', var(--ph-font);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.be-picker__tab {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  font-size: 16px;
+  /* Quiet until chosen, like the icons of the toolbar. */
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
+.be-picker__tab[aria-selected='true'] {
+  filter: none;
+  opacity: 1;
+  box-shadow: inset 0 -2px 0 var(--ph-accent);
+}
+
+.be-picker__grid {
+  height: calc(7 * var(--be-cell));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.be-picker__row {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.be-picker__emoji {
+  width: 100%;
+  height: var(--be-cell);
+  font-size: 22px;
+}
+
+.be-picker__tab:hover,
+.be-picker__emoji:hover {
+  background: var(--ph-hover);
+}
+
+.be-picker__tab:focus-visible,
+.be-picker__emoji:focus-visible {
+  outline: 1px solid var(--ph-accent);
+  outline-offset: -1px;
+  box-shadow: var(--ph-focus);
+}
+
+.be-picker__empty {
+  height: calc(7 * var(--be-cell));
+  margin: 0;
+  padding-top: var(--ph-space-24);
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ph-muted);
+}

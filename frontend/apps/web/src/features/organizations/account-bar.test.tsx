@@ -186,11 +186,6 @@ describe('AccountBar status menu', () => {
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       'Use at most 100 characters, on one line.',
     );
-
-    fireEvent.change(within(dialog).getByLabelText("What's your status?"), { target: { value: 'Focusing' } });
-    fireEvent.change(within(dialog).getByLabelText('Emoji'), { target: { value: '🎯🎯' } });
-    fireEvent.click(save);
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Use exactly one emoji.');
     expect(api.put).not.toHaveBeenCalled();
   });
 
@@ -200,7 +195,16 @@ describe('AccountBar status menu', () => {
     fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Set a custom status…' }));
     const dialog = screen.getByRole('dialog');
     const text = `  ${'ş'.repeat(100)}  `;
-    fireEvent.change(within(dialog).getByLabelText('Emoji'), { target: { value: '👍🏽' } });
+    // The emoji is picked from the list (there is no field to type it into).
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Choose an emoji' }));
+    fireEvent.change(await within(dialog).findByRole('combobox', { name: 'Skin tone' }), {
+      target: { value: '3' },
+    });
+    fireEvent.change(within(dialog).getByRole('searchbox', { name: 'Search emoji' }), {
+      target: { value: 'thumbs up' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'thumbs up' }));
+    expect(within(dialog).getByRole('button', { name: 'Change the emoji, now 👍🏽' })).toHaveFocus();
     fireEvent.change(within(dialog).getByLabelText("What's your status?"), { target: { value: text } });
     fireEvent.click(within(dialog).getByRole('radio', { name: '1 hour' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));

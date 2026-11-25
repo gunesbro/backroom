@@ -28,7 +28,9 @@ type Key =
   | 'dndTimeInvalid'
   | 'statusTitle'
   | 'emoji'
-  | 'emojiHint'
+  | 'chooseEmoji'
+  | 'changeEmoji'
+  | 'removeEmoji'
   | 'statusText'
   | 'statusTextCount'
   | 'clearAfter'
@@ -74,7 +76,9 @@ export const messages: Messages<Key> = {
     dndTimeInvalid: 'Choose a time in the next 7 days.',
     statusTitle: 'Custom status',
     emoji: 'Emoji',
-    emojiHint: 'One emoji, for example 🎯',
+    chooseEmoji: 'Choose an emoji',
+    changeEmoji: 'Change the emoji, now {emoji}',
+    removeEmoji: 'Remove the emoji',
     statusText: "What's your status?",
     statusTextCount: '{count}/100',
     clearAfter: 'Clear after',
@@ -119,7 +123,9 @@ export const messages: Messages<Key> = {
     dndTimeInvalid: 'Önümüzdeki 7 gün içinde bir zaman seç.',
     statusTitle: 'Özel durum',
     emoji: 'Emoji',
-    emojiHint: 'Tek bir emoji, örneğin 🎯',
+    chooseEmoji: 'Emoji seç',
+    changeEmoji: 'Emojiyi değiştir, şu an {emoji}',
+    removeEmoji: 'Emojiyi kaldır',
     statusText: 'Durumun ne?',
     statusTextCount: '{count}/100',
     clearAfter: 'Şu süre sonra temizle',

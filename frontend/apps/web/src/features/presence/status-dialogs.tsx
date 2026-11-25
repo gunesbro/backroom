@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type SubmitEvent } from 'react';
-import { Alert, Button, Dialog, RadioCards } from '@backroom/ui';
+import { Alert, Button, Dialog, Icon, RadioCards } from '@backroom/ui';
+import { EmojiPicker } from '@/features/emoji';
 import { useTranslate } from '@/shared/locale';
 import type { AccountStatus } from './api';
 import { messages } from './messages';
@@ -126,7 +127,10 @@ export function DndDialog({ status, onClose }: { status: AccountStatus | undefin
 
 type Expiry = 'never' | '30' | '60' | 'today' | 'custom';
 
-/** The custom status: one emoji, a text of at most 100 characters and when it clears. */
+/**
+ * The custom status: one emoji, a text of at most 100 characters and when it clears. The emoji is picked from the
+ * shared picker, never typed.
+ */
 export function CustomStatusDialog({
   status,
   onClose,
@@ -135,14 +139,16 @@ export function CustomStatusDialog({
   onClose: () => void;
 }) {
   const t = useTranslate(messages);
-  const emojiId = useId();
-  const emojiHintId = useId();
+  const emojiLabelId = useId();
+  const pickerId = useId();
   const textId = useId();
   const countId = useId();
   const timeId = useId();
   const errorId = useId();
   const expiryName = useId();
   const textRef = useRef<HTMLInputElement>(null);
+  const emojiRef = useRef<HTMLButtonElement>(null);
+  const [picking, setPicking] = useState(false);
   const existing = current(status, new Date()).customStatus;
   const [emoji, setEmoji] = useState(existing?.emoji ?? '');
   const [text, setText] = useState(existing?.text ?? '');
@@ -185,6 +191,12 @@ export function CustomStatusDialog({
     setProblem(undefined);
     mutation.reset();
   };
+  const changeEmoji = (next: string) => {
+    setEmoji(next);
+    setPicking(false);
+    reset();
+    emojiRef.current?.focus();
+  };
 
   return (
     <Dialog title={t('statusTitle')} closeLabel={t('close')} onClose={onClose} initialFocus={textRef}>
@@ -192,22 +204,42 @@ export function CustomStatusDialog({
         <div className="ph-dialog__body">
           <div className="bp-status-row">
             <div className="ph-field bp-emoji">
-              <label className="ph-field__label" htmlFor={emojiId}>
+              <span id={emojiLabelId} className="ph-field__label">
                 {t('emoji')}
-              </label>
-              <input
-                id={emojiId}
-                className="ph-input"
-                value={emoji}
-                maxLength={32}
-                autoComplete="off"
-                aria-invalid={emojiProblem ? true : undefined}
-                aria-describedby={emojiProblem ? `${emojiHintId} ${errorId}-emoji` : emojiHintId}
-                onChange={(event) => {
-                  setEmoji(event.target.value);
-                  reset();
-                }}
-              />
+              </span>
+              <div className="bp-emoji__controls" role="group" aria-labelledby={emojiLabelId}>
+                <button
+                  ref={emojiRef}
+                  type="button"
+                  className="bp-emoji__pick"
+                  aria-label={emoji ? t('changeEmoji', { emoji }) : t('chooseEmoji')}
+                  aria-expanded={picking}
+                  aria-controls={picking ? pickerId : undefined}
+                  aria-describedby={emojiProblem ? `${errorId}-emoji` : undefined}
+                  onClick={() => {
+                    setPicking(!picking);
+                  }}
+                >
+                  {emoji || (
+                    <span className="bp-emoji__none" aria-hidden="true">
+                      🙂
+                    </span>
+                  )}
+                </button>
+                {emoji && (
+                  <button
+                    type="button"
+                    className="bp-emoji__remove"
+                    aria-label={t('removeEmoji')}
+                    title={t('removeEmoji')}
+                    onClick={() => {
+                      changeEmoji('');
+                    }}
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="ph-field bp-text">
               <label className="ph-field__label" htmlFor={textId}>
@@ -229,10 +261,18 @@ export function CustomStatusDialog({
               />
             </div>
           </div>
+          {picking && (
+            <div id={pickerId} className="bp-emoji__picker">
+              <EmojiPicker
+                onPick={changeEmoji}
+                onClose={() => {
+                  setPicking(false);
+                  emojiRef.current?.focus();
+                }}
+              />
+            </div>
+          )}
           <div className="bp-hints">
-            <span id={emojiHintId} className="ph-field__hint">
-              {t('emojiHint')}
-            </span>
             <span id={countId} className={count > MAX_STATUS_TEXT ? 'ph-field__error' : 'ph-field__hint'}>
               {t('statusTextCount', { count })}
             </span>

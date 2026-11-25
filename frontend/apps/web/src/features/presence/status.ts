@@ -13,7 +13,8 @@ export function graphemeCount(value: string): number {
   return Array.from(segmenter.segment(value)).length;
 }
 
-const PICTOGRAPHIC = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
+// A pictograph, a flag letter or the keycap mark (the server takes keycaps such as 1️⃣ too).
+const PICTOGRAPHIC = /\p{Extended_Pictographic}|\p{Regional_Indicator}|⃣/u;
 
 /** Exactly one emoji (one grapheme with a pictograph in it). */
 export function isSingleEmoji(value: string): boolean {
