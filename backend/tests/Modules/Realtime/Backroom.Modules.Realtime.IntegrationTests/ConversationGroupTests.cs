@@ -123,6 +123,40 @@ public sealed class ConversationGroupTests(PostgresDatabase database, KeycloakRe
     }
 
     [Fact]
+    public async Task ConversationUpdatedAndMembershipChanged_ReachOnlyTheirGroupsOnBothNodesAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Admin);
+        var secret = await CreatePrivateConversationAsync(organizationId, Alice);
+        var aliceOnA = await ConnectAsync(NodeA, Alice);
+        var aliceOnB = await ConnectAsync(NodeB, Alice);
+        var bob = await ConnectAsync(NodeB, Bob);
+        foreach (var client in new[] { aliceOnA, aliceOnB, bob })
+        {
+            await client.SubscribeOrganizationAsync(organizationId);
+        }
+
+        await aliceOnA.SubscribeConversationAsync(organizationId, secret);
+        await aliceOnB.SubscribeConversationAsync(organizationId, secret);
+        var publisher = NodeA.Services.GetRequiredService<ILiveEventPublisher>();
+        var alice = await AccountAsync(Alice);
+
+        // The renamed private channel: its name goes to the conversation's group, which Bob (an Admin, no member) cannot join.
+        await publisher.PublishAsync(new ConversationUpdatedPayload(organizationId, secret, "Renamed secret", null, null, 1, 4, "7"), CancellationToken);
+        await publisher.PublishAsync(new MembershipChangedPayload(organizationId, alice, secret, MembershipChangedPayload.Added), CancellationToken);
+        // Probes to Bob's own group prove the events above would have arrived by now.
+        await ProbeAsync(await AccountGroupAsync(organizationId, Bob), "after");
+
+        (await aliceOnA.NextConversationUpdateAsync()).Should().Be(new ConversationUpdatedPayload(organizationId, secret, "Renamed secret", null, null, 1, 4, "7"));
+        (await aliceOnB.NextConversationUpdateAsync()).Name.Should().Be("Renamed secret");
+        (await aliceOnA.NextMembershipChangeAsync()).Should().Be(new MembershipChangedPayload(organizationId, alice, secret, MembershipChangedPayload.Added));
+        (await aliceOnB.NextMembershipChangeAsync()).ConversationId.Should().Be(secret);
+        (await bob.NextProbeAsync()).Should().Be("after");
+        bob.HasUnreadConversationUpdate.Should().BeFalse("only the conversation's subscribers get its name");
+        bob.HasUnreadMembershipChange.Should().BeFalse("a membership change goes to that person alone");
+    }
+
+    [Fact]
     public async Task AccountGroup_AfterTheMemberIsRemovedFromTheOrganization_IsLeftOnBothNodesAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);

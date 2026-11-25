@@ -256,7 +256,7 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = (await ReadJsonAsync(response)).AsObject();
-        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "name", "createdAt"], "the answer is the same as for any new name");
+        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "kind", "name", "description", "createdAt"], "the answer is the same as for any new name");
         body["name"]!.GetValue<string>().Should().Be("SECRET PLANS");
         Publisher.Channels.Should().ContainSingle().Which.Channel.Name.Should().Be("SECRET PLANS");
         (await QuerySingleAsync("SELECT count(*) FROM messaging.conversations WHERE org_id = $1 AND name_key = 'secret plans'", organizationId))[0]
@@ -300,7 +300,8 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
             """
             WITH created AS (
                 INSERT INTO messaging.conversations (id, org_id, kind, name, name_key, created_by, created_at, member_count)
-                SELECT gen_random_uuid(), $1, 'private_channel', 'p', 'p', $2, now(), 1 FROM generate_series(1, 10000)
+                -- Older than the hour the brake on new channels counts.
+                SELECT gen_random_uuid(), $1, 'private_channel', 'p', 'p', $2, now() - interval '2 hours', 1 FROM generate_series(1, 10000)
                 RETURNING id)
             INSERT INTO messaging.conversation_members (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by)
             SELECT $1, id, $2, 'owner', now(), 0, $2 FROM created

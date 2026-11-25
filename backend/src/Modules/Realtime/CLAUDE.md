@@ -77,3 +77,9 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 ## NotificationRequested (Phase 2 step 29)
 
 - `ILiveEventPublisher.PublishAsync(NotificationRequestedPayload)` sends `NotificationRequested` to the recipient's account group only (`ValkeyLiveEventPublisher`); the payload carries ids, the kind and a preview of at most 150 characters (null when hidden). Notifications publishes it; the web and desktop clients show it in later steps.
+
+## ConversationUpdated and MembershipChanged (Phase 2 step 7)
+
+- `ILiveEventPublisher.PublishAsync(ConversationUpdatedPayload)` sends `ConversationUpdated` (`orgId, conversationId, name?, description?, archivedAt?, memberCount, changeSeq, epoch`) to the conversation's group only, so a private channel's name reaches its subscribed members and nobody else.
+- `ILiveEventPublisher.PublishAsync(MembershipChangedPayload)` sends `MembershipChanged` (`orgId, accountId, conversationId, change added|removed`) to that account's own group only. Messaging publishes both after its commit.
+- Test: `ConversationUpdatedAndMembershipChanged_ReachOnlyTheirGroupsOnBothNodesAsync` (an Admin who is no member gets neither).

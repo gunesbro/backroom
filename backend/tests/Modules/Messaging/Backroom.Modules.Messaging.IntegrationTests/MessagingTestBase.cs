@@ -54,6 +54,9 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
     /// <summary><c>Features:MessageSync</c> for the cell of this test class.</summary>
     protected virtual bool MessageSyncEnabled => false;
 
+    /// <summary><c>Features:ConversationMemberRemoval</c> for the cell of this test class.</summary>
+    protected virtual bool MemberRemovalEnabled => true;
+
     protected PostgresDatabase Database => database;
 
     protected IServiceProvider Services => _cell.Services;
@@ -77,6 +80,7 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         builder.Services.AddSingleton<ILiveEventPublisher>(Publisher);
         builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Cells.ICellEpoch>(CellEpoch);
         builder.Configuration["Features:MessageSync"] = MessageSyncEnabled ? "true" : "false";
+        builder.Configuration["Features:ConversationMemberRemoval"] = MemberRemovalEnabled ? "true" : "false";
         builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Identifiers.IIdGenerator>(IdScript);
         builder.Services.AddMessaging();
         // Development would throw on a bad query string before the filters; production answers through them.
@@ -133,6 +137,30 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         response.EnsureSuccessStatusCode();
         return (await ReadJsonAsync(response))["id"]!.GetValue<Guid>();
     }
+
+    /// <summary>A private channel through the API; the creator becomes its owner.</summary>
+    protected async Task<Guid> CreatePrivateChannelAsync(Guid organizationId, string username, string name, params Guid[] memberAccountIds)
+    {
+        using var response = await PostAsync($"/api/v1/orgs/{organizationId}/channels", username, new { name, @private = true, memberAccountIds });
+        response.EnsureSuccessStatusCode();
+        return (await ReadJsonAsync(response))["id"]!.GetValue<Guid>();
+    }
+
+    /// <summary>An active member of the organization who never signs in.</summary>
+    protected async Task<Guid> AddSilentMemberAsync(Guid organizationId)
+    {
+        var account = Guid.CreateVersion7();
+        await ExecuteAsync(
+            """
+            INSERT INTO organization.members (org_id, account_id, display_name, email, locale, status, version, joined_at)
+            VALUES ($1, $2, 'Silent', $3, 'en-US', 'active', 1, now())
+            """,
+            organizationId, account, $"{account:N}@example.test");
+        return account;
+    }
+
+    protected static async Task<string?> ErrorCodeAsync(HttpResponseMessage response) =>
+        (await ReadJsonAsync(response))["code"]?.GetValue<string>();
 
     protected async Task<JsonNode> SendMessageAsync(Guid organizationId, Guid channelId, string username, string text, Guid? clientMessageId = null)
     {

@@ -15,6 +15,8 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
     private readonly List<MessagePostedV2Payload> _messagesV2 = [];
     private readonly List<ChannelCreatedPayload> _channels = [];
     private readonly List<(Guid OrgId, Guid ConversationId, Guid AccountId)> _removals = [];
+    private readonly List<ConversationUpdatedPayload> _conversations = [];
+    private readonly List<MembershipChangedPayload> _memberships = [];
 
     public void Add(MessagePostedPayload payload) => _messages.Add(payload);
 
@@ -26,6 +28,10 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
     /// The account's membership of the conversation ended: after the commit, its connections leave the conversation's live
     /// group on every node (docs/contracts/phase-2.md, "Live events", removal). The outbox event repeats it durably.
     /// </summary>
+    public void Add(ConversationUpdatedPayload payload) => _conversations.Add(payload);
+
+    public void Add(MembershipChangedPayload payload) => _memberships.Add(payload);
+
     public void AddRemoval(Guid orgId, Guid conversationId, Guid accountId) => _removals.Add((orgId, conversationId, accountId));
 
     public async Task FlushAsync(CancellationToken cancellationToken)
@@ -34,10 +40,14 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
         var messagesV2 = _messagesV2.ToArray();
         var channels = _channels.ToArray();
         var removals = _removals.ToArray();
+        var conversations = _conversations.ToArray();
+        var memberships = _memberships.ToArray();
         _messages.Clear();
         _messagesV2.Clear();
         _channels.Clear();
         _removals.Clear();
+        _conversations.Clear();
+        _memberships.Clear();
 
         // Removals first: a removed account must not get what follows.
         foreach (var (orgId, conversationId, accountId) in removals)
@@ -95,6 +105,35 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
                 LogMessagePostedFailed(logger, exception.GetType().Name, message.OrgId, message.ConversationId, message.Message.Id);
             }
         }
+
+        foreach (var conversation in conversations)
+        {
+            try
+            {
+                await publisher.PublishAsync(conversation, cancellationToken);
+            }
+#pragma warning disable CA1031 // See above.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogConversationEventFailed(logger, LiveEventNames.ConversationUpdated, exception.GetType().Name, conversation.OrgId, conversation.ConversationId);
+            }
+        }
+
+        // To each person's own account group: one publish per person, at most the people of one request.
+        foreach (var membership in memberships)
+        {
+            try
+            {
+                await publisher.PublishAsync(membership, cancellationToken);
+            }
+#pragma warning disable CA1031 // See above.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogConversationEventFailed(logger, LiveEventNames.MembershipChanged, exception.GetType().Name, membership.OrgId, membership.ConversationId);
+            }
+        }
     }
 
     // The exception type only: its message could carry the payload.
@@ -106,4 +145,7 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
 
     [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Removing a member from the live group failed ({ExceptionType}) in organization {OrganizationId}, conversation {ConversationId}.")]
     private static partial void LogRemovalFailed(ILogger logger, string exceptionType, Guid organizationId, Guid conversationId);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Publishing the live event {EventName} failed ({ExceptionType}) in organization {OrganizationId}, conversation {ConversationId}.")]
+    private static partial void LogConversationEventFailed(ILogger logger, string eventName, string exceptionType, Guid organizationId, Guid conversationId);
 }

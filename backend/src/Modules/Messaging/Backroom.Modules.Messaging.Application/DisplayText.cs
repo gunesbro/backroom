@@ -20,7 +20,14 @@ internal static class DisplayText
 
     private const int MaxCodePointsInOneCharacter = 10;
 
-    public static bool TryNormalize(string? input, int maxLength, out string normalized)
+    public static bool TryNormalize(string? input, int maxLength, out string normalized) =>
+        TryNormalize(input, maxLength, requireVisible: true, out normalized);
+
+    /// <summary>
+    /// The same rule; with <paramref name="requireVisible"/> off the text need not hold a visible character (a
+    /// description, docs/contracts/phase-2.md, flow 1), though it still may not be empty or only white space.
+    /// </summary>
+    public static bool TryNormalize(string? input, int maxLength, bool requireVisible, out string normalized)
     {
         normalized = string.Empty;
 
@@ -59,7 +66,7 @@ internal static class DisplayText
         }
 
         // A joiner may not trail either: it joins two characters or nothing.
-        if (!visible || previousWasJoiner || codePoints > maxLength * MaxCodePointsPerCharacter)
+        if ((requireVisible && !visible) || previousWasJoiner || codePoints > maxLength * MaxCodePointsPerCharacter)
         {
             return false;
         }

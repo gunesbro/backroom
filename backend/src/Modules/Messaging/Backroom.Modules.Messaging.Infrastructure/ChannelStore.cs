@@ -1,25 +1,28 @@
 using Npgsql;
+using NpgsqlTypes;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.Messaging.Application.Channels;
+using Backroom.Modules.Messaging.Contracts;
 
 namespace Backroom.Modules.Messaging.Infrastructure;
 
 /// <summary>
-/// Public channels (conversations of kind <c>public_channel</c>); row-level security limits every statement to the
+/// Channels (conversations of kind <c>public_channel</c> and <c>private_channel</c>); row-level security limits every statement to the
 /// entered organization, and each query also names it so the indexes lead with it.
 /// </summary>
 internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
 {
-    // The conflict target is the partial unique index conversations_public_name_key_idx: open public channels only.
+    // The conflict target is the partial unique index conversations_public_name_key_idx: open public channels only. A
+    // private channel is outside that index, so its insert never conflicts and is never compared with any name.
     private const string AddSql = """
-        INSERT INTO messaging.conversations (id, org_id, kind, name, name_key, created_by, created_at)
-        VALUES ($1, $2, 'public_channel', $3, $4, $5, $6)
+        INSERT INTO messaging.conversations (id, org_id, kind, name, name_key, description, owner_account_id, created_by, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (org_id, name_key) WHERE kind = 'public_channel' AND archived_at IS NULL DO NOTHING
         """;
 
     // Served by conversations_public_open_idx.
     private const string ListSql = """
-        SELECT id, name, created_at
+        SELECT id, name, description, created_at
         FROM messaging.conversations
         WHERE org_id = $1 AND kind = 'public_channel' AND archived_at IS NULL AND id > $2
         ORDER BY id
@@ -46,8 +49,11 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         await using var command = new NpgsqlCommand(AddSql, session.Connection, session.Transaction);
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channel.Id });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channel.OrgId });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = channel.Kind });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = channel.Name });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = channel.NameKey });
+        command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = (object?)channel.Description ?? DBNull.Value });
+        command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Uuid, Value = (object?)channel.OwnerAccountId ?? DBNull.Value });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channel.CreatedBy });
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = channel.CreatedAt });
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
@@ -63,7 +69,8 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         var channels = new List<ChannelEntry>(Math.Min(count, 101));
         while (await reader.ReadAsync(cancellationToken))
         {
-            channels.Add(new ChannelEntry(reader.GetGuid(0), reader.GetString(1), reader.GetFieldValue<DateTimeOffset>(2)));
+            channels.Add(new ChannelEntry(
+                reader.GetGuid(0), ConversationKinds.PublicChannel, reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetFieldValue<DateTimeOffset>(3)));
         }
 
         return channels;

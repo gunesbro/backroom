@@ -21,15 +21,19 @@ public static class SystemRoles
     public const string FilesUpload = "files.upload";
     public const string FilesRemoveOthersPublic = "files.remove-others-public";
 
+    // Channels (Phase 2 step 7); existing organizations get them in the migration AddChannelPermissions.
+    public const string ChannelsCreatePrivate = "channels.create-private";
+    public const string ChannelsManagePublic = "channels.manage-public";
+
     /// <summary>Every permission key there is.</summary>
     public static IReadOnlyList<string> AllPermissions { get; } =
-        [ChannelsCreatePublic, MembersInviteByEmail, MembersChooseRoleOnInvite, MembersManageInvitations, FilesUpload, FilesRemoveOthersPublic];
+        [ChannelsCreatePublic, MembersInviteByEmail, MembersChooseRoleOnInvite, MembersManageInvitations, FilesUpload, FilesRemoveOthersPublic, ChannelsCreatePrivate, ChannelsManagePublic];
 
     /// <summary>Each system role and its permissions.</summary>
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> Permissions { get; } = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
     {
         [Owner] = AllPermissions,
-        [Admin] = [ChannelsCreatePublic, MembersInviteByEmail, MembersChooseRoleOnInvite, MembersManageInvitations, FilesUpload, FilesRemoveOthersPublic],
-        [Member] = [ChannelsCreatePublic, MembersInviteByEmail, FilesUpload],
+        [Admin] = [ChannelsCreatePublic, MembersInviteByEmail, MembersChooseRoleOnInvite, MembersManageInvitations, FilesUpload, FilesRemoveOthersPublic, ChannelsCreatePrivate, ChannelsManagePublic],
+        [Member] = [ChannelsCreatePublic, MembersInviteByEmail, FilesUpload, ChannelsCreatePrivate],
     };
 }

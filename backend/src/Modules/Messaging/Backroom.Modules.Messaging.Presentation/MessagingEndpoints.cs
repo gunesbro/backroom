@@ -19,7 +19,10 @@ namespace Backroom.Modules.Messaging.Presentation;
 public static class MessagingEndpoints
 {
     /// <summary>A channel name: 80 characters, a few bytes each, plus the JSON around it.</summary>
-    private const long MaxCreateChannelRequestBytes = 4 * 1024;
+    // Room for the 50 initial members.
+    private const long MaxCreateChannelRequestBytes = 8 * 1024;
+
+    private const long MaxManagementRequestBytes = 8 * 1024;
 
     /// <summary>4000 characters of text, up to four bytes each in UTF-8 (more when the JSON escapes them), plus the JSON around it.</summary>
     private const long MaxSendMessageRequestBytes = 64 * 1024;
@@ -29,10 +32,10 @@ public static class MessagingEndpoints
         ArgumentNullException.ThrowIfNull(endpoints);
 
         endpoints.MapGet("/api/v1/orgs/{orgId:guid}/channels", ListChannelsAsync).InOrganization();
+        // The permission depends on the kind (channels.create-public or channels.create-private): the service checks it.
         endpoints.MapPost("/api/v1/orgs/{orgId:guid}/channels", CreateChannelAsync)
             .PublishLiveEventsAfterCommit()
             .InOrganization()
-            .RequirePermission(SystemRoles.ChannelsCreatePublic)
             .WithMetadata(new RequestSizeLimitAttribute(MaxCreateChannelRequestBytes));
         endpoints.MapGet("/api/v1/orgs/{orgId:guid}/conversations", ListConversationsAsync).InOrganization();
         endpoints.MapGet("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/messages", ListMessagesAsync).InOrganization();
@@ -40,10 +43,40 @@ public static class MessagingEndpoints
             .PublishLiveEventsAfterCommit()
             .InOrganization()
             .WithMetadata(new RequestSizeLimitAttribute(MaxSendMessageRequestBytes));
-        endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/join", JoinAsync).InOrganization();
+        endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/join", JoinAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization();
         endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/leave", LeaveAsync)
             .PublishLiveEventsAfterCommit()
             .InOrganization();
+
+
+        // Admins see how many private channels exist and nothing else about them (owner decision 11).
+        endpoints.MapGet("/api/v1/orgs/{orgId:guid}/private-channels/count", CountPrivateChannelsAsync)
+            .InOrganization()
+            .RequirePermission(SystemRoles.ChannelsManagePublic);
+        endpoints.MapGet("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}", GetConversationAsync).InOrganization();
+        endpoints.MapPatch("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}", UpdateConversationAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization()
+            .WithMetadata(new RequestSizeLimitAttribute(MaxManagementRequestBytes));
+        endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/archive", ArchiveAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization();
+        endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/unarchive", UnarchiveAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization();
+        endpoints.MapGet("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/members", ListMembersAsync).InOrganization();
+        endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/members", AddMembersAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization()
+            .WithMetadata(new RequestSizeLimitAttribute(MaxManagementRequestBytes));
+        endpoints.MapDelete("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/members/{accountId:guid}", RemoveMemberAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization();
+        endpoints.MapPut("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/owner", TransferOwnershipAsync)
+            .InOrganization()
+            .WithMetadata(new RequestSizeLimitAttribute(MaxManagementRequestBytes));
 
         return endpoints;
     }
@@ -56,7 +89,8 @@ public static class MessagingEndpoints
 
     private static async Task<IResult> CreateChannelAsync(CreateChannelRequest request, ICurrentAccount account, ChannelService channels, CancellationToken cancellationToken)
     {
-        var result = await channels.CreateAsync(account.AccountId, request.Name, cancellationToken);
+        var result = await channels.CreateAsync(
+            account.AccountId, request.Name, request.Private ?? false, request.Description, request.MemberAccountIds, cancellationToken);
         return result.ToHttpResult(channel => TypedResults.Created((string?)null, ToResponse(channel)));
     }
 
@@ -118,7 +152,61 @@ public static class MessagingEndpoints
     private static async Task<IResult> LeaveAsync(Guid conversationId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
         (await memberships.LeaveAsync(account.AccountId, conversationId, cancellationToken)).ToHttpResult();
 
-    private static ChannelResponse ToResponse(ChannelEntry channel) => new(channel.Id, channel.Name, channel.CreatedAt);
+    private static ChannelResponse ToResponse(ChannelEntry channel) => new(channel.Id, channel.Kind, channel.Name, channel.Description, channel.CreatedAt);
+
+    private static async Task<IResult> CountPrivateChannelsAsync(ConversationManagementService conversations, CancellationToken cancellationToken) =>
+        TypedResults.Ok(new PrivateChannelCountResponse(await conversations.CountPrivateChannelsAsync(cancellationToken)));
+
+    private static async Task<IResult> GetConversationAsync(
+        Guid conversationId, ICurrentAccount account, ConversationManagementService conversations, CancellationToken cancellationToken) =>
+        (await conversations.GetAsync(account.AccountId, conversationId, cancellationToken)).ToHttpResult(conversation => TypedResults.Ok(ToResponse(conversation)));
+
+    private static async Task<IResult> UpdateConversationAsync(
+        Guid conversationId, UpdateConversationRequest request, ICurrentAccount account, ConversationManagementService conversations, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var result = await conversations.UpdateAsync(account.AccountId, conversationId, request.Name, request.Description, cancellationToken);
+        return IsEpochUnconfirmed(result)
+            ? EpochUnconfirmed(httpContext)
+            : result.ToHttpResult(conversation => TypedResults.Ok(ToResponse(conversation)));
+    }
+
+    private static async Task<IResult> ArchiveAsync(
+        Guid conversationId, ICurrentAccount account, ConversationManagementService conversations, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var result = await conversations.ArchiveAsync(account.AccountId, conversationId, cancellationToken);
+        return result.Error == MessageService.EpochUnconfirmed ? EpochUnconfirmed(httpContext) : result.ToHttpResult();
+    }
+
+    private static async Task<IResult> UnarchiveAsync(
+        Guid conversationId, ICurrentAccount account, ConversationManagementService conversations, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var result = await conversations.UnarchiveAsync(account.AccountId, conversationId, cancellationToken);
+        return result.Error == MessageService.EpochUnconfirmed ? EpochUnconfirmed(httpContext) : result.ToHttpResult();
+    }
+
+    private static async Task<IResult> ListMembersAsync(
+        Guid conversationId, Guid? after, int? limit, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken)
+    {
+        var result = await memberships.ListAsync(account.AccountId, conversationId, after, limit, cancellationToken);
+        return result.ToHttpResult(page => TypedResults.Ok(new ConversationMembersResponse(
+            [.. page.Items.Select(member => new ConversationMemberResponse(member.AccountId, member.Role, member.JoinedAt))], page.Next?.ToString("D"))));
+    }
+
+    private static async Task<IResult> AddMembersAsync(
+        Guid conversationId, AddMembersRequest request, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
+        (await memberships.AddAsync(account.AccountId, conversationId, request.AccountIds, cancellationToken)).ToHttpResult();
+
+    private static async Task<IResult> RemoveMemberAsync(
+        Guid conversationId, Guid accountId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
+        (await memberships.RemoveAsync(account.AccountId, conversationId, accountId, cancellationToken)).ToHttpResult();
+
+    private static async Task<IResult> TransferOwnershipAsync(
+        Guid conversationId, TransferOwnershipRequest request, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
+        (await memberships.TransferOwnershipAsync(account.AccountId, conversationId, request.AccountId, cancellationToken)).ToHttpResult();
+
+    private static ConversationDetailResponse ToResponse(ConversationDetails conversation) => new(
+        conversation.Id, conversation.Kind, conversation.Name, conversation.Description, conversation.CreatedAt, conversation.ArchivedAt,
+        conversation.MemberCount, conversation.OwnerAccountId, conversation.Role);
 
     // A tombstone answers with its numbers and times only (docs/adr/0011): no author, no client id, no content.
     private static MessageResponse ToResponse(MessageEntry message) => message.DeletedAt is null
