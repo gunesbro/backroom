@@ -12,7 +12,8 @@ export type ExpiryClock = {
 };
 
 /**
- * The ends of timed statuses (do not disturb, a custom status), the person's own and those of the people on screen.
+ * The ends of timed statuses (do not disturb, a custom status): the person's own today, and those of the people on
+ * screen once a view shows them (none does yet; see `index.ts`).
  * The server sends nothing when such a time passes (it only leaves expired values out when asked), so the client has
  * to look again by itself. One timer serves every source: it waits for the nearest end, tells the sources whose time
  * passed, and waits for the next. No timer runs while nothing is watched or nothing is due to end.

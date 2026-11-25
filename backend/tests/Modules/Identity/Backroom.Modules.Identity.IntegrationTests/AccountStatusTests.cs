@@ -172,6 +172,28 @@ public sealed class AccountStatusTests(PostgresDatabase database) : IAsyncLifeti
     }
 
     [Fact]
+    public async Task SetDoNotDisturb_ByAnInstanceBuiltBeforeAway_IsAcceptedAndAwayDoesNotComeBackAsync()
+    {
+        var account = Guid.NewGuid();
+        using (var away = await PutAsync(account, new { away = true, timeZone = "Europe/Istanbul" }))
+        {
+            away.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        // A rolling deploy: the older instance's upsert replaces dnd_until and never writes away. The database must take it.
+        await _data.SetDndLikeAnOlderInstanceAsync(account, s_now.AddMinutes(30));
+
+        var during = await JsonAsync(await GetAsync(account));
+        during["dndUntil"]!.GetValue<DateTimeOffset>().Should().Be(s_now.AddMinutes(30));
+        during["away"]!.GetValue<bool>().Should().BeFalse("do not disturb comes before away");
+
+        _time.Advance(TimeSpan.FromMinutes(31));
+        var after = await JsonAsync(await GetAsync(account));
+        after["dndUntil"].Should().BeNull();
+        after["away"]!.GetValue<bool>().Should().BeFalse("away does not come back when do not disturb ends");
+    }
+
+    [Fact]
     public async Task GetStatus_AfterTheEnds_LeavesExpiredPartsOutAsync()
     {
         var account = Guid.NewGuid();

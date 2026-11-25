@@ -80,15 +80,23 @@ internal sealed class AccountStatusStore(DatabaseSession session, NpgsqlDataSour
         return statuses;
     }
 
-    private static async Task<AccountStatus> ReadAsync(NpgsqlDataReader reader, CancellationToken cancellationToken) => new(
+    // Away counts only while the row has no do-not-disturb time, expired or not: an instance built before the column can set do not
+    // disturb without clearing the flag, and away must not come back when that do not disturb ends.
+    private static async Task<AccountStatus> ReadAsync(NpgsqlDataReader reader, CancellationToken cancellationToken)
+    {
+        DateTimeOffset? dndUntil = await reader.IsDBNullAsync(1, cancellationToken) ? null : reader.GetFieldValue<DateTimeOffset>(1);
+        return await ReadAsync(reader, dndUntil, cancellationToken);
+    }
+
+    private static async Task<AccountStatus> ReadAsync(NpgsqlDataReader reader, DateTimeOffset? dndUntil, CancellationToken cancellationToken) => new(
         reader.GetGuid(0),
-        await reader.IsDBNullAsync(1, cancellationToken) ? null : reader.GetFieldValue<DateTimeOffset>(1),
+        dndUntil,
         await reader.IsDBNullAsync(2, cancellationToken) ? null : reader.GetString(2),
         await reader.IsDBNullAsync(3, cancellationToken) ? null : reader.GetString(3),
         await reader.IsDBNullAsync(4, cancellationToken) ? null : reader.GetFieldValue<DateTimeOffset>(4),
         await reader.IsDBNullAsync(5, cancellationToken) ? null : reader.GetString(5),
         reader.GetInt64(6))
     {
-        Away = reader.GetBoolean(7),
+        Away = dndUntil is null && reader.GetBoolean(7),
     };
 }
