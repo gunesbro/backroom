@@ -133,6 +133,54 @@ describe('MessageBody', () => {
     expect(screen.getByText('let a = 1;').closest('pre')).not.toBeNull();
   });
 
+  it('Emoji_InText_AreImages_AndInCodeTheyStayCharacters', () => {
+    const blocks = [
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'text', text: 'Shipped 🎉 ' },
+          { type: 'text', text: 'with 👍🏽', marks: [{ type: 'bold' }] },
+          { type: 'text', text: 'log("🚀")', marks: [{ type: 'code' }] },
+        ],
+      },
+      { type: 'code_block', children: [{ type: 'text', text: 'print("🔥")' }] },
+    ];
+
+    const { container } = render(<MessageBody text="" sending={false} blocks={blocks} />);
+
+    const images = screen.getAllByRole('img');
+    expect(images.map((image) => image.getAttribute('alt'))).toEqual(['🎉', '👍🏽']);
+    expect(images[1]?.closest('strong')).not.toBeNull();
+    for (const image of images) expect(image).not.toHaveClass('be-emoji--large');
+    expect(screen.getByText('log("🚀")')).toBeInTheDocument();
+    expect(screen.getByText('print("🔥")')).toBeInTheDocument();
+    expect(container).toHaveTextContent('Shipped with');
+  });
+
+  it('Message_OfOnlyAFewEmoji_ShowsThemLarge', () => {
+    const only = [{ type: 'paragraph', children: [{ type: 'text', text: '🎉 👍🏽' }] }];
+    const { unmount } = render(<MessageBody text="" sending={false} blocks={only} />);
+    for (const image of screen.getAllByRole('img')) expect(image).toHaveClass('be-emoji--large');
+    unmount();
+
+    // Not in a list, and not next to words.
+    const list = [
+      { type: 'bulleted_list', children: [{ type: 'list_item', children: [{ type: 'text', text: '🎉' }] }] },
+    ];
+    render(<MessageBody text="" sending={false} blocks={list} />);
+    expect(screen.getByRole('img')).not.toHaveClass('be-emoji--large');
+  });
+
+  it('PlainText_WithEmoji_ShowsImages_LargeWhenThereIsNothingElse', () => {
+    const { unmount } = render(<MessageBody text="ok 😀" sending={false} blocks={null} />);
+    expect(screen.getByRole('img', { name: '😀' })).not.toHaveClass('be-emoji--large');
+    expect(screen.getByText('ok')).toBeInTheDocument();
+    unmount();
+
+    render(<MessageBody text="😀" sending blocks={null} />);
+    expect(screen.getByRole('img', { name: '😀' })).toHaveClass('be-emoji--large');
+  });
+
   it('MessageBody_WhenNoRenderableBlocks_ShowsPlainText', () => {
     render(<MessageBody text="plain words" sending={false} blocks={[{ type: 'carousel' }]} />);
     expect(screen.getByText('plain words')).toBeInTheDocument();

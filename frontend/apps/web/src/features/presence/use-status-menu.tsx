@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Alert, type MenuEntry } from '@backroom/ui';
 import { formatDuration, formatMessageTime } from '@backroom/i18n';
+import { EmojiText } from '@/features/emoji';
 import { useLocale, useTranslate } from '@/shared/locale';
 import { usePresenceEnabled } from './api';
 import { messages } from './messages';
@@ -71,7 +72,7 @@ export function useStatusMenu(): StatusMenu | undefined {
           {
             kind: 'item' as const,
             id: 'current-status',
-            label: line,
+            label: <EmojiText text={line} />,
             onSelect: () => {
               setOpen('custom');
             },

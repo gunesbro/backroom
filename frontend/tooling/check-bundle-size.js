@@ -4,7 +4,8 @@
 // Uses Vite's build manifest (build.manifest: true), so it does not depend on the base path or on
 // how index.html is written: initial = entry chunks plus everything they import statically (with
 // their CSS); lazy = every dynamically imported chunk (with its CSS). Sizes are gzip, in kB of
-// 1000 bytes, like Vite's build report.
+// 1000 bytes, like Vite's build report. Apps with emoji images also have a budget for the largest
+// image and for all of them.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +77,25 @@ for (const [app, limits] of Object.entries(budget.apps)) {
     walk(key);
     const size = sum([...filesOf(closure, 'js'), ...filesOf(closure, 'css')]);
     report.push([app, `lazy ${manifest[key].file}`, size, limits.lazyChunk]);
+  }
+
+  if (limits.emojiImage !== undefined) {
+    const assets = join(dist, 'assets');
+    const folders = readdirSync(assets).filter((name) => name.startsWith('emoji-'));
+    if (folders.length !== 1) {
+      problems.push(`${app}: expected one assets/emoji-* folder, found ${folders.length}`);
+      continue;
+    }
+    const sizes = readdirSync(join(assets, folders[0])).map((file) =>
+      gzipKb(dist, join('assets', folders[0], file)),
+    );
+    report.push([
+      app,
+      `emoji images, largest of ${sizes.length}`,
+      round(Math.max(...sizes)),
+      limits.emojiImage,
+    ]);
+    report.push([app, 'emoji images, all', round(sizes.reduce((a, b) => a + b, 0)), limits.emojiImages]);
   }
 }
 

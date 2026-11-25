@@ -45,6 +45,7 @@ import { Icon, Toolbar, type IconName } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
 import { messages } from '../messages';
 import { hrefFromInput, type Block } from './blocks';
+import { $emojiFromText, $textFromEmoji, EmojiNode } from './emoji-node';
 import { $readBlocks, $writeBlocks, EDITOR_NODES } from './lexical-blocks';
 
 /** The editor's content in our block schema. */
@@ -255,6 +256,9 @@ export function RichField({
         }
         if (node.getStyle() !== '') node.setStyle('');
       }),
+      // Emoji are drawn as images, however they got here: typed, pasted or picked.
+      editor.registerNodeTransform(TextNode, $emojiFromText),
+      editor.registerNodeTransform(EmojiNode, $textFromEmoji),
       registerMarkdownShortcuts(editor, SHORTCUTS),
       editor.registerCommand(
         KEY_ENTER_COMMAND,

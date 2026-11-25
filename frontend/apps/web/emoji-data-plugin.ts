@@ -165,8 +165,11 @@ const SOURCES: Readonly<Record<string, Source>> = {
   },
 };
 
-/** The copyright and permission notices of the data packages, as their licenses ask of whoever ships the data. */
-function notices(): string {
+/**
+ * The copyright and permission notices of the data packages, as their licenses ask of whoever ships the data,
+ * followed by the sections of what else ships with the emoji (`more`: the emoji images).
+ */
+function notices(more: readonly string[]): string {
   const parts = Object.values(SOURCES).flatMap((source) =>
     source.packages.map((name) => {
       const manifest = require.resolve(`${name}/package.json`);
@@ -176,12 +179,13 @@ function notices(): string {
     }),
   );
   const rule = ['', '', '-'.repeat(78), '', ''].join('\n');
-  return ['This application includes data from the following projects.', ...parts].join(rule) + '\n';
+  const intro = 'This application includes data and images from the following projects.';
+  return [intro, ...parts, ...more].join(rule) + '\n';
 }
 
 const PREFIX = 'virtual:emoji-data/';
 
-export function emojiData(): Plugin {
+export function emojiData(moreNotices: () => readonly string[] = () => []): Plugin {
   return {
     name: 'backroom:emoji-data',
     resolveId(id) {
@@ -208,7 +212,7 @@ export function emojiData(): Plugin {
         }
       }
       // The full notices ship with the web app and, through it, with the desktop app.
-      this.emitFile({ type: 'asset', fileName: NOTICES_FILE, source: notices() });
+      this.emitFile({ type: 'asset', fileName: NOTICES_FILE, source: notices(moreNotices()) });
     },
   };
 }

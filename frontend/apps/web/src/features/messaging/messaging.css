@@ -863,3 +863,19 @@
   color: var(--ph-danger);
   font-size: 12px;
 }
+
+/* An emoji in the editor (rich-text/emoji-node.ts): its characters stay in the text, invisible, with the image of
+   the emoji painted behind them at the size emoji have in messages (.be-emoji). */
+.bm-rt-emoji {
+  display: inline-block;
+  min-width: 1.2em;
+  line-height: 1.2;
+  text-align: center;
+  color: transparent;
+  background: center / 1.2em 1.2em no-repeat;
+  caret-color: var(--ph-ink);
+}
+
+.bm-rt-emoji::selection {
+  color: transparent;
+}

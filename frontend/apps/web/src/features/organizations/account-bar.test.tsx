@@ -128,7 +128,7 @@ describe('AccountBar status menu', () => {
     const custom = { emoji: '🎯', text: 'Focusing', expiresAt: null };
     const api = fakeStatusApi({ ...empty, dndUntil: '2026-11-24T11:00:00Z', customStatus: custom });
     renderBar(api);
-    await screen.findByText('🎯 Focusing');
+    await screen.findByAltText('🎯');
     const menu = await openMenu();
     expect(within(menu).getByRole('menuitemradio', { name: /^Do not disturb/ })).toHaveAttribute(
       'aria-checked',
@@ -159,7 +159,7 @@ describe('AccountBar status menu', () => {
       customStatus: { emoji: '🎯', text: 'Focusing', expiresAt: '2026-11-24T11:00:00Z' },
     });
     renderBar(api);
-    expect(await screen.findByText('🎯 Focusing · 1 hour')).toBeInTheDocument();
+    expect(await screen.findByText('Focusing · 1 hour')).toBeInTheDocument();
     fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Clear status' }));
 
     await waitFor(() => {
@@ -257,7 +257,7 @@ describe('AccountBar status menu', () => {
       customStatus: { emoji: '🎯', text: 'Focusing', expiresAt: null },
     });
     const { container } = renderBar(api, locale);
-    await screen.findByText('🎯 Focusing');
+    await screen.findByAltText('🎯');
     await openMenu(locale === 'en' ? /status and profile menu/i : /durum ve profil menüsü/i);
     const rules = { rules: { 'color-contrast': { enabled: false } } };
     expect((await axe.run(container, rules)).violations).toEqual([]);

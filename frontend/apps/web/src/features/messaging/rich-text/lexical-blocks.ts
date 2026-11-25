@@ -32,14 +32,19 @@ import {
   type Mark,
   type TextNode,
 } from './blocks';
+import { EmojiNode } from './emoji-node';
 
-/** Every node the editor can hold. Anything else (headings, images, tables) cannot appear or is read as a paragraph. */
+/**
+ * Every node the editor can hold. Anything else (headings, images, tables) cannot appear or is read as a paragraph.
+ * An emoji node is a text node, so blocks are read from it like from any other text.
+ */
 export const EDITOR_NODES: readonly Klass<LexicalNode>[] = [
   ListNode,
   ListItemNode,
   LinkNode,
   QuoteNode,
   CodeNode,
+  EmojiNode,
 ];
 
 // Control characters other than tab and newline, and lone surrogates, are refused by the server's text rules. Nodes

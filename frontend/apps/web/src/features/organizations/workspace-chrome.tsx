@@ -1,5 +1,6 @@
 import { Avatar, Icon, MenuButton, OrgMark, SoonButton, type MenuEntry } from '@backroom/ui';
 import { useAuth } from '@/features/auth';
+import { EmojiText } from '@/features/emoji';
 import { PresenceDot, useStatusMenu } from '@/features/presence';
 import { useTranslate } from '@/shared/locale';
 import type { AccountOrganization } from './api';
@@ -155,7 +156,7 @@ export function AccountBar() {
             )}
             <span className="bo-account__who">
               <b>{user.name}</b>
-              <small>{status?.line ?? user.email}</small>
+              <small>{status?.line ? <EmojiText text={status.line} /> : user.email}</small>
             </span>
           </>
         }

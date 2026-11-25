@@ -1,5 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react';
 import { isDesktopApp, tauriInvoke } from '@/features/auth';
+import { EmojiText, isEmojiOnly } from '@/features/emoji';
 import { parseBlocks, safeHref, type Block, type TextNode } from './blocks';
 
 /**
@@ -13,8 +14,10 @@ function openInSystemBrowser(event: MouseEvent<HTMLAnchorElement>, href: string)
   });
 }
 
-function run(node: TextNode, key: number): ReactNode {
-  let content: ReactNode = node.text;
+function run(node: TextNode, key: number, large: boolean): ReactNode {
+  // Code shows its characters as they are; everywhere else emoji are images.
+  const code = node.marks?.some((mark) => mark.type === 'code') ?? false;
+  let content: ReactNode = code ? node.text : <EmojiText text={node.text} large={large} />;
   let href: string | null = null;
   const desktop = isDesktopApp();
   for (const mark of node.marks ?? []) {
@@ -64,16 +67,26 @@ function run(node: TextNode, key: number): ReactNode {
   return <span key={key}>{content}</span>;
 }
 
-function runs(nodes: readonly TextNode[]): ReactNode[] {
-  return nodes.map(run);
+function runs(nodes: readonly TextNode[], large = false): ReactNode[] {
+  return nodes.map((node, key) => run(node, key, large));
 }
 
-function renderBlock(block: Block, key: number): ReactNode {
+/** A message that is one paragraph of only a few emoji shows them large. */
+function isLargeEmoji(blocks: readonly Block[]): boolean {
+  const only = blocks.length === 1 ? blocks[0] : undefined;
+  return (
+    only?.type === 'paragraph' &&
+    only.children.every((node) => (node.marks ?? []).length === 0) &&
+    isEmojiOnly(only.children.map((node) => node.text).join(''))
+  );
+}
+
+function renderBlock(block: Block, key: number, large: boolean): ReactNode {
   switch (block.type) {
     case 'paragraph':
       return (
         <p key={key} className="bm-text">
-          {runs(block.children)}
+          {runs(block.children, large)}
         </p>
       );
     case 'quote':
@@ -107,11 +120,18 @@ function renderBlock(block: Block, key: number): ReactNode {
 /**
  * A message body from its blocks. Only React elements and text are produced (never markup strings), links keep
  * http, https and mailto addresses and open with `rel="noopener noreferrer"`, and types this client does not know
- * are skipped. With no renderable block the plain `text` is shown, as before.
+ * are skipped. With no renderable block the plain `text` is shown, as before. Emoji are drawn as images outside code.
  */
 export function MessageBody({ blocks, text, sending }: { blocks: unknown; text: string; sending: boolean }) {
   const parsed = parseBlocks(blocks);
   const className = sending ? 'bm-body bm-body--sending' : 'bm-body';
-  if (!parsed) return <p className={sending ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>;
-  return <div className={className}>{parsed.map(renderBlock)}</div>;
+  if (!parsed) {
+    return (
+      <p className={sending ? 'bm-text bm-text--sending' : 'bm-text'}>
+        <EmojiText text={text} large={isEmojiOnly(text)} />
+      </p>
+    );
+  }
+  const large = isLargeEmoji(parsed);
+  return <div className={className}>{parsed.map((block, key) => renderBlock(block, key, large))}</div>;
 }
