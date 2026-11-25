@@ -31,6 +31,12 @@
           "Backroom.BuildingBlocks.Domain": "[1.0.0, )"
         }
       },
+      "backroom.modules.organization.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Domain": "[1.0.0, )"
+        }
+      },
       "backroom.modules.permissions.contracts": {
         "type": "Project",
         "dependencies": {

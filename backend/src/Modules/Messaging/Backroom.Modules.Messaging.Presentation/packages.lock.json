@@ -77,11 +77,18 @@
         "dependencies": {
           "Backroom.BuildingBlocks.Application": "[1.0.0, )",
           "Backroom.Modules.Messaging.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Organization.Contracts": "[1.0.0, )",
           "Backroom.Modules.Permissions.Contracts": "[1.0.0, )",
           "Backroom.Modules.Realtime.Contracts": "[1.0.0, )"
         }
       },
       "backroom.modules.messaging.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Domain": "[1.0.0, )"
+        }
+      },
+      "backroom.modules.organization.contracts": {
         "type": "Project",
         "dependencies": {
           "Backroom.BuildingBlocks.Domain": "[1.0.0, )"

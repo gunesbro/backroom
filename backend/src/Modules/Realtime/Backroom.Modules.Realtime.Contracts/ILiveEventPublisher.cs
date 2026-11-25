@@ -33,6 +33,12 @@ public interface ILiveEventPublisher
     Task PublishAsync(MembershipChangedPayload payload, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Sends <c>FileRejected</c> to the uploader's own account group in the payload's organization and to nobody else (ids and a
+    /// reason code only; the group is joined only by connections whose token names the account).
+    /// </summary>
+    Task PublishAsync(FileRejectedPayload payload, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Takes the account's connections out of the conversation's group on every node, after the commit that ended its
     /// membership. Best effort and bounded like a publish (it never throws): the durable path is Realtime's consumer of
     /// <c>messaging.conversation-member-removed.v1</c>, which repeats it; removing twice is harmless.

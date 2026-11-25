@@ -16,6 +16,9 @@ public static class ErrorResults
 {
     public const string CodeExtension = "code";
 
+    /// <summary>The fixed token of <see cref="Error.Reason"/>; present only when the error has one.</summary>
+    public const string ReasonExtension = "reason";
+
     public static int ToStatusCode(this ErrorKind kind) => kind switch
     {
         ErrorKind.Validation => StatusCodes.Status400BadRequest,
@@ -32,11 +35,17 @@ public static class ErrorResults
     {
         ArgumentNullException.ThrowIfNull(error);
 
+        var extensions = new Dictionary<string, object?>(StringComparer.Ordinal) { [CodeExtension] = error.Code };
+        if (error.Reason is { } reason && error.Kind != ErrorKind.Unexpected)
+        {
+            extensions[ReasonExtension] = reason;
+        }
+
         var problem = TypedResults.Problem(
             statusCode: error.Kind.ToStatusCode(),
             // Unexpected errors keep their description out of responses; it is in logs and traces.
             detail: error.Kind == ErrorKind.Unexpected ? null : error.Description,
-            extensions: new Dictionary<string, object?>(StringComparer.Ordinal) { [CodeExtension] = error.Code });
+            extensions: extensions);
 
         return error.RetryAfter is { } retryAfter ? new RetryAfterResult(problem, retryAfter) : problem;
     }

@@ -47,9 +47,11 @@ export const EDITOR_NODES: readonly Klass<LexicalNode>[] = [
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+// The Unicode line and paragraph separators (a paste can carry them) are line breaks: the server refuses them in a node.
+const SEPARATOR = /[\u2028\u2029]/g;
 
 function cleanText(text: string): string {
-  return text.replace(CONTROL, '').replace(LONE_SURROGATE, '');
+  return text.replace(SEPARATOR, '\n').replace(CONTROL, '').replace(LONE_SURROGATE, '');
 }
 
 const FORMATS: readonly (readonly [TextFormatType, Mark['type']])[] = [

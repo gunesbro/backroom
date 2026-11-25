@@ -290,6 +290,7 @@
           "AWSSDK.S3": "[4.0.104.12, )",
           "Backroom.BuildingBlocks.Infrastructure": "[1.0.0, )",
           "Backroom.Modules.Files.Application": "[1.0.0, )",
+          "Backroom.Modules.Realtime.Contracts": "[1.0.0, )",
           "Microsoft.Extensions.Http.Resilience": "[10.11.0, )"
         }
       },
@@ -306,6 +307,7 @@
         "dependencies": {
           "Backroom.BuildingBlocks.Application": "[1.0.0, )",
           "Backroom.Modules.Messaging.Contracts": "[1.0.0, )",
+          "Backroom.Modules.Organization.Contracts": "[1.0.0, )",
           "Backroom.Modules.Permissions.Contracts": "[1.0.0, )",
           "Backroom.Modules.Realtime.Contracts": "[1.0.0, )"
         }

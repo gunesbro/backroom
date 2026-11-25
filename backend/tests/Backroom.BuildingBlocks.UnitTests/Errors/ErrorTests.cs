@@ -68,6 +68,32 @@ public sealed class ErrorTests
     }
 
     [Fact]
+    public void WithReason_WhenCalled_KeepsTheErrorAndAddsTheToken()
+    {
+        var error = Error.Validation("messaging.message_invalid", "Not valid.");
+
+        var reasoned = error.WithReason("text.marks");
+
+        reasoned.Reason.Should().Be("text.marks");
+        reasoned.Code.Should().Be(error.Code);
+        reasoned.Kind.Should().Be(ErrorKind.Validation);
+        error.Reason.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Text.Marks")]
+    [InlineData("text marks")]
+    [InlineData("text.")]
+    [InlineData("<b>")]
+    public void WithReason_WhenTheReasonIsNotAFixedToken_Throws(string reason)
+    {
+        var create = () => Error.Validation("m.a", "d").WithReason(reason);
+
+        create.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
     public void ErrorKind_WhenUninitialized_IsUnexpected()
     {
         default(ErrorKind).Should().Be(ErrorKind.Unexpected);

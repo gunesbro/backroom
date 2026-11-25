@@ -24,7 +24,7 @@ public static class MessagingEndpoints
 
     private const long MaxManagementRequestBytes = 8 * 1024;
 
-    /// <summary>4000 characters of text, up to four bytes each in UTF-8 (more when the JSON escapes them), plus the JSON around it.</summary>
+    /// <summary>32 KB of blocks (MessageBlocks.MaxJsonBytes), or 4000 characters of text at up to four bytes each in UTF-8 (more when the JSON escapes them), plus the JSON around them.</summary>
     private const long MaxSendMessageRequestBytes = 64 * 1024;
 
     public static IEndpointRouteBuilder MapMessagingEndpoints(this IEndpointRouteBuilder endpoints)
@@ -123,7 +123,7 @@ public static class MessagingEndpoints
     private static async Task<IResult> SendMessageAsync(
         Guid conversationId, SendMessageRequest request, ICurrentAccount account, MessageService messages, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var result = await messages.SendAsync(account.AccountId, conversationId, request.ClientMessageId, request.Text, cancellationToken);
+        var result = await messages.SendAsync(account.AccountId, conversationId, request.ClientMessageId, request.Text, request.Blocks, cancellationToken);
         return IsEpochUnconfirmed(result)
             ? EpochUnconfirmed(httpContext)
             : result.ToHttpResult(sent => sent.Created
@@ -217,10 +217,10 @@ public static class MessagingEndpoints
 
     // A tombstone answers with its numbers and times only (docs/adr/0011): no author, no client id, no content.
     private static MessageResponse ToResponse(MessageEntry message) => message.DeletedAt is null
-        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.CreatedAt, null)
-        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, message.CreatedAt, message.DeletedAt);
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null)
+        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt);
 
     private static SentMessageResponse ToResponse(MessageEntry message, string epoch) => message.DeletedAt is null
-        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.CreatedAt, null, epoch)
-        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, message.CreatedAt, message.DeletedAt, epoch);
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, epoch)
+        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt, epoch);
 }

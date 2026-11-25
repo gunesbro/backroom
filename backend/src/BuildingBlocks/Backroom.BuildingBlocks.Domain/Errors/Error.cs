@@ -36,6 +36,24 @@ public sealed partial record Error
     /// <summary>For <see cref="ErrorKind.RateLimited"/>: when the client may try again.</summary>
     public TimeSpan? RetryAfter { get; }
 
+    /// <summary>
+    /// Names what was wrong, for errors that cover many cases: a fixed token such as <c>text.marks</c> (lower-case
+    /// words joined by dots), sent to the client as the <c>reason</c> extension. Never text taken from the request.
+    /// </summary>
+    public string? Reason { get; private init; }
+
+    /// <summary>This error with <paramref name="reason"/>; code, description and kind stay.</summary>
+    public Error WithReason(string reason)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        if (!ReasonPattern().IsMatch(reason))
+        {
+            throw new ArgumentException($"Error reason '{reason}' must be a fixed token such as 'text.marks'.", nameof(reason));
+        }
+
+        return this with { Reason = reason };
+    }
+
     public static Error Validation(string code, string description) => new(code, description, ErrorKind.Validation);
 
     public static Error NotFound(string code, string description) => new(code, description, ErrorKind.NotFound);
@@ -56,4 +74,7 @@ public sealed partial record Error
 
     [GeneratedRegex("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$", RegexOptions.CultureInvariant)]
     private static partial Regex CodePattern();
+
+    [GeneratedRegex("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$", RegexOptions.CultureInvariant)]
+    private static partial Regex ReasonPattern();
 }

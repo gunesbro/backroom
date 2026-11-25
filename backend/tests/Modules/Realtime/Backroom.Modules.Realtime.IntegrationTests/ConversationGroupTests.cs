@@ -85,6 +85,37 @@ public sealed class ConversationGroupTests(PostgresDatabase database, KeycloakRe
     }
 
     [Fact]
+    public async Task FileRejected_PublishedOnNodeA_ReachesOnlyTheUploadersConnectionsOnBothNodesAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var aliceOnA = await ConnectAsync(NodeA, Alice);
+        var aliceOnB = await ConnectAsync(NodeB, Alice);
+        var bob = await ConnectAsync(NodeB, Bob);
+        await aliceOnA.SubscribeOrganizationAsync(organizationId);
+        await aliceOnB.SubscribeOrganizationAsync(organizationId);
+        await bob.SubscribeOrganizationAsync(organizationId);
+        var fileId = Guid.CreateVersion7();
+
+        await NodeA.Services.GetRequiredService<ILiveEventPublisher>().PublishAsync(
+            new FileRejectedPayload(organizationId, await AccountAsync(Alice), fileId, FileRejectedPayload.Malware), CancellationToken);
+        // Bob's own account group is a later event on the same path, so his silence above is not just slowness.
+        await ProbeAsync(await AccountGroupAsync(organizationId, Bob), "for bob");
+
+        foreach (var alice in new[] { aliceOnA, aliceOnB })
+        {
+            var received = await alice.NextFileRejectedAsync();
+            received.OrgId.Should().Be(organizationId);
+            received.AccountId.Should().Be(await AccountAsync(Alice));
+            received.FileId.Should().Be(fileId);
+            received.Reason.Should().Be("malware");
+        }
+
+        (await bob.NextProbeAsync()).Should().Be("for bob");
+        bob.HasUnreadFileRejected.Should().BeFalse("another member of the organization is never told");
+    }
+
+    [Fact]
     public async Task AccountGroup_OnBothNodes_HoldsOnlyThatAccountsSubscribedConnectionsAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
