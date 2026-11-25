@@ -55,15 +55,18 @@ public sealed class DownloadTests(PostgresDatabase database, KeycloakRealm keycl
         var channelId = await CreateChannelAsync(organizationId, Alice);
         var fileId = await UploadAsync(organizationId, channelId, Alice, TestFiles.Png());
         var storageAdapter = Services.GetRequiredService<S3FileStorage>();
+        // Five seconds, not fewer: the SDK truncates the lifetime to whole seconds counted from its own clock when it
+        // signs, and storage checks it against its own clock, so a two-second URL could be one second long or already
+        // expired by the first request.
         var shortLived = await storageAdapter.CreateDownloadUrlAsync(
-            FileService.StorageKey(organizationId, fileId), "image/png", DateTimeOffset.UtcNow.AddSeconds(2), CancellationToken);
+            FileService.StorageKey(organizationId, fileId), "image/png", DateTimeOffset.UtcNow.AddSeconds(5), CancellationToken);
 
         using (var valid = await StorageClient.GetAsync(shortLived, CancellationToken))
         {
             valid.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
-        await Task.Delay(TimeSpan.FromSeconds(4), CancellationToken);
+        await Task.Delay(TimeSpan.FromSeconds(7), CancellationToken);
         using var expired = await StorageClient.GetAsync(shortLived, CancellationToken);
 
         expired.StatusCode.Should().Be(HttpStatusCode.Forbidden);
