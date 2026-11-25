@@ -58,7 +58,7 @@ describe('MessageBody rendering', () => {
     const blocks = [
       {
         type: 'paragraph',
-        children: [run('‮gnp.exe', [{ type: 'link', href: 'https://example.com/a' }])],
+        children: [run('\u202Egnp.exe', [{ type: 'link', href: 'https://example.com/a' }])],
       },
     ];
     const { container } = render(<MessageBody text="" sending={false} blocks={blocks} />);
@@ -68,7 +68,7 @@ describe('MessageBody rendering', () => {
     expect(link).toHaveAttribute('title', 'https://example.com/a');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(container.querySelector('a > bdi')?.textContent).toBe('‮gnp.exe');
+    expect(container.querySelector('a > bdi')?.textContent).toBe('\u202Egnp.exe');
   });
 
   it('Render_WhenLinkIsUnsafe_ShowsTheTextWithoutALink', () => {
