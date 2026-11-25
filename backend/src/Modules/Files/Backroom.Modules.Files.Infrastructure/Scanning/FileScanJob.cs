@@ -18,8 +18,9 @@ namespace Backroom.Modules.Files.Infrastructure.Scanning;
 /// most <see cref="Concurrency"/> at a time, streamed from storage to <see cref="IFileScanner"/>; their outcomes wait
 /// in memory for the next run (a lost outcome only means a retry after the backoff).
 /// A rejection also tells the uploader (<c>FileRejected</c>, ids and a reason code only): the notice is staged when the update
-/// that rejects the file ran, and published at the start of the next run, so it never goes out before that transaction
-/// committed (a lost notice only means the uploader finds the file rejected when looking).
+/// that rejects the file ran. At the start of the next run the job keeps only the staged files the database shows as
+/// <c>rejected</c> (a transaction that rolled back leaves none) and publishes those from the background, so a notice never
+/// goes out for an uncommitted rejection and a slow backplane does not hold the transaction (a lost notice only means the uploader finds the file rejected when looking).
 /// A clean file becomes <c>ready</c>. An infected one, one whose object is gone, and one that failed
 /// <see cref="MaxAttempts"/> times become <c>rejected</c> and their object is deleted. When the scanner itself cannot
 /// be reached the attempt is given back and claiming pauses for <see cref="OutagePause"/>: an outage never rejects
@@ -63,6 +64,8 @@ internal sealed partial class FileScanJob : IMaintenanceJob, IMaintenanceBacklog
 
     private const string RejectSql = "UPDATE files.files SET status = 'rejected' WHERE id = $1 AND status = 'scanning' RETURNING org_id, uploader_account_id";
 
+    private const string RejectedSql = "SELECT id FROM files.files WHERE id = ANY($1) AND status = 'rejected'";
+
     private const string RefundSql = "UPDATE files.files SET scan_attempts = GREATEST(scan_attempts - 1, 0), scan_next_at = $2 WHERE id = $1 AND status = 'scanning'";
 
     // $1: the bound, $2: now.
@@ -79,6 +82,7 @@ internal sealed partial class FileScanJob : IMaintenanceJob, IMaintenanceBacklog
     private readonly SemaphoreSlim _slots = new(Concurrency, Concurrency);
     private readonly ConcurrentQueue<Outcome> _outcomes = new();
     private readonly ConcurrentQueue<FileRejectedPayload> _staged = new();
+    private int _publishing;
     private readonly CancellationTokenSource _stop = new();
     private int _inFlight;
     private long _pausedUntilTicks;
@@ -104,7 +108,10 @@ internal sealed partial class FileScanJob : IMaintenanceJob, IMaintenanceBacklog
     }
 
     /// <summary>Scans running or finished but not yet applied (for tests that run the job until it is idle).</summary>
-    internal int PendingWork => Volatile.Read(ref _inFlight) + _outcomes.Count + _staged.Count;
+    /// <summary>Finished scans waiting to be applied (for tests).</summary>
+    internal int OutcomesReady => _outcomes.Count;
+
+    internal int PendingWork => Volatile.Read(ref _inFlight) + _outcomes.Count + _staged.Count + Volatile.Read(ref _publishing);
 
     public string Name => JobName;
 
@@ -117,14 +124,20 @@ internal sealed partial class FileScanJob : IMaintenanceJob, IMaintenanceBacklog
         ArgumentNullException.ThrowIfNull(connection);
         // The notices staged by earlier runs, whose transactions the runner committed before it started this one.
         var due = new List<FileRejectedPayload>();
-        while (_staged.TryDequeue(out var notice))
+        while (due.Count < 64 && _staged.TryDequeue(out var notice))
         {
             due.Add(notice);
         }
 
-        foreach (var notice in due)
+        if (due.Count > 0)
         {
-            await _live.PublishAsync(notice, cancellationToken);
+            due = await KeepRejectedAsync(connection, transaction, due, cancellationToken);
+            if (due.Count > 0)
+            {
+                // Sent from the background: a slow backplane must not hold this transaction and its pooled connection.
+                Interlocked.Increment(ref _publishing);
+                _ = Task.Run(() => PublishAsync(due), CancellationToken.None);
+            }
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -198,6 +211,42 @@ internal sealed partial class FileScanJob : IMaintenanceJob, IMaintenanceBacklog
         _stop.Cancel();
         _stop.Dispose();
         _slots.Dispose();
+    }
+
+    // Only the files the database says are rejected: a transaction that rolled back after staging leaves a scanning file.
+    private static async Task<List<FileRejectedPayload>> KeepRejectedAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, List<FileRejectedPayload> staged, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(RejectedSql, connection, transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid[]> { TypedValue = [.. staged.Select(notice => notice.FileId)] });
+        var rejected = new HashSet<Guid>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rejected.Add(reader.GetGuid(0));
+            }
+        }
+
+        return [.. staged.Where(notice => rejected.Contains(notice.FileId))];
+    }
+
+    private async Task PublishAsync(List<FileRejectedPayload> notices)
+    {
+        try
+        {
+            foreach (var notice in notices)
+            {
+                await _live.PublishAsync(notice, _stop.Token);
+            }
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            LogNoticeFailed(_logger, exception.GetType().Name);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _publishing);
+        }
     }
 
     private static async Task ApplyAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Outcome outcome, DateTimeOffset now, List<FileRejectedPayload> rejected, CancellationToken cancellationToken)
@@ -333,6 +382,9 @@ internal sealed partial class FileScanJob : IMaintenanceJob, IMaintenanceBacklog
 
     [LoggerMessage(EventId = 5, Level = LogLevel.Error, Message = "File {FileId} in organization {OrganizationId} got no scan answer in {MaxAttempts} attempts; it is rejected and its object deleted.")]
     private static partial void LogGaveUp(ILogger logger, Guid fileId, Guid organizationId, int maxAttempts);
+
+    [LoggerMessage(EventId = 7, Level = LogLevel.Warning, Message = "Telling uploaders about rejected files failed ({ExceptionType}); the files stay rejected.")]
+    private static partial void LogNoticeFailed(ILogger logger, string exceptionType);
 
     [LoggerMessage(EventId = 6, Level = LogLevel.Warning, Message = "Scanning file {FileId} in organization {OrganizationId} failed ({ExceptionType}); it is tried again after its backoff.")]
     private static partial void LogFailed(ILogger logger, Guid fileId, Guid organizationId, string exceptionType);

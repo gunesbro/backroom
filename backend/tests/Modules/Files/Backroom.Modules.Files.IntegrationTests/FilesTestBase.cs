@@ -210,6 +210,14 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         return upload.FileId;
     }
 
+    internal FileScanJob NewScanJob(IFileScanner? scannerOverride = null)
+    {
+        var options = Options.Create(new ClamAvOptions { Host = scanner.Host, Port = scanner.MappedPort, ScanTimeout = TimeSpan.FromSeconds(20) });
+        return new FileScanJob(Services.GetRequiredService<IFileStorageProvider>(), scannerOverride ?? new ClamAvScanner(options), Live, TimeProvider.System, new LoggerFactory([Logs]).CreateLogger<FileScanJob>());
+    }
+
+    internal NpgsqlConnection NewMaintenanceConnection() => new(database.MaintenanceConnectionString);
+
     /// <summary>Runs the worker's scan job as the maintenance role until no file waits (ClamAV in its container, or at <paramref name="port"/>).</summary>
     internal async Task RunScanJobAsync(int? port = null, IFileScanner? scannerOverride = null)
     {

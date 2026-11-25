@@ -105,6 +105,49 @@ public sealed class ScanTests(PostgresDatabase database, KeycloakRealm keycloak,
     }
 
     [Fact]
+    public async Task Scan_WhenTheRejectingTransactionRollsBack_TellsNobodyAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        var channelId = await CreateChannelAsync(organizationId, Alice);
+        var fileId = await CompleteUnscannedAsync(organizationId, channelId, TestFiles.Text(ClamAvServer.Eicar), "text/plain");
+        using var job = NewScanJob();
+        await using var connection = NewMaintenanceConnection();
+        await connection.OpenAsync(CancellationToken);
+
+        await using (var claim = await connection.BeginTransactionAsync(CancellationToken))
+        {
+            await job.RunBatchAsync(connection, claim, CancellationToken);
+            await claim.CommitAsync(CancellationToken);
+        }
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
+        while (job.OutcomesReady == 0 && DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(50, CancellationToken);
+        }
+
+        await using (var rejecting = await connection.BeginTransactionAsync(CancellationToken))
+        {
+            await job.RunBatchAsync(connection, rejecting, CancellationToken);
+            await rejecting.RollbackAsync(CancellationToken);
+        }
+
+        (await StatusAsync(fileId)).Should().Be("scanning", "the rejection was rolled back");
+        await using (var next = await connection.BeginTransactionAsync(CancellationToken))
+        {
+            await job.RunBatchAsync(connection, next, CancellationToken);
+            await next.CommitAsync(CancellationToken);
+        }
+
+        while (job.PendingWork > 0 && DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(50, CancellationToken);
+        }
+
+        Live.Rejected.Should().BeEmpty("a rejection the database never committed is not announced");
+    }
+
+    [Fact]
     public async Task Scan_WhenTheFileIsClean_TellsNobodyAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
