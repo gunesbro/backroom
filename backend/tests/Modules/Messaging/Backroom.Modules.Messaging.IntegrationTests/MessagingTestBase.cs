@@ -54,6 +54,9 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
     /// <summary><c>Features:MessageSync</c> for the cell of this test class.</summary>
     protected virtual bool MessageSyncEnabled => false;
 
+    /// <summary><c>Features:RichText</c> for the cell of this test class.</summary>
+    protected virtual bool RichTextEnabled => false;
+
     protected PostgresDatabase Database => database;
 
     protected IServiceProvider Services => _cell.Services;
@@ -77,6 +80,7 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         builder.Services.AddSingleton<ILiveEventPublisher>(Publisher);
         builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Cells.ICellEpoch>(CellEpoch);
         builder.Configuration["Features:MessageSync"] = MessageSyncEnabled ? "true" : "false";
+        builder.Configuration["Features:RichText"] = RichTextEnabled ? "true" : "false";
         builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Identifiers.IIdGenerator>(IdScript);
         builder.Services.AddMessaging();
         // Development would throw on a bad query string before the filters; production answers through them.

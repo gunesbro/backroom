@@ -97,7 +97,7 @@ public sealed class PublisherTests
         await publisher.PublishAsync(channel, CancellationToken);
         await publisher.PublishAsync(
             new MessagePostedV2Payload(
-                s_message.OrgId, s_message.ChannelId, new LiveMessageV2(Guid.NewGuid(), 2, 2, "text", Guid.NewGuid(), Guid.NewGuid(), SecretText, DateTimeOffset.UtcNow), 2, "1"),
+                s_message.OrgId, s_message.ChannelId, new LiveMessageV2(Guid.NewGuid(), 2, 2, "text", Guid.NewGuid(), Guid.NewGuid(), [], SecretText, DateTimeOffset.UtcNow), 2, "1"),
             CancellationToken);
 
         sent.Should().Equal(

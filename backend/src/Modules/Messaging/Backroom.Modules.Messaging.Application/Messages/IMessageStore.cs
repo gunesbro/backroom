@@ -4,10 +4,16 @@ namespace Backroom.Modules.Messaging.Application.Messages;
 internal interface IMessageStore
 {
     /// <summary>
-    /// Adds the message; <see langword="false"/> if the author had already sent that client message id to the channel
+    /// Adds the message and returns its blocks as stored; <see langword="null"/> if the author had already sent that client message id to the conversation
     /// (the unique index decides, so concurrent repeats cannot both be stored).
     /// </summary>
-    Task<bool> AddAsync(NewMessage message, CancellationToken cancellationToken);
+    Task<string?> AddAsync(NewMessage message, CancellationToken cancellationToken);
+
+    /// <summary>Records that the message mentions the accounts (each once), all of whom can read the conversation.</summary>
+    Task AddMentionsAsync(Guid organizationId, Guid conversationId, Guid messageId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
+
+    /// <summary>Records the web addresses the message links to (each once), in their order in the message.</summary>
+    Task AddLinksAsync(Guid organizationId, Guid conversationId, Guid messageId, IReadOnlyList<MessageLink> links, DateTimeOffset createdAt, CancellationToken cancellationToken);
 
     /// <summary>The message the author sent to the channel with that client message id, if any.</summary>
     Task<MessageEntry?> FindAsync(Guid channelId, Guid authorAccountId, Guid clientMessageId, CancellationToken cancellationToken);

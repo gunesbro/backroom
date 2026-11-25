@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Backroom.BuildingBlocks.Application.Cells;
 using Backroom.BuildingBlocks.Application.Identifiers;
@@ -9,12 +10,13 @@ using Backroom.Modules.Messaging.Application.Channels;
 using Backroom.Modules.Messaging.Application.Conversations;
 using Backroom.Modules.Messaging.Application.Live;
 using Backroom.Modules.Messaging.Contracts;
+using Backroom.Modules.Organization.Contracts;
 using Backroom.Modules.Realtime.Contracts;
 
 namespace Backroom.Modules.Messaging.Application.Messages;
 
 /// <summary>
-/// Plain-text messages (docs/contracts/phase-1.md, flow 4, steps 2 and 3). The endpoint has checked the organization
+/// Messages, plain and rich text (docs/contracts/phase-1.md, flow 4, steps 2 and 3; docs/contracts/phase-2.md, flow 2). The endpoint has checked the organization
 /// membership; reading and writing also need read access to the conversation (<see cref="ConversationAccess.CanRead"/>:
 /// every active member for an open public channel, open members for every other kind), checked first, so nothing,
 /// not even an idempotent repeat, answers for a conversation the account cannot read. Posting also needs an open
@@ -37,6 +39,8 @@ internal sealed partial class MessageService(
     IOrganizationContext context,
     ICellEpoch cellEpoch,
     MessageSync sync,
+    RichText richText,
+    IMemberNames memberNames,
     TimeProvider timeProvider,
     ILogger<MessageService> logger)
 {
@@ -49,13 +53,15 @@ internal sealed partial class MessageService(
     /// <summary>The kind of a plain message in live payloads (docs/contracts/phase-2.md, "Data": <c>text|poll|thread_broadcast</c>).</summary>
     private const string TextKind = "text";
 
+    private static readonly Dictionary<Guid, string> s_noNames = [];
+
     public static readonly Error ConversationNotFound = MembershipService.ConversationNotFound;
 
     public static readonly Error NotMember =
         Error.Forbidden("messaging.not_a_member", "Join the channel to post in it.");
 
     public static readonly Error MessageInvalid =
-        Error.Validation("messaging.message_invalid", "The message needs a client message id and 1 to 4000 characters of text without control characters.");
+        Error.Validation("messaging.message_invalid", "The message needs a client message id and valid text or blocks of 1 to 4000 characters; the reason names what was refused.");
 
     public static readonly Error PageInvalid =
         Error.Validation("messaging.page_invalid", "Use only one of before, after and changed_after, a cursor of 0 or more, and a page size between 1 and 100.");
@@ -67,12 +73,38 @@ internal sealed partial class MessageService(
     public static readonly Error EpochUnconfirmed =
         Error.Unexpected("cell.epoch_unconfirmed", "The cell has not confirmed its epoch with the control plane yet.");
 
-    public async Task<Result<SentMessage>> SendAsync(Guid authorAccountId, Guid conversationId, Guid? clientMessageId, string? text, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sends a message: rich text as <paramref name="blocks"/> (validated against the closed schema; the text, the
+    /// mention rows and the link rows are derived from them, and a <paramref name="text"/> sent along is not read), or
+    /// plain <paramref name="text"/> (the blocks are derived: one paragraph).
+    /// </summary>
+    public async Task<Result<SentMessage>> SendAsync(
+        Guid authorAccountId, Guid conversationId, Guid? clientMessageId, string? text, JsonElement? blocks, CancellationToken cancellationToken)
     {
         var organizationId = OrganizationId;
-        if (clientMessageId is not { } clientId || clientId == Guid.Empty || !MessageText.TryPrepare(text, out var prepared))
+        if (clientMessageId is not { } clientId || clientId == Guid.Empty)
         {
-            return MessageInvalid;
+            return MessageInvalid.WithReason("client_message_id");
+        }
+
+        // Everything that needs no data is checked first. Blocks are a closed schema: nothing is dropped silently.
+        ParsedBlocks? parsed = null;
+        string? prepared = null;
+        if (blocks is { ValueKind: not (JsonValueKind.Null or JsonValueKind.Undefined) } received)
+        {
+            if (!richText.Enabled)
+            {
+                return MessageInvalid.WithReason("blocks.disabled");
+            }
+
+            if (MessageBlocks.Parse(received, out parsed) is { } refused)
+            {
+                return refused;
+            }
+        }
+        else if (!MessageText.TryPrepare(text, out prepared))
+        {
+            return MessageInvalid.WithReason("text");
         }
 
         var access = await conversations.FindAsync(organizationId, conversationId, authorAccountId, cancellationToken);
@@ -100,6 +132,37 @@ internal sealed partial class MessageService(
             return new SentMessage(stored, Created: false, epoch);
         }
 
+        // Mentions (docs/contracts/phase-2.md, flow 2): every mentioned account must be an active member, whose name
+        // goes into the derived text. A mention row is written only for those who can read the conversation, so a
+        // person mentioned in a conversation they are not in gets nothing from it. Both reads run before the row lock.
+        IReadOnlyList<Guid> mentionedReaders = [];
+        if (parsed is null)
+        {
+            prepared = prepared ?? throw new InvalidOperationException("A send without blocks has a prepared text.");
+            parsed = MessageBlocks.FromPlainText(prepared);
+        }
+        else
+        {
+            IReadOnlyDictionary<Guid, string> names = s_noNames;
+            if (parsed.MentionedAccountIds.Count > 0)
+            {
+                names = await memberNames.FindActiveAsync(parsed.MentionedAccountIds, cancellationToken);
+                if (names.Count != parsed.MentionedAccountIds.Count)
+                {
+                    return MessageBlocks.MentionInvalid;
+                }
+
+                mentionedReaders = await conversations.FilterReadersAsync(organizationId, conversationId, parsed.MentionedAccountIds, cancellationToken);
+            }
+
+            // Trimmed and normalized once, as a whole; the 4,000 characters are counted on the result.
+            var derived = MessageBlocks.DeriveText(parsed, names);
+            if (!MessageText.TryPrepare(derived, out prepared))
+            {
+                return MessageInvalid.WithReason(string.IsNullOrWhiteSpace(derived) ? "text.empty" : "text.length");
+            }
+        }
+
         var now = StoredTime.Now(timeProvider);
 
         // Takes the conversation row lock until commit: the change counter follows commit order, which catch-up relies
@@ -109,8 +172,8 @@ internal sealed partial class MessageService(
             return ConversationNotFound;
         }
 
-        var message = new NewMessage(ids.NewId(), organizationId, conversationId, seq, authorAccountId, clientId, prepared, MessageText.ToBlocks(prepared), now);
-        if (!await messages.AddAsync(message, cancellationToken))
+        var message = new NewMessage(ids.NewId(), organizationId, conversationId, seq, authorAccountId, clientId, prepared, MessageBlocks.ToJson(parsed.Blocks), now);
+        if (await messages.AddAsync(message, cancellationToken) is not { } storedBlocks)
         {
             // Another send of the same client message id committed between the check above and the lock; the first stays
             // (the change number taken here is left unused: sequences have gaps, clients never assume otherwise). The
@@ -122,13 +185,27 @@ internal sealed partial class MessageService(
             return new SentMessage(existing, Created: false, epoch);
         }
 
+        if (mentionedReaders.Count > 0)
+        {
+            await messages.AddMentionsAsync(organizationId, conversationId, message.Id, mentionedReaders, cancellationToken);
+        }
+
+        if (parsed.Links.Count > 0)
+        {
+            await messages.AddLinksAsync(organizationId, conversationId, message.Id, parsed.Links, now, cancellationToken);
+        }
+
         await outbox.AddAsync(
             new MessagePosted(ids.NewId(), organizationId, now, conversationId, message.Id, authorAccountId, now),
             cancellationToken);
         if (sync.Enabled)
         {
             liveEvents.Add(new MessagePostedV2Payload(
-                organizationId, conversationId, new LiveMessageV2(message.Id, seq, seq, TextKind, clientId, authorAccountId, prepared, now), seq, epoch));
+                organizationId,
+                conversationId,
+                new LiveMessageV2(message.Id, seq, seq, TextKind, clientId, authorAccountId, MessageBlocks.ToLive(parsed.Blocks), prepared, now),
+                seq,
+                epoch));
         }
         else
         {
@@ -136,7 +213,7 @@ internal sealed partial class MessageService(
         }
 
         LogPosted(logger, message.Id, conversationId, organizationId, authorAccountId);
-        return new SentMessage(new MessageEntry(message.Id, seq, seq, clientId, authorAccountId, prepared, now, DeletedAt: null), Created: true, epoch);
+        return new SentMessage(new MessageEntry(message.Id, seq, seq, clientId, authorAccountId, prepared, storedBlocks, now, DeletedAt: null), Created: true, epoch);
     }
 
     /// <summary>

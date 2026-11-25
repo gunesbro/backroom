@@ -94,6 +94,11 @@ describe('Lexical block serialization', () => {
     expect(blocksToText(result)).toBe('abc');
   });
 
+  it('Read_WhenLineOrParagraphSeparator_TurnsItIntoALineBreak', () => {
+    const result = roundTrip([{ type: 'paragraph', children: [text('a\u2028b\u2029c')] }]);
+    expect(result).toEqual([{ type: 'paragraph', children: [text('a\nb\nc')] }]);
+  });
+
   it('Read_WhenTextIsNotNormalized_KeepsNodesAsTypedAndNormalizesTheDerivedText', () => {
     const result = roundTrip([{ type: 'paragraph', children: [text('e'), text('́', 'bold')] }]);
     expect(result[0]).toEqual({ type: 'paragraph', children: [text('e'), text('́', 'bold')] });

@@ -47,7 +47,24 @@ public sealed class LiveEventDeliveryTests(PostgresDatabase database, KeycloakRe
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "general");
         var bob = await ConnectAsync(NodeB, Bob);
         await bob.SubscribeConversationAsync(organizationId, channelId);
-        var message = new LiveMessageV2(Guid.CreateVersion7(), 4, 6, "text", Guid.NewGuid(), Guid.NewGuid(), "Hello", DateTimeOffset.UtcNow);
+        // Blocks travel as lists and string-keyed maps of plain values, the shape of the JSON (docs/contracts/phase-2.md, "Block schema").
+        IReadOnlyList<object> blocks =
+        [
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["type"] = "paragraph",
+                ["children"] = new List<object>
+                {
+                    new Dictionary<string, object>(StringComparer.Ordinal)
+                    {
+                        ["type"] = "text",
+                        ["text"] = "Hello",
+                        ["marks"] = new List<object> { new Dictionary<string, object>(StringComparer.Ordinal) { ["type"] = "bold" } },
+                    },
+                },
+            },
+        ];
+        var message = new LiveMessageV2(Guid.CreateVersion7(), 4, 6, "text", Guid.NewGuid(), Guid.NewGuid(), blocks, "Hello", DateTimeOffset.UtcNow);
 
         await NodeA.Services.GetRequiredService<ILiveEventPublisher>().PublishAsync(
             new MessagePostedV2Payload(organizationId, channelId, message, 6, "12"), CancellationToken);
@@ -62,6 +79,8 @@ public sealed class LiveEventDeliveryTests(PostgresDatabase database, KeycloakRe
         received.Message.VersionSeq.Should().Be(6);
         received.Message.Kind.Should().Be("text");
         received.Message.Text.Should().Be("Hello");
+        MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(received.Message.Blocks, cancellationToken: CancellationToken), cancellationToken: CancellationToken)
+            .Should().Be("""[{"type":"paragraph","children":[{"type":"text","text":"Hello","marks":[{"type":"bold"}]}]}]""");
     }
 
     [Fact]
