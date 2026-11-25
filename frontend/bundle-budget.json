@@ -1,7 +1,7 @@
 {
-  "$comment": "Engineering budget, gzip kB (1000 bytes). Initial = entry chunks and their static imports with CSS (from the Vite manifest); lazy = each dynamically imported chunk with its own imports and CSS. Raise a budget only with a measured reason in the PR.",
+  "$comment": "Engineering budget, gzip kB (1000 bytes). Initial = entry chunks and their static imports with CSS (from the Vite manifest); lazy = each dynamically imported chunk with its own imports and CSS. Emoji images (assets/emoji-*, loaded one by one where an emoji is shown, never part of JS or CSS): emojiImage = the largest image, emojiImages = all of them together. Raise a budget only with a measured reason in the PR.",
   "apps": {
-    "web": { "initialJs": 170, "initialCss": 30, "lazyChunk": 200 },
+    "web": { "initialJs": 170, "initialCss": 30, "lazyChunk": 200, "emojiImage": 100, "emojiImages": 12000 },
     "ops": { "initialJs": 170, "initialCss": 30, "lazyChunk": 200 }
   }
 }

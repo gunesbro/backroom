@@ -46,4 +46,9 @@ describe('desktop CSP', () => {
       expect(base.get(directive)).toEqual(["'none'"]);
     }
   });
+
+  it('base CSP loads images only from the app itself, which is where the emoji images are', () => {
+    // No host: an emoji image from anywhere else would be blocked.
+    expect(readCsp('tauri.conf.json').get('img-src')).toEqual(["'self'", 'data:', 'blob:']);
+  });
 });

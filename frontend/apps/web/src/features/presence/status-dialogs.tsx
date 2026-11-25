@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type SubmitEvent } from 'react';
 import { Alert, Button, Dialog, Icon, RadioCards } from '@backroom/ui';
-import { EmojiPicker } from '@/features/emoji';
+import { EmojiImage, EmojiPicker } from '@/features/emoji';
 import { useTranslate } from '@/shared/locale';
 import type { AccountStatus } from './api';
 import { messages } from './messages';
@@ -220,9 +220,11 @@ export function CustomStatusDialog({
                     setPicking(!picking);
                   }}
                 >
-                  {emoji || (
+                  {emoji ? (
+                    <EmojiImage emoji={emoji} />
+                  ) : (
                     <span className="bp-emoji__none" aria-hidden="true">
-                      🙂
+                      <EmojiImage emoji="🙂" />
                     </span>
                   )}
                 </button>

@@ -19,6 +19,7 @@ import {
   useAuth,
   type AuthClient,
 } from '@/features/auth';
+import { installEmojiCopy } from '@/features/emoji';
 import {
   createInvitationsApiFactory,
   hasPendingInvitation,
@@ -148,6 +149,8 @@ export function App({
   const hash = useHash();
   const [auth] = useState(() => authClient ?? createAuthClient());
   const [queryClient] = useState(() => createQueryClient(auth.signIn));
+  // Emoji are images on the page; a copy takes them as characters.
+  useEffect(installEmojiCopy, []);
 
   if (isLivekitSpikeEnabled && hash === LIVEKIT_SPIKE_HASH) {
     return (

@@ -1,0 +1,14 @@
+/* An emoji drawn as an image, inline with the text around it. Loads with the app: messages need it. */
+
+.be-emoji {
+  width: 1.2em;
+  height: 1.2em;
+  /* Sits on the line like a letter with a descender, and does not make its line taller. */
+  vertical-align: -0.25em;
+}
+
+.be-emoji--large {
+  width: 2.4em;
+  height: 2.4em;
+  vertical-align: middle;
+}

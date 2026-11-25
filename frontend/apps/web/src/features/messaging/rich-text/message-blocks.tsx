@@ -1,5 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react';
 import { isDesktopApp, tauriInvoke } from '@/features/auth';
+import { EmojiText, isEmojiOnly } from '@/features/emoji';
 import {
   derivedMentionNames,
   parseBlocks,
@@ -33,8 +34,10 @@ function openInSystemBrowser(event: MouseEvent<HTMLAnchorElement>, href: string)
   });
 }
 
-function textRun(node: TextNode, key: number): ReactNode {
-  let content: ReactNode = node.text;
+function textRun(node: TextNode, key: number, large: boolean): ReactNode {
+  // Code shows its characters as they are; everywhere else emoji are images.
+  const code = node.marks?.some((mark) => mark.type === 'code') ?? false;
+  let content: ReactNode = code ? node.text : <EmojiText text={node.text} large={large} />;
   let href: string | null = null;
   const desktop = isDesktopApp();
   for (const mark of node.marks ?? []) {
@@ -87,7 +90,7 @@ function textRun(node: TextNode, key: number): ReactNode {
   return <span key={key}>{content}</span>;
 }
 
-function runs(nodes: readonly ReceivedRun[], names: Names): ReactNode[] {
+function runs(nodes: readonly ReceivedRun[], names: Names, large = false): ReactNode[] {
   return nodes.map((node, key) =>
     node.type === 'mention' ? (
       // A chip with the person's name: React escapes it, and it is not a link or a field.
@@ -95,7 +98,7 @@ function runs(nodes: readonly ReceivedRun[], names: Names): ReactNode[] {
         <bdi>{mentionLabel(node, names)}</bdi>
       </span>
     ) : (
-      textRun(node, key)
+      textRun(node, key, large)
     ),
   );
 }
@@ -104,12 +107,22 @@ function plainText(nodes: readonly ReceivedRun[]): string {
   return nodes.map((node) => (node.type === 'text' ? node.text : '')).join('');
 }
 
-function renderBlock(block: ReceivedBlock, key: number, names: Names): ReactNode {
+/** A message that is one paragraph of only a few emoji shows them large. */
+function isLargeEmoji(blocks: readonly ReceivedBlock[]): boolean {
+  const only = blocks.length === 1 ? blocks[0] : undefined;
+  return (
+    only?.type === 'paragraph' &&
+    only.children.every((node) => node.type === 'text' && (node.marks ?? []).length === 0) &&
+    isEmojiOnly(plainText(only.children))
+  );
+}
+
+function renderBlock(block: ReceivedBlock, key: number, names: Names, large: boolean): ReactNode {
   switch (block.type) {
     case 'paragraph':
       return (
         <p key={key} className="bm-text">
-          {runs(block.children, names)}
+          {runs(block.children, names, large)}
         </p>
       );
     case 'quote':
@@ -143,7 +156,7 @@ function renderBlock(block: ReceivedBlock, key: number, names: Names): ReactNode
 /**
  * A message body from its blocks. Only React elements and text are produced (never markup strings), links keep
  * http, https and mailto addresses and open with `rel="noopener noreferrer"`, and types this client does not know
- * are skipped. With no renderable block the plain `text` is shown, as before.
+ * are skipped. With no renderable block the plain `text` is shown, as before. Emoji are drawn as images outside code.
  */
 export function MessageBody({
   blocks,
@@ -161,10 +174,17 @@ export function MessageBody({
   const text = typeof received === 'string' ? received : '';
   const parsed = parseBlocks(blocks);
   const className = sending ? 'bm-body bm-body--sending' : 'bm-body';
-  if (!parsed) return <p className={sending ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>;
+  if (!parsed) {
+    return (
+      <p className={sending ? 'bm-text bm-text--sending' : 'bm-text'}>
+        <EmojiText text={text} large={isEmojiOnly(text)} />
+      </p>
+    );
+  }
+  const large = isLargeEmoji(parsed);
   const names: Names = {
     account: mentionName ?? (() => undefined),
     derived: derivedMentionNames(parsed, text),
   };
-  return <div className={className}>{parsed.map((block, key) => renderBlock(block, key, names))}</div>;
+  return <div className={className}>{parsed.map((block, key) => renderBlock(block, key, names, large))}</div>;
 }

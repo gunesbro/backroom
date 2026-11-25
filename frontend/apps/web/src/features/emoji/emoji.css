@@ -45,7 +45,6 @@
   background: none;
   color: inherit;
   font: inherit;
-  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', var(--ph-font);
   line-height: 1;
   cursor: pointer;
 }

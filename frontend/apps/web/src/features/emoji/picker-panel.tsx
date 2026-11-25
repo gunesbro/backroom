@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -11,9 +12,9 @@ import {
 } from 'react';
 import { useTranslate } from '@/shared/locale';
 import { searchEmojis, type Emoji, type EmojiData, type EmojiGroupKey } from './data';
+import { EmojiImage } from './emoji-image';
 import { messages } from './messages';
 import { addRecent, readRecent, readSkinTone, writeSkinTone, type SkinTone } from './recents';
-import { supportsFlagEmoji } from './support';
 import './emoji.css';
 
 /** Emoji per row. Fixed, so the rows of the grid and the arrow keys always agree. */
@@ -75,7 +76,8 @@ const EmojiCell = memo(function EmojiCell({
           onPick(cell);
         }}
       >
-        {cell.emoji}
+        {/* The button carries the name and its tooltip. */}
+        <EmojiImage emoji={cell.emoji} tooltip={false} lazy />
       </button>
     </div>
   );
@@ -134,10 +136,7 @@ export function PickerPanel({
   const [recent, setRecent] = useState(readRecent);
   const [active, setActive] = useState(0);
 
-  const groups = useMemo(
-    () => (supportsFlagEmoji() ? data.groups : data.groups.filter((group) => group.key !== 'flags')),
-    [data],
-  );
+  const groups = data.groups;
   // What was picked is shown as it was picked (with its skin tone); an emoji the data does not know is skipped.
   const recentCells = useMemo(
     () =>
@@ -175,7 +174,9 @@ export function PickerPanel({
   const last = cells.length - 1;
   const current = Math.max(0, Math.min(active, last));
 
-  useEffect(() => {
+  // With the commit that shows the picker, not some time after it: a later focus would take the focus back from
+  // whatever the person (or a test) had moved it to in between.
+  useLayoutEffect(() => {
     if (autoFocus) searchRef.current?.focus();
     // Only when the picker opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -353,7 +354,7 @@ export function PickerPanel({
               selectTab(key);
             }}
           >
-            {TAB_ICONS[key]}
+            <EmojiImage emoji={TAB_ICONS[key]} tooltip={false} />
           </button>
         ))}
       </div>

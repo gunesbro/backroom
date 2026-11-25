@@ -32,6 +32,9 @@ const emojiNames = (grid: HTMLElement) =>
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-label'));
 
+/** The emoji a button of the grid shows: the character its image stands for. */
+const emojiOf = (button: Element | undefined) => button?.querySelector('img')?.alt;
+
 beforeEach(() => {
   localStorage.clear();
 });
@@ -50,6 +53,29 @@ describe('EmojiPicker', () => {
 
     expect(onPick).toHaveBeenCalledExactlyOnceWith('😀');
     expect(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '')).toEqual(['😀']);
+  });
+
+  it('Grid_ShowsEveryEmojiAsAnImageOfTheAppsOwnSet_FlagsIncluded', async () => {
+    renderPicker();
+    const grid = await findGrid('Smileys and emotion');
+
+    const image = within(grid).getByRole('button', { name: 'grinning face' }).querySelector('img');
+    expect(image).toHaveAttribute('src', '/assets/emoji-test/1f600.svg');
+    expect(image).toHaveAttribute('alt', '😀');
+    expect(image).toHaveAttribute('draggable', 'false');
+    expect(image).toHaveAttribute('loading', 'lazy');
+    expect(image).toHaveAttribute('decoding', 'async');
+    // The button names the emoji and shows the name: the image does not add a second tooltip.
+    expect(image).not.toHaveAttribute('title');
+    // The tabs are images too.
+    const tabImage = screen.getByRole('tab', { name: 'Flags' }).querySelector('img');
+    expect(tabImage).toHaveAttribute('alt', '🏁');
+    expect(tabImage).not.toHaveAttribute('title');
+
+    // Flags are always offered: they do not depend on the emoji font of the system.
+    fireEvent.click(screen.getByRole('tab', { name: 'Flags' }));
+    const flag = within(gridIn('Flags')).getByRole('button', { name: 'flag: Türkiye' });
+    expect(flag.querySelector('img')).toHaveAttribute('src', '/assets/emoji-test/1f1f9-1f1f7.svg');
   });
 
   it('Search_ByNameOrKeyword_ShowsMatchesWithNamesThatStartWithItFirst', async () => {
@@ -110,9 +136,9 @@ describe('EmojiPicker', () => {
 
     // Flags are named after their region.
     search('bayrak: türkiye', 'Emoji ara');
-    expect(
-      within(screen.getByRole('grid')).getByRole('button', { name: 'bayrak: Türkiye' }),
-    ).toHaveTextContent('🇹🇷');
+    expect(emojiOf(within(screen.getByRole('grid')).getByRole('button', { name: 'bayrak: Türkiye' }))).toBe(
+      '🇹🇷',
+    );
   });
 
   it('Keyboard_ArrowsHomeEndAndPageKeys_MoveThroughTheGridAsOneTabStop', async () => {
@@ -273,20 +299,12 @@ describe('EmojiPicker', () => {
 
     const grid = await findGrid('Recently used');
     // Known emoji only, each once, as they were picked (with the skin tone).
-    expect(
-      within(grid)
-        .getAllByRole('button')
-        .map((button) => button.textContent),
-    ).toEqual(['🚀', '👍🏽']);
+    expect(within(grid).getAllByRole('button').map(emojiOf)).toEqual(['🚀', '👍🏽']);
     expect(screen.getAllByRole('tab')[0]).toHaveAttribute('aria-label', 'Recently used');
 
     fireEvent.click(within(grid).getByRole('button', { name: 'thumbs up' }));
     expect(onPick).toHaveBeenCalledExactlyOnceWith('👍🏽');
-    expect(
-      within(grid)
-        .getAllByRole('button')
-        .map((button) => button.textContent),
-    ).toEqual(['👍🏽', '🚀']);
+    expect(within(grid).getAllByRole('button').map(emojiOf)).toEqual(['👍🏽', '🚀']);
   });
 
   it('Recent_AfterManyPicks_KeepsOnlyTheLastTwentyFour', async () => {
@@ -298,7 +316,7 @@ describe('EmojiPicker', () => {
 
     const stored = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '') as string[];
     expect(stored).toHaveLength(24);
-    expect(stored[0]).toBe(cells[29]?.textContent);
+    expect(stored[0]).toBe(emojiOf(cells[29]));
   });
 
   it('Recent_WhenStorageIsBrokenOrBlocked_ThePickerStillWorks', async () => {
@@ -326,7 +344,7 @@ describe('EmojiPicker', () => {
 
     // An emoji without skin tones stays as it is.
     search('rocket');
-    expect(screen.getByRole('button', { name: 'rocket' })).toHaveTextContent('🚀');
+    expect(emojiOf(screen.getByRole('button', { name: 'rocket' }))).toBe('🚀');
 
     unmount();
     renderPicker();

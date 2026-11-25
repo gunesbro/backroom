@@ -10,6 +10,7 @@
     "build": "pnpm -r --filter \"!@backroom/desktop\" build",
     "check:bundle": "node tooling/check-bundle-size.js",
     "update:emoji-fixture": "node tooling/update-emoji-fixture.js",
+    "update:emoji-flags": "node tooling/update-emoji-flags.js",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r typecheck",
     "lint": "eslint .",
     "test": "vitest run",
