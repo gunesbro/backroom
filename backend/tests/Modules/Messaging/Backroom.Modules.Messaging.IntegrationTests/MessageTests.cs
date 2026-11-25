@@ -24,11 +24,11 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         using var response = await PostAsync(
             MessagesPath(organizationId, channelId),
             Alice,
-            new { clientMessageId, text = "  <b>Hi</b> & \"bye\" 'x'\r\nnext  ", blocks = "client blocks are never trusted" });
+            new { clientMessageId, text = "  <b>Hi</b> & \"bye\" 'x'\r\nnext  " });
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = (await ReadJsonAsync(response)).AsObject();
-        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "createdAt", "deletedAt", "epoch"]);
+        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "blocks", "createdAt", "deletedAt", "epoch"]);
         const string Stored = "<b>Hi</b> & \"bye\" 'x'\nnext";
         body["text"]!.GetValue<string>().Should().Be(Stored);
         body["clientMessageId"]!.GetValue<Guid>().Should().Be(clientMessageId);
@@ -39,6 +39,23 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var row = await QuerySingleAsync(
             "SELECT org_id, conversation_id, text, jsonb_array_length(blocks), blocks->0->>'type', blocks->0->'children'->0->>'type', blocks->0->'children'->0->>'text', jsonb_typeof(blocks) FROM messaging.messages WHERE id = $1", id);
         row.Should().Equal(organizationId, channelId, Stored, 1, "paragraph", "text", Stored, "array");
+        var blocks = body["blocks"]!.AsArray();
+        blocks.Should().ContainSingle();
+        blocks[0]!["type"]!.GetValue<string>().Should().Be("paragraph");
+        blocks[0]!["children"]!.AsArray().Should().ContainSingle().Which!["text"]!.GetValue<string>().Should().Be(Stored);
+    }
+
+    [Fact]
+    public async Task Send_WithBlocksWhileRichTextIsOff_IsRefusedAndStoresNothingAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var blocks = new[] { new { type = "paragraph", children = new[] { new { type = "text", text = "hi" } } } };
+
+        using var response = await PostAsync(MessagesPath(organizationId, channelId), Alice, new { clientMessageId = Guid.NewGuid(), text = "hi", blocks });
+
+        await ShouldBeInvalidAsync(response);
+        (await ReadJsonAsync(response))["reason"]!.GetValue<string>().Should().Be("blocks.disabled", "formatting is refused, never dropped silently");
+        await ShouldHaveStoredNothingAsync(organizationId, channelId);
     }
 
     [Fact]
@@ -373,7 +390,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         Ids(body).Should().Equal(Enumerable.Reverse(ids));
         body["next"].Should().BeNull();
         body["items"]![0]!.AsObject().Select(property => property.Key)
-            .Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "createdAt", "deletedAt"]);
+            .Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "blocks", "createdAt", "deletedAt"]);
     }
 
     [Fact]

@@ -8,6 +8,7 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Application\Backroom.BuildingBlocks.Application.csproj" />
     <ProjectReference Include="..\Backroom.Modules.Messaging.Contracts\Backroom.Modules.Messaging.Contracts.csproj" />
     <ProjectReference Include="..\..\Realtime\Backroom.Modules.Realtime.Contracts\Backroom.Modules.Realtime.Contracts.csproj" />
+    <ProjectReference Include="..\..\Organization\Backroom.Modules.Organization.Contracts\Backroom.Modules.Organization.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

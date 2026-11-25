@@ -33,6 +33,7 @@ public static class OrganizationModule
         services.TryAddScoped<OrganizationReadStore>();
         services.TryAddScoped<IOrganizationReadStore>(provider => provider.GetRequiredService<OrganizationReadStore>());
         services.TryAddScoped<IOrganizationMembershipCheck>(provider => provider.GetRequiredService<OrganizationReadStore>());
+        services.TryAddScoped<IMemberNames>(provider => provider.GetRequiredService<OrganizationReadStore>());
         services.TryAddScoped<OrganizationQueries>();
         return services;
     }

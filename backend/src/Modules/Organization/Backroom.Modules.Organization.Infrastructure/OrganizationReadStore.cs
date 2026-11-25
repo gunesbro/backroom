@@ -2,15 +2,18 @@ using Npgsql;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.Organization.Application.Queries;
+using Backroom.Modules.Organization.Contracts;
 
 namespace Backroom.Modules.Organization.Infrastructure;
 
 /// <summary>Reads for a member's requests; row-level security limits every statement to the entered organization.</summary>
-internal sealed class OrganizationReadStore(DatabaseSession session) : IOrganizationReadStore, IOrganizationMembershipCheck
+internal sealed class OrganizationReadStore(DatabaseSession session) : IOrganizationReadStore, IOrganizationMembershipCheck, IMemberNames
 {
     private const string IsActiveMemberSql = "SELECT 1 FROM organization.members WHERE account_id = $1 AND status = 'active'";
 
     private const string SelectActiveMembersSql = "SELECT account_id FROM organization.members WHERE account_id = ANY($1) AND status = 'active'";
+
+    private const string ActiveNamesSql = "SELECT account_id, display_name FROM organization.members WHERE account_id = ANY($1) AND status = 'active'";
 
     private const string GetSql = "SELECT id, name FROM organization.organizations WHERE id = $1";
 
@@ -49,6 +52,27 @@ internal sealed class OrganizationReadStore(DatabaseSession session) : IOrganiza
         }
 
         return members;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, string>> FindActiveAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(accountIds);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(accountIds.Count, IMemberNames.MaxAccountsPerLookup);
+        var names = new Dictionary<Guid, string>(accountIds.Count);
+        if (accountIds.Count == 0)
+        {
+            return names;
+        }
+
+        await using var command = new NpgsqlCommand(ActiveNamesSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid[]> { TypedValue = [.. accountIds] });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            names[reader.GetGuid(0)] = reader.GetString(1);
+        }
+
+        return names;
     }
 
     public async Task<OrganizationSummary?> GetAsync(Guid organizationId, CancellationToken cancellationToken)

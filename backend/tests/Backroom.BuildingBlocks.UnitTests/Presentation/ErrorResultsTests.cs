@@ -44,6 +44,19 @@ public sealed class ErrorResultsTests
     }
 
     [Fact]
+    public void ToProblem_WhenTheErrorHasAReason_CarriesItAndOtherwiseNot()
+    {
+        var error = Error.Validation("messaging.message_invalid", "Not valid.");
+
+        var plain = error.ToProblem().Should().BeOfType<ProblemHttpResult>().Subject;
+        var reasoned = error.WithReason("text.marks").ToProblem().Should().BeOfType<ProblemHttpResult>().Subject;
+
+        plain.ProblemDetails.Extensions.Should().NotContainKey(ErrorResults.ReasonExtension);
+        reasoned.ProblemDetails.Extensions[ErrorResults.ReasonExtension].Should().Be("text.marks");
+        reasoned.ProblemDetails.Extensions[ErrorResults.CodeExtension].Should().Be("messaging.message_invalid");
+    }
+
+    [Fact]
     public void ToProblem_WhenUnexpected_HidesTheDescription()
     {
         var problem = Error.Unexpected("messaging.store_failed", "Internal detail.").ToProblem()
