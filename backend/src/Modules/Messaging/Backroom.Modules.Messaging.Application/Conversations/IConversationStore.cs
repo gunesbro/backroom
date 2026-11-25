@@ -19,10 +19,11 @@ internal interface IConversationStore
     Task<bool> CloseMembershipAsync(Guid organizationId, Guid conversationId, Guid accountId, DateTimeOffset leftAt, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The account's open conversations (open membership, not archived, no threads) after the row <paramref name="afterSortAt"/>, <paramref name="afterId"/> in the order newest message first (creation time when there is none), then id descending,
+    /// The account's conversations (open membership, no threads): the ones that are not archived, or with
+    /// <paramref name="archived"/> only the archived ones; after the row <paramref name="afterSortAt"/>, <paramref name="afterId"/> in the order newest message first (creation time when there is none), then id descending,
     /// at most <paramref name="count"/>.
     /// </summary>
-    Task<IReadOnlyList<ConversationEntry>> ListForAccountAsync(Guid organizationId, Guid accountId, DateTimeOffset afterSortAt, Guid afterId, int count, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ConversationEntry>> ListForAccountAsync(Guid organizationId, Guid accountId, bool archived, DateTimeOffset afterSortAt, Guid afterId, int count, CancellationToken cancellationToken);
 
     /// <summary>The accounts among <paramref name="accountIds"/> that may read the conversation (<see cref="ConversationAccess.CanRead"/>), in one statement.</summary>
     Task<IReadOnlyList<Guid>> FilterReadersAsync(Guid organizationId, Guid conversationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);

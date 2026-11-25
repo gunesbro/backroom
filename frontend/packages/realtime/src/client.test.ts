@@ -317,6 +317,32 @@ describe('RealtimeClient conversation events after leaving', () => {
     expect(received).toEqual(['c1']);
   });
 
+  it('ConversationUpdated_ForAConversationNotWanted_IsNotDelivered', async () => {
+    const { client, hubs } = setup();
+    const received: string[] = [];
+    client.on('ConversationUpdated', (payload) => received.push(payload.conversationId));
+    client.subscribeConversation('o1', 'c1');
+    client.start();
+    await flush();
+    const updated = (conversationId: string) => ({
+      orgId: 'o1',
+      conversationId,
+      name: 'plans',
+      description: null,
+      archivedAt: null,
+      memberCount: 2,
+      changeSeq: 4,
+      epoch: '1',
+    });
+
+    hubs[0]?.emit('ConversationUpdated', updated('c1'));
+    hubs[0]?.emit('ConversationUpdated', updated('never-joined'));
+    hubs[0]?.emit('MembershipChanged', { orgId: 'o1', conversationId: 'c1', change: 'removed' });
+    hubs[0]?.emit('ConversationUpdated', updated('c1'));
+
+    expect(received).toEqual(['c1']);
+  });
+
   it('MembershipChanged_Removed_StopsDeliveryAndTheReplay', async () => {
     const { client, hubs, retries } = setup();
     const received: string[] = [];

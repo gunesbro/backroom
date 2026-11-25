@@ -18,6 +18,22 @@ export type SessionRevoked = { reason: string };
 /** To the account's own group (docs/contracts/phase-2.md); `removed` also stops delivery of that conversation's events. */
 export type MembershipChanged = { orgId: string; conversationId: string; change: 'added' | 'removed' };
 
+/**
+ * To the conversation's group: its current name, description, archive state and member count after a change (a rename,
+ * an archive, a join or leave, an ownership transfer). It has no owner field: clients read the conversation again.
+ */
+export type ConversationUpdated = {
+  orgId: string;
+  conversationId: string;
+  name: string | null;
+  description: string | null;
+  /** ISO 8601, or null while the conversation is open. */
+  archivedAt: string | null;
+  memberCount: number;
+  changeSeq: number;
+  epoch: string;
+};
+
 /** Automatic presence (docs/contracts/phase-2.md, flow 9); never platform or device. */
 export type PresenceState = 'online' | 'idle' | 'offline';
 
@@ -40,6 +56,7 @@ export type RealtimeEvents = {
   SessionRevoked: SessionRevoked;
   PresenceChanged: PresenceChanged;
   MembershipChanged: MembershipChanged;
+  ConversationUpdated: ConversationUpdated;
 };
 
 export type RealtimeEventName = keyof RealtimeEvents;
@@ -50,6 +67,7 @@ export const EVENT_NAMES: readonly RealtimeEventName[] = [
   'SessionRevoked',
   'PresenceChanged',
   'MembershipChanged',
+  'ConversationUpdated',
 ];
 
 /** What a client reports about its person's input; the server takes one report per 10 s per connection. */

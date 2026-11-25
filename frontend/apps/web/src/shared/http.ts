@@ -32,7 +32,7 @@ const MAX_FENCED_RETRIES = 3;
 const MAX_FENCED_WAIT_SECONDS = 5;
 
 type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal | undefined;
 };

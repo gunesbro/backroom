@@ -12,7 +12,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { ConnectionStatus, RealtimeClient } from '@backroom/realtime';
 import { useAuth } from '@/features/auth';
 import { useActivityReporting } from '@/features/presence';
-import { applyLiveMessage, catchUpChannel, noteChannelCreated } from './live-cache';
+import {
+  applyConversationUpdated,
+  applyLiveMessage,
+  catchUpChannel,
+  forgetConversation,
+  noteChannelCreated,
+} from './live-cache';
 import { browseChannelsKey, conversationsKey } from './queries';
 import { RealtimeContext } from './realtime-context';
 import type { Cell, MessagingApi } from './api';
@@ -50,7 +56,9 @@ function useRealtimeClient(cell: Cell): RealtimeClient | null {
 /**
  * Live updates of one organization (Phase 1, step 7b): puts live messages of the open channel into the cache,
  * marks activity in other channels, adds created channels, catches up after a reconnect or after the tab was in
- * the background, and signs out when the session is revoked.
+ * the background, and signs out when the session is revoked. Phase 2, step 7: a conversation the person was added
+ * to appears, one they were removed from goes away with everything cached about it, and a changed conversation
+ * (name, description, archive state, member count) is corrected in place.
  */
 export function useLiveUpdates({
   cell,
@@ -59,6 +67,8 @@ export function useLiveUpdates({
   channelIds,
   selectedId,
   ownAccountId,
+  detailedId,
+  onRemoved,
 }: {
   cell: Cell;
   api: MessagingApi;
@@ -66,6 +76,10 @@ export function useLiveUpdates({
   channelIds: readonly string[];
   selectedId: string | undefined;
   ownAccountId: string | undefined;
+  /** The conversation whose owner and members are on screen (its info is open): changes to it are read again. */
+  detailedId?: string | undefined;
+  /** The person's membership of a conversation ended (they left, or were removed). */
+  onRemoved?: (conversationId: string) => void;
 }) {
   const client = useRealtimeClient(cell);
   // Idle after 10 minutes without input, active again on input (presence, Phase 2 flow 9); off with its flag.
@@ -81,9 +95,9 @@ export function useLiveUpdates({
   );
 
   // Handlers read the latest values through a ref, so they are registered once per connection.
-  const latest = useRef({ api, orgId, selectedId, ownAccountId, signOut });
+  const latest = useRef({ api, orgId, selectedId, ownAccountId, signOut, detailedId, onRemoved });
   useLayoutEffect(() => {
-    latest.current = { api, orgId, selectedId, ownAccountId, signOut };
+    latest.current = { api, orgId, selectedId, ownAccountId, signOut, detailedId, onRemoved };
   });
 
   // Groups: the organization, and the channels (a diff, never a full re-subscribe: the hub rate-limits it).
@@ -183,6 +197,24 @@ export function useLiveUpdates({
       }),
       client.on('ChannelCreated', ({ orgId: eventOrg }) => {
         if (eventOrg === latest.current.orgId) noteChannelCreated(queryClient, eventOrg);
+      }),
+      client.on('MembershipChanged', ({ orgId: eventOrg, conversationId, change }) => {
+        const current = latest.current;
+        if (eventOrg !== current.orgId) return;
+        if (change === 'added') {
+          void queryClient.invalidateQueries({ queryKey: conversationsKey(eventOrg) });
+          return;
+        }
+
+        // The connection has already dropped the group; a later membership must join it again.
+        joined.current.delete(conversationId);
+        current.onRemoved?.(conversationId);
+        forgetConversation(queryClient, eventOrg, conversationId);
+      }),
+      client.on('ConversationUpdated', (event) => {
+        const current = latest.current;
+        if (event.orgId !== current.orgId) return;
+        applyConversationUpdated(queryClient, event, event.conversationId === current.detailedId);
       }),
       client.on('SessionRevoked', () => {
         if (revoked) return;

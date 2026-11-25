@@ -136,4 +136,78 @@ describe('createMessagingApi conversation routes', () => {
     expect(fetchSpy.mock.calls[0]?.[0]).toBe(`${base}/conversations/c/${path}`);
     expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe('POST');
   });
+
+  const sent = (fetchSpy: ReturnType<typeof answer>) => {
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    return {
+      url,
+      method: init?.method ?? 'GET',
+      body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined,
+    };
+  };
+
+  it('CreateChannel_Private_PostsTheDescriptionAndThePeople', async () => {
+    const fetchSpy = answer({ id: 'c1', kind: 'private_channel', name: 'plans', description: 'x' });
+
+    await api.createChannel('o', { name: 'plans', private: true, description: 'x', memberAccountIds: ['a'] });
+
+    expect(sent(fetchSpy)).toEqual({
+      url: `${base}/channels`,
+      method: 'POST',
+      body: { name: 'plans', private: true, description: 'x', memberAccountIds: ['a'] },
+    });
+  });
+
+  it('ListConversationMembers_ReadsItemsAndNext', async () => {
+    const fetchSpy = answer({ items: [{ accountId: 'a', role: 'owner', joinedAt: 'x' }], next: 'a' });
+
+    const page = await api.listConversationMembers('o', 'c', 'a0');
+
+    expect(page).toEqual({ members: [{ accountId: 'a', role: 'owner', joinedAt: 'x' }], next: 'a' });
+    expect(sent(fetchSpy).url).toBe(`${base}/conversations/c/members?limit=50&after=a0`);
+  });
+
+  it('ManageRoutes_UseTheContractsMethodsAndBodies', async () => {
+    const calls: unknown[] = [];
+    const run = async (call: () => Promise<unknown>) => {
+      const fetchSpy = answer({});
+      await call();
+      calls.push(sent(fetchSpy));
+      fetchSpy.mockRestore();
+    };
+
+    await run(() => api.getConversation('o', 'c'));
+    await run(() => api.updateConversation('o', 'c', { name: 'n', description: '' }));
+    await run(() => api.archiveConversation('o', 'c'));
+    await run(() => api.unarchiveConversation('o', 'c'));
+    await run(() => api.addConversationMembers('o', 'c', ['a', 'b']));
+    await run(() => api.transferOwnership('o', 'c', 'a'));
+
+    expect(calls).toEqual([
+      { url: `${base}/conversations/c`, method: 'GET', body: undefined },
+      { url: `${base}/conversations/c`, method: 'PATCH', body: { name: 'n', description: '' } },
+      { url: `${base}/conversations/c/archive`, method: 'POST', body: undefined },
+      { url: `${base}/conversations/c/unarchive`, method: 'POST', body: undefined },
+      { url: `${base}/conversations/c/members`, method: 'POST', body: { accountIds: ['a', 'b'] } },
+      { url: `${base}/conversations/c/owner`, method: 'PUT', body: { accountId: 'a' } },
+    ]);
+  });
+
+  it('ListMyPermissions_ReadsTheCallersKeys', async () => {
+    const fetchSpy = answer({ permissions: ['channels.create-public', 'channels.manage-public'] });
+
+    await expect(api.listMyPermissions('o')).resolves.toEqual([
+      'channels.create-public',
+      'channels.manage-public',
+    ]);
+    expect(sent(fetchSpy)).toEqual({ url: `${base}/me/permissions`, method: 'GET', body: undefined });
+  });
+
+  it('ListConversations_Archived_AsksForTheArchivedOnes', async () => {
+    const fetchSpy = answer({ items: [], next: null });
+
+    await api.listConversations('o', 'c0', undefined, { archived: true });
+
+    expect(sent(fetchSpy).url).toBe(`${base}/conversations?limit=50&archived=true&after=c0`);
+  });
 });

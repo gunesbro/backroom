@@ -84,6 +84,7 @@
   <Folder Name="/src/Modules/Permissions/">
     <Project Path="src/Modules/Permissions/Backroom.Modules.Permissions.Contracts/Backroom.Modules.Permissions.Contracts.csproj" />
     <Project Path="src/Modules/Permissions/Backroom.Modules.Permissions.Infrastructure/Backroom.Modules.Permissions.Infrastructure.csproj" />
+    <Project Path="src/Modules/Permissions/Backroom.Modules.Permissions.Presentation/Backroom.Modules.Permissions.Presentation.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Backroom.ArchitectureTests/Backroom.ArchitectureTests.csproj" />

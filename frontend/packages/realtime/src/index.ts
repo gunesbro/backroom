@@ -11,6 +11,7 @@ export type {
   ActivityState,
   ChannelCreated,
   ConnectionStatus,
+  ConversationUpdated,
   CustomStatus,
   LiveMessage,
   MembershipChanged,

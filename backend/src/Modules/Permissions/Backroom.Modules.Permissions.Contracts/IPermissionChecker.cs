@@ -16,6 +16,12 @@ public interface IPermissionChecker
     Task<bool> HasPermissionAsync(Guid accountId, string permission, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Every permission the account holds, from <see cref="SystemRoles.AllPermissions"/>, in ordinal order: all of them
+    /// for an Owner, none for an account without a role.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListPermissionsAsync(Guid accountId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Whether the account may give someone the role: it exists, is not Owner, and all its permissions are ones the
     /// account has.
     /// </summary>
