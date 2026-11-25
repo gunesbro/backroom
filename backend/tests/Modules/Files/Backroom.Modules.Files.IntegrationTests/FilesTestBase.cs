@@ -55,6 +55,8 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
 
     internal CapturingLoggerProvider Logs { get; } = new();
 
+    internal RecordingLiveEventPublisher Live { get; } = new();
+
     protected IServiceProvider Services => _cell.Services;
 
     protected SeaweedFsServer Storage => storage;
@@ -87,7 +89,7 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         builder.Services.AddDatabaseSession().BindConfiguration(DatabaseOptions.SectionName);
         builder.Services.AddPermissions();
         builder.Services.AddOrganization();
-        builder.Services.AddSingleton<ILiveEventPublisher, NullLiveEventPublisher>();
+        builder.Services.AddSingleton<ILiveEventPublisher>(Live);
         builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Cells.ICellEpoch, FixedCellEpoch>();
         ConfigureServices(builder.Services);
         builder.Services.AddMessaging();
@@ -212,7 +214,7 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
     internal async Task RunScanJobAsync(int? port = null, IFileScanner? scannerOverride = null)
     {
         var options = Options.Create(new ClamAvOptions { Host = scanner.Host, Port = port ?? scanner.MappedPort, ScanTimeout = TimeSpan.FromSeconds(20) });
-        using var job = new FileScanJob(Services.GetRequiredService<IFileStorageProvider>(), scannerOverride ?? new ClamAvScanner(options), TimeProvider.System, new LoggerFactory([Logs]).CreateLogger<FileScanJob>());
+        using var job = new FileScanJob(Services.GetRequiredService<IFileStorageProvider>(), scannerOverride ?? new ClamAvScanner(options), Live, TimeProvider.System, new LoggerFactory([Logs]).CreateLogger<FileScanJob>());
         await using var connection = new NpgsqlConnection(database.MaintenanceConnectionString);
         await connection.OpenAsync(CancellationToken);
         var deadline = DateTimeOffset.UtcNow.AddSeconds(120);
@@ -323,8 +325,23 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         public ValueTask<long?> ConfirmedEpochAsync(CancellationToken cancellationToken) => ValueTask.FromResult<long?>(1);
     }
 
-    private sealed class NullLiveEventPublisher : ILiveEventPublisher
+    /// <summary>Records the <c>FileRejected</c> notices; the other events are not Files' concern.</summary>
+    internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
     {
+        private readonly Lock _lock = new();
+        private readonly List<FileRejectedPayload> _rejected = [];
+
+        public IReadOnlyList<FileRejectedPayload> Rejected
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return [.. _rejected];
+                }
+            }
+        }
+
         public Task PublishAsync(MessagePostedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task PublishAsync(MessagePostedV2Payload payload, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -332,6 +349,16 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         public Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task PublishAsync(FileRejectedPayload payload, CancellationToken cancellationToken)
+        {
+            lock (_lock)
+            {
+                _rejected.Add(payload);
+            }
+
+            return Task.CompletedTask;
+        }
 
         public Task PublishAsync(NotificationRequestedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 

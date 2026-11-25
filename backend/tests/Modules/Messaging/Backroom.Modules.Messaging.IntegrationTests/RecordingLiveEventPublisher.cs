@@ -81,6 +81,8 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
 
     public Task PublishAsync(NotificationRequestedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
+    public Task PublishAsync(FileRejectedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public IReadOnlyList<(Guid OrgId, Guid ConversationId, Guid AccountId)> Removals
     {
         get
