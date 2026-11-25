@@ -10,7 +10,7 @@ import {
 } from 'lexical';
 import { describe, expect, it, vi } from 'vitest';
 import { LocaleProvider } from '@/shared/locale-provider';
-import { Composer } from './composer';
+import { Composer, RichFieldPlaceholder } from './composer';
 import type { Block } from './rich-text/blocks';
 import { $readBlocks, $writeBlocks } from './rich-text/lexical-blocks';
 
@@ -59,6 +59,15 @@ describe('Rich text composer', () => {
       .getAllByRole('button')
       .filter((button) => button.tabIndex === 0);
     expect(stops).toHaveLength(1);
+  });
+
+  // The page must not jump when the lazily loaded field arrives: the placeholder already holds the toolbar's row.
+  it('RichFieldPlaceholder_WhileTheFieldLoads_ReservesTheToolbarRowAndTheInput', () => {
+    const { container } = render(<RichFieldPlaceholder />);
+    const loading = container.querySelector('.bm-rt-loading');
+    expect(loading).toHaveAttribute('aria-busy', 'true');
+    expect(loading?.querySelector('.bm-format[aria-hidden="true"] .bm-format__reserve')).not.toBeNull();
+    expect(loading?.querySelector('.bm-composer__input')).not.toBeNull();
   });
 
   it('Composer_WhenEnterPressed_SendsTextAndBlocksAndClears', async () => {
