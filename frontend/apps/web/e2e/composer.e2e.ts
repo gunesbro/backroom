@@ -1,4 +1,7 @@
+import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
+
+const LONG = `wide = '${'x'.repeat(200)}'`;
 
 // One pass through the rich text composer in a real browser: what jsdom cannot show (layout, the caret, real key
 // events). The editing rules are covered in detail by the Vitest suites of features/messaging.
@@ -31,7 +34,8 @@ test('Composer_WhenALongMessageIsTypedWithTheKeyboard_SendsItsBlocksAndDrawsThem
   await page.keyboard.press('Shift+Enter'); // the empty quoted line: out of the quote
   await page.keyboard.type('```');
   await line('a = 1');
-  await page.keyboard.type('  b = 2');
+  await line('  b = 2');
+  await page.keyboard.type(LONG);
   await expect(field.locator('.bm-code-block')).toHaveText(/a = 1\s+b = 2/);
   await page.keyboard.type('```'); // closes the block
   await page.keyboard.type('see `x` there');
@@ -51,7 +55,7 @@ test('Composer_WhenALongMessageIsTypedWithTheKeyboard_SendsItsBlocksAndDrawsThem
       ],
     },
     { type: 'quote', children: [{ type: 'text', text: 'quoted\nmore' }] },
-    { type: 'code_block', children: [{ type: 'text', text: 'a = 1\n  b = 2' }] },
+    { type: 'code_block', children: [{ type: 'text', text: `a = 1\n  b = 2\n${LONG}` }] },
     {
       type: 'paragraph',
       children: [
@@ -74,6 +78,22 @@ test('Composer_WhenALongMessageIsTypedWithTheKeyboard_SendsItsBlocksAndDrawsThem
   await expect(code).toHaveCSS('overflow-x', 'auto');
   await expect(code).toHaveCSS('border-top-width', '1px');
   await expect(message.locator('code.bm-inline-code')).toHaveCSS('border-top-width', '1px');
+
+  // The box really scrolls here, so axe can judge it: a scrollable region must be reachable with the keyboard.
+  const scrolls = await code.evaluate((element) => {
+    // This file is typed for Node (no DOM library), so the element's sizes are named here.
+    const box = element as unknown as { scrollWidth: number; clientWidth: number };
+    return box.scrollWidth > box.clientWidth;
+  });
+  expect(scrolls).toBe(true);
+  await expect(page.getByRole('region', { name: 'Code block' })).toHaveAttribute('tabindex', '0');
+  await page.addScriptTag({ path: createRequire(import.meta.url).resolve('axe-core/axe.min.js') });
+  const violations = await page.evaluate(`
+    axe
+      .run('[aria-label="Sent messages"]', { runOnly: ['scrollable-region-focusable', 'aria-allowed-role'] })
+      .then((results) => results.violations.map((violation) => violation.id))
+  `);
+  expect(violations).toEqual([]);
 
   // The field is empty again and still has the keyboard.
   await expect(page.locator('.bm-rt__placeholder')).toBeVisible();

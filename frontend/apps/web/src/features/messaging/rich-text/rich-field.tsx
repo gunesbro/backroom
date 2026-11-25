@@ -22,12 +22,15 @@ import {
   CLEAR_HISTORY_COMMAND,
   COMMAND_PRIORITY_HIGH,
   FORMAT_TEXT_COMMAND,
+  INSERT_LINE_BREAK_COMMAND,
+  INSERT_PARAGRAPH_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
+  PASTE_COMMAND,
   TextNode,
   createEditor,
   type LexicalEditor,
@@ -43,6 +46,7 @@ import {
   $insertLine,
   $isPristine,
   $leaveCodeBlock,
+  $pasteLines,
   $toggleBlock,
   $unformatAtLineStart,
   blockKindOf,
@@ -93,6 +97,14 @@ const SHORTCUTS = [
 ];
 
 const UNDO_DEPTH = 100;
+
+/** True on phones and tablets, where the on-screen keyboard's Enter cannot be told from a real key. */
+function touchFirst(): boolean {
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(hover: none) and (pointer: coarse)').matches
+  );
+}
 
 const DISALLOWED_FORMATS: readonly TextFormatType[] = [
   'underline',
@@ -244,6 +256,10 @@ export function RichField({
       },
       { discrete: true },
     );
+    const insertLine = () => {
+      $insertLine();
+      return true;
+    };
     const unregister = [
       editor.registerEditableListener((editable) => {
         element.setAttribute('contenteditable', editable ? 'true' : 'false');
@@ -268,14 +284,29 @@ export function RichField({
       editor.registerCommand(
         KEY_ENTER_COMMAND,
         (event) => {
-          if (!event || event.isComposing) return false;
-          if (!event.shiftKey) {
+          if (event?.isComposing) return false;
+          // Only a real Enter key sends, and only where a keyboard is the main input: without a key event (a
+          // virtual keyboard, an input method) and on touch devices Enter makes a line, and the button sends.
+          if (event && !event.shiftKey && !touchFirst()) {
             event.preventDefault();
             callbacks.current.onSubmit();
             return true;
           }
-          event.preventDefault();
+          event?.preventDefault();
           $insertLine();
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+      // Virtual keyboards ask for a paragraph or a line break through input events, with no key: the same line rules.
+      editor.registerCommand(INSERT_PARAGRAPH_COMMAND, insertLine, COMMAND_PRIORITY_HIGH),
+      editor.registerCommand(INSERT_LINE_BREAK_COMMAND, insertLine, COMMAND_PRIORITY_HIGH),
+      editor.registerCommand(
+        PASTE_COMMAND,
+        (event) => {
+          const text = 'clipboardData' in event ? event.clipboardData?.getData('text/plain') : undefined;
+          if (!text || !$pasteLines(text)) return false;
+          event.preventDefault();
           return true;
         },
         COMMAND_PRIORITY_HIGH,
@@ -295,9 +326,9 @@ export function RichField({
         editor.registerCommand(
           command,
           (event) => {
-            if (event.shiftKey || !$leaveCodeBlock(command === KEY_ARROW_DOWN_COMMAND ? 'down' : 'up')) {
-              return false;
-            }
+            // Only the plain key: with a modifier it selects, jumps or belongs to the system.
+            if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return false;
+            if (!$leaveCodeBlock(command === KEY_ARROW_DOWN_COMMAND ? 'down' : 'up')) return false;
             event.preventDefault();
             return true;
           },

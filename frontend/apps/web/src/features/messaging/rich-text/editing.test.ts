@@ -6,19 +6,21 @@ import {
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  $setCompositionKey,
   $setSelection,
   TextNode,
   createEditor,
   type TextNode as LexicalText,
 } from 'lexical';
 import { describe, expect, it } from 'vitest';
-import type { Block, TextNode as Run } from './blocks';
+import { blocksToText, type Block, type TextNode as Run } from './blocks';
 import {
   $codeFenceFromText,
   $flattenNestedList,
   $insertLine,
   $isPristine,
   $leaveCodeBlock,
+  $pasteLines,
   $toggleBlock,
   $unformatAtLineStart,
 } from './editing';
@@ -104,6 +106,7 @@ function setup(initial: Block[] = []) {
   });
   return {
     run,
+    $find,
     /** The blocks that would be sent; they are always checked against the schema. */
     blocks: () => {
       const blocks = editor.read($readBlocks);
@@ -567,4 +570,152 @@ describe('Placeholder state', () => {
     });
     expect(read($isPristine)).toBe(true);
   });
+});
+
+describe('Input methods', () => {
+  // A dead-key backtick (Turkish keyboards) arrives as a composition: the node must not be replaced under it. The
+  // editor makes the composed node dirty again when the composition ends, which is when the fence is seen.
+  it('Fence_WhenAnInputMethodIsStillComposing_WaitsUntilTheTextIsCommitted', () => {
+    const { run, $find, caret, nodes, blocks, type } = setup(paragraphs('x'));
+    caret('x');
+    run(() => {
+      $setCompositionKey($find('x').getKey());
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) selection.insertText('```');
+    });
+    expect(nodes()).toEqual(['paragraph:x```']);
+
+    run(() => {
+      $setCompositionKey(null);
+      // The browser leaves the caret after the committed text.
+      $find('x```').selectEnd();
+    });
+    expect(nodes()).toEqual(['paragraph:x', 'code:']);
+    type('y');
+    expect(blocks()).toEqual([...paragraphs('x'), { type: 'code_block', children: [text('y')] }]);
+  });
+});
+
+describe('Quoted lines of spaces', () => {
+  it('InsertLine_WhenAQuotedLineHoldsOnlySpaces_KeepsItQuotedWithItsSpaces', () => {
+    const { run, caret, type, nodes } = setup([{ type: 'quote', children: [text('a')] }]);
+    caret('a');
+    run($insertLine);
+    type('  ');
+    run($insertLine);
+    expect(nodes()).toEqual(['quote:a', 'quote:  ', 'quote:']);
+    run($insertLine);
+    expect(nodes()).toEqual(['quote:a', 'quote:  ', 'paragraph:']);
+  });
+});
+
+describe('Pasting lines', () => {
+  it('Paste_WhenSeveralLinesGoIntoAQuote_KeepsEveryLineQuoted', () => {
+    const { run, caret, blocks, nodes } = setup([
+      { type: 'quote', children: [text('ab')] },
+      ...paragraphs('p'),
+    ]);
+    caret('ab', 1);
+    let handled = false;
+    run(() => {
+      handled = $pasteLines('1\r\n2\n\n3\n');
+    });
+    expect(handled).toBe(true);
+    expect(nodes()).toEqual(['quote:a1', 'quote:2', 'quote:', 'quote:3b', 'paragraph:p']);
+    expect(blocks()).toEqual([{ type: 'quote', children: [text('a1\n2\n\n3b')] }, ...paragraphs('p')]);
+  });
+
+  it('Paste_WhenLinesGoIntoACodeBlock_KeepsThemInTheBlockWithTheirIndentation', () => {
+    const { run, caret, blocks } = setup([{ type: 'code_block', children: [text('x')] }]);
+    caret('x');
+    let handled = false;
+    run(() => {
+      handled = $pasteLines(' = 1\n  y = 2\n\tz');
+    });
+    expect(handled).toBe(true);
+    expect(blocks()).toEqual([{ type: 'code_block', children: [text('x = 1\n  y = 2\n\tz')] }]);
+  });
+
+  it('Paste_WhenOverASelectionInAQuote_ReplacesIt', () => {
+    const { run, select, blocks } = setup([{ type: 'quote', children: [text('old\ntext')] }]);
+    select('old', 'text');
+    run(() => {
+      $pasteLines('new\nlines');
+    });
+    expect(blocks()).toEqual([{ type: 'quote', children: [text('new\nlines')] }]);
+  });
+
+  it('Paste_WhenInAParagraphOrOneLineIntoAQuote_IsLeftToTheEditor', () => {
+    const { run, caret } = setup([...paragraphs('p'), { type: 'quote', children: [text('q')] }]);
+    let handled = true;
+    caret('p');
+    run(() => {
+      handled = $pasteLines('a\nb');
+    });
+    expect(handled).toBe(false);
+    handled = true;
+    caret('q');
+    run(() => {
+      handled = $pasteLines('one line');
+    });
+    expect(handled).toBe(false);
+  });
+});
+
+describe('Arrow keys at a code block', () => {
+  it('ArrowDown_WhenPressedAgainAfterLeaving_AddsNoSecondParagraph', () => {
+    const { run, caret, nodes } = setup([{ type: 'code_block', children: [text('a')] }]);
+    caret('a');
+    let handled = false;
+    run(() => {
+      handled = $leaveCodeBlock('down');
+    });
+    expect(handled).toBe(true);
+    // From the new paragraph, and from the block again now that a paragraph follows it, the key is the browser's.
+    run(() => {
+      handled = $leaveCodeBlock('down');
+    });
+    expect(handled).toBe(false);
+    caret('a');
+    run(() => {
+      handled = $leaveCodeBlock('down');
+    });
+    expect(handled).toBe(false);
+    expect(nodes()).toEqual(['code:a', 'paragraph:']);
+  });
+});
+
+describe('Blocks of mixed selections', () => {
+  const document: Block[] = [
+    ...paragraphs('p1'),
+    { type: 'quote', children: [text('q1\nq2')] },
+    list('bulleted_list', 'b1', 'b2'),
+    { type: 'code_block', children: [text('c1\nc2')] },
+    list('numbered_list', 'n1', 'n2'),
+    ...paragraphs('p2'),
+  ];
+  const lines = ['p1', 'q1', 'q2', 'b1', 'b2', 'c1', 'c2', 'n1', 'n2', 'p2'];
+  const ranges: [string, string][] = [];
+  for (const [index, from] of lines.entries()) {
+    for (const to of lines.slice(index)) ranges.push([from, to]);
+  }
+
+  // `blocks()` checks every result against the schema; the derived text shows that no line was lost or joined.
+  it.each(['quote', 'code', 'bullet', 'number'] as const)(
+    'Toggle%s_WhenTheSelectionCoversAnyRunOfMixedLines_SendsValidBlocksWithEveryLine',
+    (kind) => {
+      for (const [from, to] of ranges) {
+        const { run, select, blocks } = setup(document);
+        select(from, to);
+        run(() => {
+          $toggleBlock(kind);
+        });
+        expect(blocksToText(blocks()), `${from}..${to}`).toBe(lines.join('\n'));
+        run(() => {
+          $toggleBlock(kind);
+        });
+        expect(blocksToText(blocks()), `${from}..${to} twice`).toBe(lines.join('\n'));
+      }
+    },
+  );
 });

@@ -16,6 +16,7 @@ import {
   $createParagraphNode,
   $createRangeSelection,
   $createTextNode,
+  $getEditor,
   $getNodeByKey,
   $getRoot,
   $getSelection,
@@ -321,6 +322,43 @@ export function $toggleBlock(kind: Exclude<BlockKind, 'paragraph'>): void {
   $convertKeepingSelection(selection, range, on ? 'paragraph' : kind);
 }
 
+/** Cuts a quoted line in two at the caret; the part after it is a quoted line too. */
+function $splitQuotedLine(selection: RangeSelection): void {
+  const next = selection.insertParagraph();
+  if (next !== null && !$isQuoteNode(next)) {
+    const quote = $createQuoteNode();
+    next.replace(quote, true);
+    quote.selectStart();
+  }
+}
+
+/**
+ * Plain text with line breaks, pasted into a quote or a code block: every line stays in the block, as if it had been
+ * typed with Shift+Enter between the lines (the editor's own paste would put the lines after the first into new
+ * paragraphs). False when the caret is somewhere else or there is nothing to do, and the editor pastes as usual.
+ */
+export function $pasteLines(text: string): boolean {
+  let selection = $getSelection();
+  if (!$isRangeSelection(selection)) return false;
+  const top = selection.anchor.getNode().getTopLevelElement();
+  const lines = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n');
+  // One line into a quote keeps the editor's paste, which also brings bold, italic and links along.
+  if (!$isCodeNode(top) && !($isQuoteNode(top) && lines.length > 1)) return false;
+  if (!selection.isCollapsed()) selection.removeText();
+  for (const [index, line] of lines.entries()) {
+    selection = $getSelection();
+    if (!$isRangeSelection(selection)) return true;
+    if (index > 0) {
+      if ($isCodeNode(top)) selection.insertLineBreak();
+      else $splitQuotedLine(selection);
+      selection = $getSelection();
+      if (!$isRangeSelection(selection)) return true;
+    }
+    if (line.length > 0) selection.insertText(line);
+  }
+  return true;
+}
+
 /**
  * Shift+Enter. A new paragraph, a new quoted line, a new list item or a new line inside a code block; on an empty
  * list item, an empty quoted line or the empty last line of a code block it leaves the block instead.
@@ -354,18 +392,14 @@ export function $insertLine(): void {
     return;
   }
   if ($isQuoteNode(top)) {
-    if (top.getTextContent().trim().length === 0) {
+    // Only a line with no characters at all is empty: spaces are text a person typed, and they stay quoted.
+    if (top.getTextContentSize() === 0) {
       const paragraph = $createParagraphNode();
-      top.replace(paragraph, true);
-      paragraph.selectEnd();
+      top.replace(paragraph);
+      paragraph.select();
       return;
     }
-    const next = selection.insertParagraph();
-    if (next !== null && !$isQuoteNode(next)) {
-      const quote = $createQuoteNode();
-      next.replace(quote, true);
-      quote.selectStart();
-    }
+    $splitQuotedLine(selection);
     return;
   }
   if ($isListNode(top) && $handleListInsertParagraph()) return;
@@ -404,7 +438,9 @@ export function $unformatAtLineStart(): boolean {
 
 /**
  * Arrow down on the last line of a code block that ends the message (arrow up on the first line of one that starts
- * it) makes a paragraph there and moves into it; otherwise there would be no way out with the keyboard.
+ * it) makes a paragraph there and moves into it; otherwise there would be no way out with the keyboard. Code never
+ * wraps (it scrolls sideways), so its last line is also the last line on screen. With anything after the block,
+ * the empty paragraph of an earlier press included, the key is the browser's: there is never a second paragraph.
  */
 export function $leaveCodeBlock(direction: 'up' | 'down'): boolean {
   const selection = $getSelection();
@@ -429,6 +465,9 @@ export function $leaveCodeBlock(direction: 'up' | 'down'): boolean {
  * and the caret moves to a paragraph below. A text node transform; only what was just typed at the caret counts.
  */
 export function $codeFenceFromText(node: TextNode): void {
+  // An input method (a dead-key backtick, as on Turkish keyboards) is still composing this text: replacing the node
+  // now would break the composition. The text is looked at again when it is committed.
+  if ($getEditor().isComposing()) return;
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
   const { anchor } = selection;
