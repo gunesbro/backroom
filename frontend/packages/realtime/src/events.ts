@@ -7,6 +7,8 @@ export type LiveMessage = {
   clientMessageId: string;
   authorAccountId: string;
   text: string;
+  /** The rich text blocks, when the event carries them (`MessagePosted.v2`). Unchecked: read with `parseBlocks`. */
+  blocks?: unknown;
   createdAt: string;
 };
 

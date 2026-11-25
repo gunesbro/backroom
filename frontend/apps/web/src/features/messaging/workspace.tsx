@@ -228,6 +228,7 @@ function ChannelView({
         ?.accountId,
     [members.data, user.accountId, user.email],
   );
+  const mentionName = useCallback((accountId: string) => names.get(accountId), [names]);
   const authorName = useCallback((accountId: string) => names.get(accountId) ?? t('member'), [names, t]);
 
   const pendingHere = pending.forChannel(channel.id);
@@ -364,6 +365,7 @@ function ChannelView({
             loadingNewer={query.isFetchingPreviousPage}
             onLoadNewer={loadNewer}
             authorName={authorName}
+            mentionName={mentionName}
             ownAccountId={ownAccountId}
             ownName={user.name}
             locale={locale}

@@ -21,9 +21,25 @@ export type Block =
   | { type: 'bulleted_list'; children: ListItem[] }
   | { type: 'numbered_list'; children: ListItem[] };
 
+/** A mention in a received message (the composer does not write them yet). Exactly one member names the target. */
+export type MentionNode =
+  | { type: 'mention'; accountId: string }
+  | { type: 'mention'; groupId: string }
+  | { type: 'mention'; special: 'everyone' | 'here' };
+
+/** What a received message can hold inline. */
+export type ReceivedRun = TextNode | MentionNode;
+export type ReceivedItem = { type: 'list_item'; children: ReceivedRun[] };
+export type ReceivedBlock =
+  | { type: 'paragraph' | 'quote' | 'code_block'; children: ReceivedRun[] }
+  | { type: 'bulleted_list' | 'numbered_list'; children: ReceivedItem[] };
+
 /** The server's limits on a link address and on the JSON of one message. */
 export const MAX_HREF_LENGTH = 2048;
 export const MAX_BLOCKS_JSON_BYTES = 32 * 1024;
+
+/** At most this many different web addresses in one message (`links.limit`). */
+export const MAX_LINKS = 50;
 
 const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
@@ -125,6 +141,26 @@ export function blocksToText(blocks: readonly Block[]): string {
   return normalizeMessageText(lines.join('\n'));
 }
 
+/** How many different `http` and `https` addresses the blocks link to, as the server counts them (mailto is not). */
+export function distinctWebLinks(blocks: readonly Block[]): number {
+  const hrefs = new Set<string>();
+  const visit = (runs: readonly TextNode[]) => {
+    for (const run of runs) {
+      for (const mark of run.marks ?? []) {
+        if (mark.type === 'link' && !mark.href.startsWith('mailto:')) hrefs.add(mark.href);
+      }
+    }
+  };
+  for (const block of blocks) {
+    if (block.type === 'bulleted_list' || block.type === 'numbered_list') {
+      for (const item of block.children) visit(item.children);
+    } else {
+      visit(block.children);
+    }
+  }
+  return hrefs.size;
+}
+
 /** The JSON size the server limits (UTF-8 bytes). */
 export function blocksJsonBytes(blocks: readonly Block[]): number {
   return new TextEncoder().encode(JSON.stringify(blocks)).length;
@@ -160,11 +196,23 @@ function parseMarks(value: unknown): Mark[] | undefined {
   return canonical.length > 0 ? canonical : undefined;
 }
 
-function parseRuns(value: unknown): TextNode[] {
+function parseMention(raw: Record<string, unknown>): MentionNode | undefined {
+  if (typeof raw.accountId === 'string') return { type: 'mention', accountId: raw.accountId };
+  if (typeof raw.groupId === 'string') return { type: 'mention', groupId: raw.groupId };
+  if (raw.special === 'everyone' || raw.special === 'here') return { type: 'mention', special: raw.special };
+  return undefined;
+}
+
+function parseRuns(value: unknown): ReceivedRun[] {
   if (!Array.isArray(value)) return [];
-  const runs: TextNode[] = [];
+  const runs: ReceivedRun[] = [];
   for (const raw of value as unknown[]) {
-    if (!isRecord(raw) || raw.type !== 'text' || typeof raw.text !== 'string') continue; // mentions and unknown nodes
+    if (isRecord(raw) && raw.type === 'mention') {
+      const mention = parseMention(raw);
+      if (mention) runs.push(mention);
+      continue;
+    }
+    if (!isRecord(raw) || raw.type !== 'text' || typeof raw.text !== 'string') continue; // unknown nodes
     const marks = parseMarks(raw.marks);
     runs.push(marks ? { type: 'text', text: raw.text, marks } : { type: 'text', text: raw.text });
   }
@@ -175,9 +223,9 @@ function parseRuns(value: unknown): TextNode[] {
  * The blocks to show for a received message, or null when there is nothing to render (not an array, or no known
  * block). Unknown block types, unknown inline nodes and unknown marks are skipped, never shown as raw data.
  */
-export function parseBlocks(value: unknown): Block[] | null {
+export function parseBlocks(value: unknown): ReceivedBlock[] | null {
   if (!Array.isArray(value)) return null;
-  const blocks: Block[] = [];
+  const blocks: ReceivedBlock[] = [];
   for (const raw of value as unknown[]) {
     if (!isRecord(raw)) continue;
     switch (raw.type) {
@@ -188,7 +236,7 @@ export function parseBlocks(value: unknown): Block[] | null {
         break;
       case 'bulleted_list':
       case 'numbered_list': {
-        const items: ListItem[] = [];
+        const items: ReceivedItem[] = [];
         if (Array.isArray(raw.children)) {
           for (const item of raw.children as unknown[]) {
             if (isRecord(item) && item.type === 'list_item') {
@@ -204,4 +252,59 @@ export function parseBlocks(value: unknown): Block[] | null {
     }
   }
   return blocks.length > 0 ? blocks : null;
+}
+
+/**
+ * The names the server put into the derived `text` for the mentions of received blocks (`@` and the name it looked up),
+ * for a mention whose person this client does not know. The text is walked in step with the blocks: each text run is
+ * found again after the previous one, and a mention's name is what lies between its `@` and the next run or the end of its line.
+ * Without an exact boundary (two mentions side by side, a run that cannot be found) there is no name: a guess could
+ * swallow text of the next run. Never throws.
+ */
+export function derivedMentionNames(
+  blocks: readonly ReceivedBlock[],
+  text: string,
+): Map<MentionNode, string> {
+  // Every inline node with whether it is the last of its block (the line ends after it).
+  const flat: { run: ReceivedRun; last: boolean }[] = [];
+  for (const block of blocks) {
+    const runs: ReceivedRun[] = [];
+    for (const child of block.children) {
+      if (child.type === 'list_item') {
+        const items = child.children;
+        for (const [index, run] of items.entries()) flat.push({ run, last: index === items.length - 1 });
+      } else {
+        runs.push(child);
+      }
+    }
+    for (const [index, run] of runs.entries()) flat.push({ run, last: index === runs.length - 1 });
+  }
+  const names = new Map<MentionNode, string>();
+  let cursor = 0;
+  for (const [index, { run, last }] of flat.entries()) {
+    if (run.type === 'text') {
+      const at = text.indexOf(run.text, cursor);
+      if (at === -1) return names;
+      cursor = at + run.text.length;
+      continue;
+    }
+    const at = text.indexOf('@', cursor);
+    if (at === -1) return names;
+    cursor = at + 1;
+    const lineEnd = text.indexOf('\u000A', at);
+    let end: number | undefined;
+    const next = flat[index + 1]?.run;
+    if (last) {
+      end = lineEnd === -1 ? text.length : lineEnd;
+    } else if (next?.type === 'text') {
+      // The name ends where the next run starts; if that cannot be found on this line the boundary is unknown.
+      const anchor = text.indexOf(next.text, at + 1);
+      if (anchor !== -1 && (lineEnd === -1 || anchor < lineEnd)) end = anchor;
+    }
+    if (end === undefined) continue;
+    const name = text.slice(at + 1, end).trim();
+    if (name.length > 0) names.set(run, name);
+    cursor = end;
+  }
+  return names;
 }

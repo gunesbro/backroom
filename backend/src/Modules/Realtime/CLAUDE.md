@@ -17,7 +17,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 ## Rules
 
 - Live events never go through RabbitMQ and never wait for it.
-- Payloads are versioned by event name (`MessagePosted`, later `MessagePosted.v2`), because clients may talk to cells on different versions. `MessagePosted.v2` (`MessagePostedV2Payload`: version and change numbers and the cell epoch) is published by Messaging in place of `MessagePosted` when `Features:MessageSync` is on (Phase 2 step 5).
+- Payloads are versioned by event name (`MessagePosted`, later `MessagePosted.v2`; `MessagePosted` has an additive optional `blocks`, `LiveMessage.Blocks`, the same shape as in v2), because clients may talk to cells on different versions. `MessagePosted.v2` (`MessagePostedV2Payload`: version and change numbers and the cell epoch) is published by Messaging in place of `MessagePosted` when `Features:MessageSync` is on (Phase 2 step 5).
 - Message text is in live events but never in logs; the `access_token` query parameter is redacted.
 
 ## Status

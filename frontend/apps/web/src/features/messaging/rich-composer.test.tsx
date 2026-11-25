@@ -267,3 +267,21 @@ describe('Rich text composer', () => {
     expect(results.violations.map((violation) => `${violation.id}: ${violation.help}`)).toEqual([]);
   });
 });
+
+describe('Rich text composer limits', () => {
+  it('Composer_WhenMoreThan50DistinctLinks_DisablesSendAndSaysWhy', async () => {
+    const { write } = await setup();
+    const children = Array.from({ length: 51 }, (_, index) => ({
+      type: 'text' as const,
+      text: `l${String(index)} `,
+      marks: [{ type: 'link' as const, href: `https://example.com/${String(index)}` }],
+    }));
+
+    write([{ type: 'paragraph', children }]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/51 different links/)).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+  });
+});

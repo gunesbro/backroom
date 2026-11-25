@@ -2,6 +2,8 @@ import type { Messages } from '@backroom/i18n';
 
 // Turkish texts from docs/design (Main: the shell, the channel list, the message actions and the composer; Dialogs:
 // create channel) where they show them; the rest as approved in review.
+export type MessageKey = Key;
+
 type Key =
   | 'channels'
   | 'addChannel'
@@ -80,6 +82,16 @@ type Key =
   | 'linkRemove'
   | 'linkInvalid'
   | 'formattingTooLarge'
+  | 'errorLinksLimit'
+  | 'errorLinkHref'
+  | 'errorBlocksDisabled'
+  | 'errorTextLength'
+  | 'errorEmpty'
+  | 'errorCharacters'
+  | 'errorMention'
+  | 'errorMentionLimit'
+  | 'errorGroupMention'
+  | 'linksLimit'
   | 'addMenu'
   | 'toggleFormatting'
   | 'emoji'
@@ -176,6 +188,16 @@ export const messages: Messages<Key> = {
     linkRemove: 'Remove link',
     linkInvalid: 'Enter a valid web or email address (http, https or mailto).',
     formattingTooLarge: 'This message has too much formatting to send. Simplify it.',
+    errorLinksLimit: 'This message has too many different links (50 at most). Remove some and send it again.',
+    errorLinkHref: 'One of the links is not a valid web or email address. Fix or remove it.',
+    errorBlocksDisabled: "Formatted messages aren't available on this server yet. Send plain text.",
+    errorTextLength: 'This message is too long. Shorten it to 4,000 characters.',
+    errorEmpty: 'This message has no text. Write something before sending.',
+    errorCharacters: 'This message has characters that cannot be sent. Remove them and try again.',
+    errorMention: "One of the people you mentioned can't be mentioned. Remove the mention and try again.",
+    errorMentionLimit: 'This message mentions too many people (50 at most).',
+    errorGroupMention: "Mentioning everyone or a group isn't available yet.",
+    linksLimit: 'This message has {count} different links; 50 is the most. Remove some to send it.',
     addMenu: 'Add',
     toggleFormatting: 'Show or hide formatting',
     emoji: 'Emoji',
@@ -271,6 +293,18 @@ export const messages: Messages<Key> = {
     linkRemove: 'Bağlantıyı kaldır',
     linkInvalid: 'Geçerli bir web veya e-posta adresi gir (http, https veya mailto).',
     formattingTooLarge: 'Bu mesajda çok fazla biçimlendirme var, gönderilemiyor. Sadeleştir.',
+    errorLinksLimit:
+      'Bu mesajda çok fazla farklı bağlantı var (en fazla 50). Birkaçını kaldırıp yeniden gönder.',
+    errorLinkHref: 'Bağlantılardan biri geçerli bir web ya da e-posta adresi değil. Düzelt ya da kaldır.',
+    errorBlocksDisabled: 'Biçimli mesajlar bu sunucuda henüz kullanılamıyor. Düz metin gönder.',
+    errorTextLength: 'Bu mesaj çok uzun. 4.000 karaktere kısalt.',
+    errorEmpty: 'Bu mesajda metin yok. Göndermeden önce bir şey yaz.',
+    errorCharacters: 'Bu mesajda gönderilemeyen karakterler var. Kaldırıp yeniden dene.',
+    errorMention: 'Anmak istediğin kişilerden biri anılamıyor. Anmayı kaldırıp yeniden dene.',
+    errorMentionLimit: 'Bu mesajda çok fazla kişi anılıyor (en fazla 50).',
+    errorGroupMention: 'Herkesi ya da bir grubu anma henüz kullanılamıyor.',
+    linksLimit:
+      'Bu mesajda {count} farklı bağlantı var; en fazla 50 olabilir. Göndermek için birkaçını kaldır.',
     addMenu: 'Ekle',
     toggleFormatting: 'Biçimlendirmeyi göster/gizle',
     emoji: 'Emoji',
