@@ -29,6 +29,8 @@ import {
 /** Every member row is this tall, so the list can be virtualized without measuring rows. */
 const MEMBER_ROW_HEIGHT = 40;
 const MANAGE_PUBLIC = 'channels.manage-public';
+/** Pages of members (50 each) kept in the cache at most. */
+const MAX_MEMBER_LIST_PAGES = 20;
 
 type Mode =
   | { kind: 'view' }
@@ -63,6 +65,7 @@ export function ChannelInfoDialog({
   existingNames,
   onClose,
   onLeaving,
+  onLeaveFailed,
   onLeft,
   onGone,
 }: {
@@ -77,6 +80,8 @@ export function ChannelInfoDialog({
   onClose: () => void;
   /** The person is about to leave the channel: the live event may arrive before the answer. */
   onLeaving: () => void;
+  /** Leaving failed: the person is still in the channel. */
+  onLeaveFailed: () => void;
   /** The person left the channel. */
   onLeft: () => void;
   /** The person may not read the channel any more. */
@@ -95,6 +100,8 @@ export function ChannelInfoDialog({
     queryFn: ({ pageParam, signal }) => api.listConversationMembers(orgId, channel.id, pageParam, signal),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
+    // A bounded cache: beyond this the earliest pages are dropped and the list shows the last ones loaded.
+    maxPages: MAX_MEMBER_LIST_PAGES,
   });
   const members = useMemo(
     () => membersQuery.data?.pages.flatMap((page) => page.members) ?? [],
@@ -147,7 +154,8 @@ export function ChannelInfoDialog({
 
       setMode(VIEW);
     },
-    onError: (error) => {
+    onError: (error, action) => {
+      if (action.do === 'leave') onLeaveFailed();
       if (isConversationGone(error)) onGone();
     },
   });
@@ -324,6 +332,7 @@ export function ChannelInfoDialog({
                 void membersQuery.refetch();
               }}
               hasMore={membersQuery.hasNextPage}
+              windowed={membersQuery.data !== undefined && membersQuery.data.pageParams[0] !== undefined}
               loadingMore={membersQuery.isFetchingNextPage}
               onMore={() => {
                 void membersQuery.fetchNextPage();
@@ -425,6 +434,7 @@ function MemberList({
   failed,
   onRetry,
   hasMore,
+  windowed,
   loadingMore,
   onMore,
 }: {
@@ -436,6 +446,8 @@ function MemberList({
   failed: boolean;
   onRetry: () => void;
   hasMore: boolean;
+  /** The earliest pages were dropped: the rows are no longer the first ones of the channel. */
+  windowed: boolean;
   loadingMore: boolean;
   onMore: () => void;
 }) {
@@ -472,7 +484,7 @@ function MemberList({
         </div>
       )}
       {/* Focusable, so the list can be scrolled with the keyboard when no row has a button. */}
-      <div ref={scrollRef} className="bm-members" tabIndex={0} role="group" aria-labelledby={headingId}>
+      <div ref={scrollRef} className="bm-members" tabIndex={0}>
         <ul
           className="bm-members__rows"
           aria-labelledby={headingId}
@@ -486,7 +498,7 @@ function MemberList({
                   key={item.key}
                   className="bm-member"
                   aria-setsize={Math.max(count, members.length)}
-                  aria-posinset={item.index + 1}
+                  aria-posinset={windowed ? undefined : item.index + 1}
                   style={{ transform: `translateY(${String(item.start)}px)` }}
                 >
                   {renderMember(member)}
@@ -501,6 +513,7 @@ function MemberList({
           {t('showMoreMembers')}
         </LinkButton>
       )}
+      {windowed && <p className="ph-muted">{t('membersWindow', { count: members.length })}</p>}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { type QueryClient } from '@tanstack/react-query';
+import { type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import {
   archivedConversationsKey,
   browseChannelsKey,
@@ -12,7 +12,7 @@ import {
 } from './queries';
 import { lastSeenSeq, rememberSeq } from './seq-memory';
 import type { ConversationUpdated } from '@backroom/realtime';
-import type { ConversationDetail, Message, MessagingApi } from './api';
+import type { ChannelPage, ConversationDetail, Message, MessagingApi } from './api';
 
 // Applying live events to the query cache. Live events are hints (ADR 0011): everything here is idempotent, and a
 // missed event is repaired by `catchUpChannel`.
@@ -60,8 +60,8 @@ export function noteChannelCreated(queryClient: QueryClient, orgId: string): voi
 }
 
 /**
- * The person is no longer in a conversation, or may not read it any more: it leaves the sidebar's list and everything
- * cached about it (details, members, messages) is dropped (docs/contracts/phase-2.md, "Removal").
+ * The person is no longer in a conversation, or may not read it any more: it leaves the sidebar's list and the list
+ * of archived channels, and everything cached about it (details, members, messages) is dropped (docs/contracts/phase-2.md, "Removal").
  */
 export function forgetConversation(queryClient: QueryClient, orgId: string, conversationId: string): void {
   queryClient.setQueryData<ConversationPages>(conversationsKey(orgId), (data) => {
@@ -74,6 +74,20 @@ export function forgetConversation(queryClient: QueryClient, orgId: string, conv
       })),
     };
   });
+  // The archived list too: a private channel's name must not stay cached after the person lost it.
+  queryClient.setQueryData<InfiniteData<ChannelPage, string | undefined>>(
+    archivedConversationsKey(orgId),
+    (data) => {
+      if (!data?.pages.some((page) => page.channels.some(({ id }) => id === conversationId))) return data;
+      return {
+        ...data,
+        pages: data.pages.map((page) => ({
+          ...page,
+          channels: page.channels.filter(({ id }) => id !== conversationId),
+        })),
+      };
+    },
+  );
   const queryKey = conversationScopeKey(orgId, conversationId);
   void queryClient.cancelQueries({ queryKey });
   queryClient.removeQueries({ queryKey });

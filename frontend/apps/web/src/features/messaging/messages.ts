@@ -147,7 +147,8 @@ type Key =
   | 'noArchivedChannels'
   | 'open'
   | 'openChannel'
-  | 'sendArchived';
+  | 'sendArchived'
+  | 'membersWindow';
 
 export type MessageKey = Key;
 
@@ -304,6 +305,7 @@ export const messages: Messages<Key> = {
     open: 'Open',
     openChannel: 'Open {name}',
     sendArchived: 'This channel is archived. The message was not sent.',
+    membersWindow: 'Showing the last {count} members loaded.',
   },
   tr: {
     channels: 'Kanallar',
@@ -455,5 +457,6 @@ export const messages: Messages<Key> = {
     open: 'Aç',
     openChannel: '{name} kanalını aç',
     sendArchived: 'Bu kanal arşivlendi. Mesaj gönderilmedi.',
+    membersWindow: 'Yüklenen son {count} üye gösteriliyor.',
   },
 };

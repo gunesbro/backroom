@@ -116,8 +116,9 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
     },
     [drop, queryClient, orgId],
   );
-  const noteLeaving = useCallback((conversationId: string) => {
-    leaving.current.add(conversationId);
+  const noteLeaving = useCallback((conversationId: string, started: boolean) => {
+    if (started) leaving.current.add(conversationId);
+    else leaving.current.delete(conversationId);
   }, []);
   const channelIds = useMemo(() => channels.channels.map((channel) => channel.id), [channels.channels]);
   const live = useLiveUpdates({
@@ -296,8 +297,8 @@ function ChannelView({
   onInfoOpenChange: (open: boolean) => void;
   /** The channel cannot be read any more, or the person left it. */
   onGone: (conversationId: string) => void;
-  /** The person is about to leave the channel themself. */
-  onLeaving: (conversationId: string) => void;
+  /** The person is about to leave the channel themself (`started`), or that leave failed. */
+  onLeaving: (conversationId: string, started: boolean) => void;
 }) {
   const t = useTranslate(messages);
   const locale = useLocale();
@@ -524,7 +525,10 @@ function ChannelView({
               onInfoOpenChange(false);
             }}
             onLeaving={() => {
-              onLeaving(channel.id);
+              onLeaving(channel.id, true);
+            }}
+            onLeaveFailed={() => {
+              onLeaving(channel.id, false);
             }}
             onLeft={() => {
               onGone(channel.id);

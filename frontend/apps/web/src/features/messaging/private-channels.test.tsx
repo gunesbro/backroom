@@ -10,7 +10,7 @@ import { AuthProvider } from '@/features/auth';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { fakeAuthClient } from '@/testing/fakes';
 import { createMessagingApi, MessagingApiContext, type ConversationKind } from './api';
-import { conversationScopeKey } from './queries';
+import { archivedConversationsKey, conversationScopeKey } from './queries';
 import { RealtimeContext } from './realtime-context';
 import { forgetSeqs } from './seq-memory';
 import { Workspace } from './workspace';
@@ -669,6 +669,35 @@ describe('Archived channels and lost access', () => {
     expect(sent).toEqual([{ method: 'POST', path: '/conversations/c-plans/unarchive', body: undefined }]);
   });
 
+  it('ArchivedChannel_OpenedFromTheList_JoinsItsGroupWhileOpen_AndIsForgottenWhenAccessIsLost', async () => {
+    conversations = [general(), { ...plans('member'), archivedAt: '2026-11-25T10:00:00Z' }];
+    const { realtime, queryClient } = renderWorkspace();
+    await screen.findByRole('button', { name: 'general' });
+    click('Browse channels');
+    const browse = await screen.findByRole('dialog', { name: 'Browse channels' });
+    click('Archived channels', browse);
+    fireEvent.click(await within(browse).findByRole('button', { name: 'Open plans' }));
+    await screen.findByRole('heading', { level: 2, name: 'Private channel plans' });
+    const archivedNames = () =>
+      queryClient
+        .getQueryData<{ pages: { channels: { name: string }[] }[] }>(archivedConversationsKey(ORG))
+        ?.pages.flatMap((page) => page.channels.map(({ name }) => name));
+
+    // Not in the sidebar, but open: its updates (an unarchive, for example) must arrive.
+    await waitFor(() => {
+      expect(realtime.spies.subscribeConversation).toHaveBeenCalledWith(ORG, 'c-plans');
+    });
+    expect(archivedNames()).toEqual(['plans']);
+    fireEvent.click(screen.getByRole('button', { name: 'general' }));
+    await waitFor(() => {
+      expect(realtime.spies.unsubscribeConversation).toHaveBeenCalledWith(ORG, 'c-plans');
+    });
+
+    realtime.emit('MembershipChanged', { orgId: ORG, conversationId: 'c-plans', change: 'removed' });
+
+    expect(archivedNames()).toEqual([]);
+  });
+
   it('ArchivedChannels_WhenThereAreNone_SaysSo', async () => {
     renderWorkspace();
     await screen.findByRole('button', { name: 'general' });
@@ -950,6 +979,22 @@ describe('Channel info', () => {
     // The live event of the person's own leave follows: it is not news.
     realtime.emit('MembershipChanged', { orgId: ORG, conversationId: 'c-plans', change: 'removed' });
     expect(screen.queryByText('O kanala artık erişimin yok.')).not.toBeInTheDocument();
+  });
+
+  it('Leave_WhenItFails_SaysSo_AndALaterRemovalIsStillNews', async () => {
+    server.use(http.post(`${BASE}/conversations/:id/leave`, () => problem(500, 'messaging.system')));
+    const { realtime } = renderWorkspace();
+    await open('plans', 'Private channel plans');
+    const dialog = await openInfo();
+
+    click('Leave channel', dialog);
+    click('Leave channel', dialog);
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+    click('Cancel', dialog);
+    conversations = [general()];
+    realtime.emit('MembershipChanged', { orgId: ORG, conversationId: 'c-plans', change: 'removed' });
+
+    expect(await screen.findByText('You no longer have access to that channel.')).toBeVisible();
   });
 
   it('Leave_AsTheLastMember_SaysTheChannelWillBeArchived', async () => {
