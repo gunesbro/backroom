@@ -125,6 +125,20 @@ function serveCell({
       return HttpResponse.json({ items: channels, next: null });
     }),
     http.get(`${CELL}/api/v1/orgs/${ORG}/channels`, () => HttpResponse.json({ channels, next: null })),
+    http.get(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId`, ({ params }) => {
+      const channel = channels.find(({ id }) => id === params.channelId);
+      return HttpResponse.json({
+        id: params.channelId,
+        kind: 'public_channel',
+        name: channel?.name ?? null,
+        description: null,
+        createdAt: channel?.createdAt ?? GENERAL.createdAt,
+        archivedAt: null,
+        memberCount: 2,
+        ownerAccountId: null,
+        role: 'member',
+      });
+    }),
     http.get(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, ({ request, params }) => {
       requested.push(request.url);
       const count = counts[String(params.channelId)] ?? 0;

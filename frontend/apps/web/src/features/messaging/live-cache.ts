@@ -1,7 +1,17 @@
 import { type QueryClient } from '@tanstack/react-query';
-import { browseChannelsKey, messagesKey, type MessagePages } from './queries';
+import {
+  browseChannelsKey,
+  conversationKey,
+  conversationMembersKey,
+  conversationScopeKey,
+  conversationsKey,
+  messagesKey,
+  type ConversationPages,
+  type MessagePages,
+} from './queries';
 import { lastSeenSeq, rememberSeq } from './seq-memory';
-import type { Message, MessagingApi } from './api';
+import type { ConversationUpdated } from '@backroom/realtime';
+import type { ConversationDetail, Message, MessagingApi } from './api';
 
 // Applying live events to the query cache. Live events are hints (ADR 0011): everything here is idempotent, and a
 // missed event is repaired by `catchUpChannel`.
@@ -46,6 +56,72 @@ export function applyLiveMessage(
  */
 export function noteChannelCreated(queryClient: QueryClient, orgId: string): void {
   void queryClient.invalidateQueries({ queryKey: browseChannelsKey(orgId) });
+}
+
+/**
+ * The person is no longer in a conversation, or may not read it any more: it leaves the sidebar's list and everything
+ * cached about it (details, members, messages) is dropped (docs/contracts/phase-2.md, "Removal").
+ */
+export function forgetConversation(queryClient: QueryClient, orgId: string, conversationId: string): void {
+  queryClient.setQueryData<ConversationPages>(conversationsKey(orgId), (data) => {
+    if (!data?.pages.some((page) => page.conversations.some(({ id }) => id === conversationId))) return data;
+    return {
+      ...data,
+      pages: data.pages.map((page) => ({
+        ...page,
+        conversations: page.conversations.filter(({ id }) => id !== conversationId),
+      })),
+    };
+  });
+  const queryKey = conversationScopeKey(orgId, conversationId);
+  void queryClient.cancelQueries({ queryKey });
+  queryClient.removeQueries({ queryKey });
+}
+
+/**
+ * A conversation changed (name, description, archive state, member count). The event carries the new values, so the
+ * caches are corrected in place and nothing is read again, except by a view that shows the owner and the members
+ * (`refetch`): the event names neither. An archived conversation leaves the sidebar's list, as the server's list
+ * leaves it out; one that came back is read again.
+ */
+export function applyConversationUpdated(
+  queryClient: QueryClient,
+  event: ConversationUpdated,
+  refetch: boolean,
+): void {
+  const { orgId, conversationId, name, description, archivedAt, memberCount } = event;
+  const found = { listed: false };
+  queryClient.setQueryData<ConversationPages>(conversationsKey(orgId), (data) => {
+    const current = data?.pages.flatMap((page) => page.conversations).find(({ id }) => id === conversationId);
+    if (!data || !current) return data;
+    found.listed = true;
+    if (archivedAt === null && (name === null || name === current.name)) return data;
+    return {
+      ...data,
+      pages: data.pages.map((page) => ({
+        ...page,
+        conversations:
+          archivedAt === null
+            ? page.conversations.map((item) =>
+                item.id === conversationId && name !== null ? { ...item, name } : item,
+              )
+            : page.conversations.filter(({ id }) => id !== conversationId),
+      })),
+    };
+  });
+  if (!found.listed && archivedAt === null) {
+    void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
+  }
+
+  queryClient.setQueryData<ConversationDetail>(
+    conversationKey(orgId, conversationId),
+    (detail) => detail && { ...detail, name, description, archivedAt, memberCount },
+  );
+  void queryClient.invalidateQueries({
+    queryKey: conversationKey(orgId, conversationId),
+    refetchType: refetch ? 'active' : 'none',
+  });
+  void queryClient.invalidateQueries({ queryKey: conversationMembersKey(orgId, conversationId) });
 }
 
 /**

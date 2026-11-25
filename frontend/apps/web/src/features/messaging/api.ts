@@ -1,8 +1,42 @@
 import { createContext, useContext } from 'react';
-import { requestJson, type AccessTokenSource } from '@/shared/http';
+import { ApiError, requestJson, type AccessTokenSource } from '@/shared/http';
 import type { Block } from './rich-text/blocks';
 
-export type Channel = { id: string; name: string; createdAt: string };
+/** The kinds of conversation (docs/contracts/phase-2.md, flow 1); the sidebar lists channels only so far. */
+export type ConversationKind = 'public_channel' | 'private_channel' | 'dm' | 'group_dm' | 'thread';
+/** `kind` is missing only in data made before private channels: such a channel is public. */
+export type Channel = {
+  id: string;
+  name: string;
+  createdAt: string;
+  kind?: ConversationKind;
+  description?: string | null;
+};
+/** One conversation as its reader sees it. `role` is the reader's own (null without a membership). */
+export type ConversationDetail = {
+  id: string;
+  kind: ConversationKind;
+  name: string | null;
+  description: string | null;
+  createdAt: string;
+  archivedAt: string | null;
+  memberCount: number;
+  /** Only a private channel has an owner. */
+  ownerAccountId: string | null;
+  role: 'owner' | 'member' | null;
+};
+export type ConversationMember = { accountId: string; role: 'owner' | 'member'; joinedAt: string };
+export type ConversationMemberPage = { members: ConversationMember[]; next: string | null };
+export type NewChannel = {
+  name: string;
+  private?: boolean;
+  description?: string;
+  /** At most 50 other active members of the organization. */
+  memberAccountIds?: readonly string[];
+};
+
+/** The most people one request may add to a channel (also when it is created). */
+export const MAX_ADDED_MEMBERS = 50;
 /** One page of public channels to browse (not only the ones the person is in). */
 export type ChannelPage = { channels: Channel[]; next: string | null };
 /** One page of the person's own conversations (their open memberships). */
@@ -38,7 +72,38 @@ export interface MessagingApi {
   ) => Promise<ConversationPage>;
   /** Public channels of the organization, joined or not: the browse list. */
   browseChannels: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<ChannelPage>;
-  createChannel: (orgId: string, name: string) => Promise<Channel>;
+  createChannel: (orgId: string, channel: NewChannel) => Promise<Channel>;
+  /** One conversation the person may read; anything else answers `404 messaging.conversation_not_found`. */
+  getConversation: (
+    orgId: string,
+    conversationId: string,
+    signal?: AbortSignal,
+  ) => Promise<ConversationDetail>;
+  /** Renames or describes a channel (its owner, or `channels.manage-public`); an empty description removes it. */
+  updateConversation: (
+    orgId: string,
+    conversationId: string,
+    change: { name?: string; description?: string },
+  ) => Promise<ConversationDetail>;
+  archiveConversation: (orgId: string, conversationId: string) => Promise<void>;
+  unarchiveConversation: (orgId: string, conversationId: string) => Promise<void>;
+  /** One page of a conversation's members, by account id. */
+  listConversationMembers: (
+    orgId: string,
+    conversationId: string,
+    after: string | undefined,
+    signal?: AbortSignal,
+  ) => Promise<ConversationMemberPage>;
+  /** Adds 1 to 50 active members of the organization to a private channel; people already in it are skipped. */
+  addConversationMembers: (
+    orgId: string,
+    conversationId: string,
+    accountIds: readonly string[],
+  ) => Promise<void>;
+  /** Hands a private channel to one of its members (its owner only). */
+  transferOwnership: (orgId: string, conversationId: string, accountId: string) => Promise<void>;
+  /** Whether the person may manage public channels: see `createMessagingApi`. */
+  canManagePublicChannels: (orgId: string, signal?: AbortSignal) => Promise<boolean>;
   /** Joins a public channel; joining one the person is in succeeds. */
   joinConversation: (orgId: string, conversationId: string) => Promise<void>;
   /** Leaves a conversation (not a DM); leaving one the person is not in succeeds. */
@@ -114,8 +179,48 @@ export function createMessagingApi(
       if (after) query.set('after', after);
       return requestJson(`${org(orgId)}/channels?${query.toString()}`, getAccessToken, { signal });
     },
-    createChannel: (orgId, name) =>
-      requestJson(`${org(orgId)}/channels`, getAccessToken, { method: 'POST', body: { name } }),
+    createChannel: (orgId, channel) =>
+      requestJson(`${org(orgId)}/channels`, getAccessToken, { method: 'POST', body: channel }),
+    getConversation: (orgId, conversationId, signal) =>
+      requestJson(conversation(orgId, conversationId), getAccessToken, { signal }),
+    updateConversation: (orgId, conversationId, change) =>
+      requestJson(conversation(orgId, conversationId), getAccessToken, { method: 'PATCH', body: change }),
+    archiveConversation: (orgId, conversationId) =>
+      requestJson(`${conversation(orgId, conversationId)}/archive`, getAccessToken, { method: 'POST' }),
+    unarchiveConversation: (orgId, conversationId) =>
+      requestJson(`${conversation(orgId, conversationId)}/unarchive`, getAccessToken, { method: 'POST' }),
+    listConversationMembers: async (orgId, conversationId, after, signal) => {
+      const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (after) query.set('after', after);
+      const page = await requestJson<{ items: ConversationMember[]; next: string | null }>(
+        `${conversation(orgId, conversationId)}/members?${query.toString()}`,
+        getAccessToken,
+        { signal },
+      );
+      return { members: page.items, next: page.next };
+    },
+    addConversationMembers: (orgId, conversationId, accountIds) =>
+      requestJson(`${conversation(orgId, conversationId)}/members`, getAccessToken, {
+        method: 'POST',
+        body: { accountIds },
+      }),
+    transferOwnership: (orgId, conversationId, accountId) =>
+      requestJson(`${conversation(orgId, conversationId)}/owner`, getAccessToken, {
+        method: 'PUT',
+        body: { accountId },
+      }),
+    // The cell has no endpoint that lists the person's own permissions yet. The admins' count of private channels
+    // asks for exactly `channels.manage-public` and answers one number, so whether it is allowed tells; the number
+    // itself is not read.
+    canManagePublicChannels: async (orgId, signal) => {
+      try {
+        await requestJson(`${org(orgId)}/private-channels/count`, getAccessToken, { signal });
+        return true;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 403) return false;
+        throw error;
+      }
+    },
     joinConversation: (orgId, conversationId) =>
       requestJson(`${conversation(orgId, conversationId)}/join`, getAccessToken, { method: 'POST' }),
     leaveConversation: (orgId, conversationId) =>
