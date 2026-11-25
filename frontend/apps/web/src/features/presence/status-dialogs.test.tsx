@@ -10,6 +10,7 @@ import { CustomStatusDialog } from './status-dialogs';
 
 const withEmoji: AccountStatus = {
   dndUntil: null,
+  away: false,
   customStatus: { emoji: '🎯', text: 'Focusing', expiresAt: null },
   timeZone: 'Europe/Istanbul',
   version: 3,
