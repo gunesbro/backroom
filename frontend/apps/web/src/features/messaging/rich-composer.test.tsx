@@ -70,6 +70,17 @@ describe('Rich text composer', () => {
     expect(loading?.querySelector('.bm-composer__input')).not.toBeNull();
   });
 
+  // Lexical never makes its root editable by itself; without the attribute the field takes no focus and no caret
+  // in a browser, while the tests above still pass because they drive the editor directly.
+  it('Composer_WhenRendered_IsAnEditableFieldThatTakesFocus', async () => {
+    const { input } = await setup();
+    expect(input).toHaveAttribute('contenteditable', 'true');
+    act(() => {
+      input.focus();
+    });
+    expect(input).toHaveFocus();
+  });
+
   it('Composer_WhenEnterPressed_SendsTextAndBlocksAndClears', async () => {
     const { onSend, input, write, blocks } = await setup();
     write(paragraph('Hello İstanbul'));
