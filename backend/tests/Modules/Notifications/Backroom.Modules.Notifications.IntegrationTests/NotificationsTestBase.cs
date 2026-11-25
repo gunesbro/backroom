@@ -34,6 +34,8 @@ public abstract class NotificationsTestBase(PostgresDatabase database) : IAsyncL
 
     internal FakeConversationAccess Access { get; } = new();
 
+    internal FakeMembers Members { get; } = new();
+
     internal FakePresence Presence { get; } = new();
 
     internal RecordingPublisher Published { get; } = new();
@@ -44,12 +46,15 @@ public abstract class NotificationsTestBase(PostgresDatabase database) : IAsyncL
     {
         await MigrateOnceAsync();
         Previews.Access = Access;
+        Access.Members = Members;
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Trace));
         services.AddDatabaseSession().Configure(options => options.ConnectionString = database.ApplicationConnectionString());
         services.AddSingleton<TimeProvider>(Clock);
         services.AddSingleton<IConversationReadAccess>(Access);
         services.AddSingleton<IPresenceReader>(Presence);
+        services.AddSingleton<Backroom.BuildingBlocks.Application.Organizations.IOrganizationMembershipCheck>(Members);
+        services.AddScoped<Backroom.BuildingBlocks.Application.Messaging.AfterCommitActions>();
         services.AddSingleton<ILiveEventPublisher>(Published);
         services.AddSingleton<IMessagePreviews>(Previews);
         services.AddNotifications();
@@ -72,6 +77,8 @@ public abstract class NotificationsTestBase(PostgresDatabase database) : IAsyncL
         await unitOfWork.BeginAsync(CancellationToken);
         var result = await work(scope.ServiceProvider);
         await unitOfWork.CommitAsync(CancellationToken);
+        // As the consumer host does: after-commit work runs once the commit has succeeded.
+        await scope.ServiceProvider.GetRequiredService<Backroom.BuildingBlocks.Application.Messaging.AfterCommitActions>().RunAsync(CancellationToken.None);
         return result;
     }
 
@@ -81,6 +88,17 @@ public abstract class NotificationsTestBase(PostgresDatabase database) : IAsyncL
             await services.GetRequiredService<ActivityAddedHandler>().HandleAsync(activity, CancellationToken);
             return 0;
         });
+
+    /// <summary>The handler runs, then the unit of work is rolled back (a failed commit): no after-commit work may run.</summary>
+    internal async Task HandleWithoutCommitAsync(Guid organizationId, ActivityAdded activity)
+    {
+        await using var scope = _provider.CreateAsyncScope();
+        scope.ServiceProvider.GetRequiredService<OrganizationContext>().Enter(organizationId);
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        await unitOfWork.BeginAsync(CancellationToken);
+        await scope.ServiceProvider.GetRequiredService<ActivityAddedHandler>().HandleAsync(activity, CancellationToken);
+        await unitOfWork.RollbackAsync(CancellationToken);
+    }
 
     internal ActivityAdded Activity(Guid organizationId, string kind, Guid? conversationId, Guid? messageId, Guid actor, params Guid[] recipients) =>
         new(Guid.CreateVersion7(), organizationId, Clock.GetUtcNow(), kind, conversationId, messageId, actor, recipients);

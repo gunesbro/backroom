@@ -189,4 +189,76 @@ public sealed class ActivityAddedHandlerTests(PostgresDatabase database) : Notif
         Published.Notifications.Should().BeEmpty();
         (await ListAsync(_org, _bob)).Entries.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task Handle_WhenTheUnitOfWorkDoesNotCommit_AnnouncesNothingAndTheRedeliveryAnnouncesOnceAsync()
+    {
+        var message = Guid.CreateVersion7();
+        Access.Allow(_conversation, _bob);
+        var activity = Activity(_org, ActivityKinds.Mention, _conversation, message, _author, _bob);
+
+        await HandleWithoutCommitAsync(_org, activity);
+
+        Published.Notifications.Should().BeEmpty();
+        (await ListAsync(_org, _bob)).Entries.Should().BeEmpty();
+
+        await HandleAsync(_org, activity);
+        await HandleAsync(_org, activity);
+
+        Published.Notifications.Should().ContainSingle();
+    }
+
+    [Fact]
+    [Trait("Category", "Privacy")]
+    public async Task Handle_WhenARecipientWasRemovedFromTheOrganizationOrIsAGuest_NotifiesThemNotAsync()
+    {
+        var removed = Guid.CreateVersion7();
+        Access.Allow(_conversation, _bob, removed);
+        Members.Remove(removed);
+
+        await HandleAsync(_org, Activity(_org, ActivityKinds.Mention, _conversation, Guid.CreateVersion7(), _author, _bob, removed));
+        await HandleAsync(_org, Activity(_org, ActivityKinds.InvitationAccepted, null, null, _author, removed));
+
+        Published.Notifications.Should().ContainSingle().Which.AccountId.Should().Be(_bob);
+        (await ListAsync(_org, removed)).Entries.Should().BeEmpty();
+        (await CountAsync("SELECT count(*) FROM notifications.inbox_items WHERE account_id = $1", removed)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Handle_ReadsThePreviewOncePerMessageForAllRecipientsAsync()
+    {
+        var carol = Guid.CreateVersion7();
+        var message = Guid.CreateVersion7();
+        Access.Allow(_conversation, _bob, carol);
+        Previews.Add(message, _conversation, "hello");
+
+        await HandleAsync(_org, Activity(_org, ActivityKinds.Mention, _conversation, message, _author, _bob, carol));
+
+        Published.Notifications.Should().HaveCount(2).And.OnlyContain(live => live.Preview == "hello");
+        Previews.RequestedLengths.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Handle_WhenAMessageHasNoConversation_IgnoresTheEventAsync()
+    {
+        await HandleAsync(_org, Activity(_org, ActivityKinds.Mention, null, Guid.CreateVersion7(), _author, _bob));
+
+        Published.Notifications.Should().BeEmpty();
+        (await ListAsync(_org, _bob)).Entries.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Handle_ForRemindersAboutAMessageThatAlreadyNotified_StoresThemTooAsync()
+    {
+        var message = Guid.CreateVersion7();
+        Access.Allow(_conversation, _bob);
+
+        await HandleAsync(_org, Activity(_org, ActivityKinds.Mention, _conversation, message, _author, _bob));
+        await HandleAsync(_org, Activity(_org, ActivityKinds.ReminderDue, _conversation, message, _author, _bob));
+        await HandleAsync(_org, Activity(_org, ActivityKinds.ScheduledFailed, _conversation, message, _author, _bob));
+        await HandleAsync(_org, Activity(_org, ActivityKinds.ReminderDue, _conversation, message, _author, _bob));
+
+        (await ListAsync(_org, _bob)).Entries.Select(entry => entry.Item.Kind).Should()
+            .BeEquivalentTo([ActivityKinds.Mention, ActivityKinds.ReminderDue, ActivityKinds.ScheduledFailed]);
+    }
 }

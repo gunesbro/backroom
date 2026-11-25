@@ -50,6 +50,7 @@ public static class MessagingServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         var subscription = IntegrationEventSubscription.For<TEvent, THandler>(consumerSchema);
         services.TryAddScoped<THandler>();
+        services.TryAddScoped<AfterCommitActions>();
         services.AddSingleton(subscription);
 
         // The relay cleans up every consuming module's inbox, so it cannot be forgotten in configuration.

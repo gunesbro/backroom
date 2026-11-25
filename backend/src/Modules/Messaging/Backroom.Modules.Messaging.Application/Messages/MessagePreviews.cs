@@ -38,6 +38,7 @@ internal sealed class MessagePreviews(IMessageStore messages, IConversationStore
         return result;
     }
 
+    /// <summary>At most <paramref name="maxLength"/> UTF-16 characters, cut back to a text element boundary (never inside a surrogate pair or a combining sequence).</summary>
     private static string Truncate(string text, int maxLength)
     {
         if (text.Length <= maxLength)
@@ -45,14 +46,17 @@ internal sealed class MessagePreviews(IMessageStore messages, IConversationStore
             return text;
         }
 
-        // Whole text elements, so a cut never splits a surrogate pair or a combining sequence.
-        var enumerator = StringInfo.GetTextElementEnumerator(text);
         var end = 0;
-        var count = 0;
-        while (count < maxLength && enumerator.MoveNext())
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        while (enumerator.MoveNext())
         {
-            end = enumerator.ElementIndex + ((string)enumerator.Current).Length;
-            count++;
+            var next = enumerator.ElementIndex + ((string)enumerator.Current).Length;
+            if (next > maxLength)
+            {
+                break;
+            }
+
+            end = next;
         }
 
         return text[..end];

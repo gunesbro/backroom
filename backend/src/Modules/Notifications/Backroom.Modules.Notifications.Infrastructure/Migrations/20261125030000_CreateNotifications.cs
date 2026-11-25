@@ -52,8 +52,12 @@ internal sealed class CreateNotifications : Migration
                 created_at timestamptz NOT NULL,
                 read_at timestamptz);
 
-            -- At most one notification per message per person.
-            CREATE UNIQUE INDEX inbox_items_message_key ON notifications.inbox_items (org_id, account_id, message_id) WHERE message_id IS NOT NULL;
+            -- At most one notification per message per person. A reminder or a failed scheduled message comes later about a message
+            -- that may already have notified the person, so those kinds are keyed by kind too and are never dropped for another kind.
+            CREATE UNIQUE INDEX inbox_items_message_key ON notifications.inbox_items (org_id, account_id, message_id)
+                WHERE message_id IS NOT NULL AND kind NOT IN ('reminder_due', 'scheduled_failed');
+            CREATE UNIQUE INDEX inbox_items_message_kind_key ON notifications.inbox_items (org_id, account_id, message_id, kind)
+                WHERE message_id IS NOT NULL AND kind IN ('reminder_due', 'scheduled_failed');
             -- The bell, newest first: keyset on (created_at, id).
             CREATE INDEX inbox_items_bell_idx ON notifications.inbox_items (org_id, account_id, created_at DESC, id DESC);
             -- The Mentions tab.

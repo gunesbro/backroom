@@ -12,6 +12,7 @@ namespace Backroom.Modules.Notifications.Application.Bell;
 /// </summary>
 internal sealed class BellService(
     INotificationStore store,
+    IConversationReadAccess conversations,
     IMessagePreviews previews,
     IOrganizationContext context,
     TimeProvider timeProvider)
@@ -63,7 +64,15 @@ internal sealed class BellService(
         var organizationId = OrganizationId;
         var items = await store.ListAsync(organizationId, accountId, mentionsOnly, cursor, pageSize + 1, cancellationToken);
         var hasMore = items.Count > pageSize;
-        var page = hasMore ? [.. items.Take(pageSize)] : items;
+        var fetched = hasMore ? [.. items.Take(pageSize)] : items;
+
+        // Entries of conversations the person can no longer read are left out (one batch check per page); the cursor still
+        // follows the rows fetched, so paging never repeats or skips.
+        var conversationIds = fetched.Where(item => item.ConversationId is not null).Select(item => item.ConversationId!.Value).Distinct().ToArray();
+        var readable = conversationIds.Length == 0
+            ? new HashSet<Guid>()
+            : await conversations.ReadableConversationsAsync(organizationId, accountId, conversationIds, cancellationToken);
+        var page = fetched.Where(item => item.ConversationId is not Guid conversation || readable.Contains(conversation)).ToList();
 
         var messageIds = page.Where(item => item.MessageId is not null).Select(item => item.MessageId!.Value).Distinct().ToArray();
         var texts = messageIds.Length == 0
@@ -73,7 +82,7 @@ internal sealed class BellService(
         var entries = page
             .Select(item => new BellEntry(item, item.MessageId is { } messageId && texts.TryGetValue(messageId, out var text) ? text : null))
             .ToArray();
-        var next = hasMore ? BellCursor.Encode(page[^1].CreatedAt, page[^1].Id) : null;
+        var next = hasMore ? BellCursor.Encode(fetched[^1].CreatedAt, fetched[^1].Id) : null;
         return new BellPage(entries, next);
     }
 

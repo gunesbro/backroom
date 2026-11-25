@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Backroom.BuildingBlocks.Application.Identifiers;
 using Backroom.BuildingBlocks.Application.Messaging;
+using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.Modules.Messaging.Contracts;
 using Backroom.Modules.Notifications.Application.Bell;
 using Backroom.Modules.Notifications.Application.Settings;
@@ -15,17 +16,19 @@ namespace Backroom.Modules.Notifications.Application.Delivery;
 /// (the same check as reading it), at most one entry per message and person. Runs in the event's organization.
 /// </summary>
 /// <remarks>
-/// The live events leave at the end of the handler, before the unit of work commits (a handler has no after-commit hook).
-/// If the commit then fails, the redelivery stores the entries again and announces them again, so the worst case is a
-/// repeated toast; an entry is never announced without having been decided. Publishing is best effort and never fails
-/// the handler. Ids only in logs, never text.
+/// The live events are queued as after-commit actions (<see cref="AfterCommitActions"/>, run by the consumer host once the unit of
+/// work has committed): a failed commit announces nothing, and a redelivery skipped by the inbox announces nothing. The preview text
+/// is read inside the unit of work, once per message (every recipient already passed the same read check). Publishing is best effort
+/// and never fails the delivery. Ids only in logs, never text.
 /// </remarks>
 internal sealed partial class ActivityAddedHandler(
     INotificationStore store,
     IConversationReadAccess conversations,
+    IOrganizationMembershipCheck members,
     IMessagePreviews previews,
     IPresenceReader presence,
     ILiveEventPublisher live,
+    AfterCommitActions afterCommit,
     IIdGenerator ids,
     TimeProvider timeProvider,
     ILogger<ActivityAddedHandler> logger) : IIntegrationEventHandler<ActivityAdded>
@@ -47,19 +50,20 @@ internal sealed partial class ActivityAddedHandler(
             .Take(ActivityAdded.MaxAccounts)
             .ToList();
 
-        // The same permission check as reading the conversation (Messaging answers false for anything unreadable).
+        // Only active organization members who may read the conversation, in one batch (a removed member or a guest gets
+        // nothing). Kinds that point at no message or conversation need no read check; a message without a conversation is malformed.
         if (integrationEvent.ConversationId is { } conversationId)
         {
-            var allowed = new List<Guid>(recipients.Count);
-            foreach (var account in recipients)
-            {
-                if (await conversations.CanReadAsync(organizationId, conversationId, account, cancellationToken))
-                {
-                    allowed.Add(account);
-                }
-            }
-
-            recipients = allowed;
+            recipients = [.. await conversations.FilterReadersAsync(organizationId, conversationId, recipients, cancellationToken)];
+        }
+        else if (integrationEvent.MessageId is not null)
+        {
+            LogMalformed(logger, integrationEvent.EventId, organizationId);
+            return;
+        }
+        else
+        {
+            recipients = [.. await members.SelectActiveMembersAsync(recipients, cancellationToken)];
         }
 
         if (recipients.Count == 0)
@@ -98,18 +102,32 @@ internal sealed partial class ActivityAddedHandler(
         }
 
         var added = await store.AddItemsAsync(entries, cancellationToken);
-        foreach (var entry in entries)
+        var toAnnounce = entries.Where(entry => added.Contains(entry.Id) && outcomes[entry.AccountId] == Outcome.Deliver).ToList();
+        if (toAnnounce.Count > 0)
         {
-            if (!added.Contains(entry.Id) || outcomes[entry.AccountId] != Outcome.Deliver)
+            // Read once as the first recipient: every recipient passed the same read check for this conversation.
+            string? text = null;
+            if (integrationEvent.MessageId is { } messageId && toAnnounce.Any(entry => !SettingsOf(accountSettings, entry.AccountId).HidePreviews))
             {
-                continue;
+                var texts = await previews.ReadAsync(
+                    organizationId, toAnnounce[0].AccountId, [messageId], NotificationRequestedPayload.MaxPreviewLength, cancellationToken);
+                text = texts.GetValueOrDefault(messageId);
             }
 
-            await AnnounceAsync(entry, accountSettings.GetValueOrDefault(entry.AccountId) ?? AccountSettings.Default, cancellationToken);
+            foreach (var entry in toAnnounce)
+            {
+                var payload = new NotificationRequestedPayload(
+                    entry.OrgId, entry.AccountId, entry.Id, entry.Kind, entry.ConversationId, entry.MessageId, entry.ActorAccountId,
+                    SettingsOf(accountSettings, entry.AccountId).HidePreviews ? null : text);
+                afterCommit.Add(token => PublishAsync(payload, token));
+            }
         }
 
         LogDecided(logger, integrationEvent.EventId, organizationId, recipients.Count, added.Count);
     }
+
+    private static AccountSettings SettingsOf(IReadOnlyDictionary<Guid, AccountSettings> settings, Guid accountId) =>
+        settings.TryGetValue(accountId, out var found) ? found : AccountSettings.Default;
 
     private async Task<HashSet<Guid>> DoNotDisturbAsync(List<Guid> accounts, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -129,29 +147,17 @@ internal sealed partial class ActivityAddedHandler(
         return active;
     }
 
-    private async Task AnnounceAsync(NewInboxItem entry, AccountSettings settings, CancellationToken cancellationToken)
+    private async Task PublishAsync(NotificationRequestedPayload payload, CancellationToken cancellationToken)
     {
         try
         {
-            string? preview = null;
-            if (!settings.HidePreviews && entry.MessageId is { } messageId)
-            {
-                // Read as the recipient, through the permission check; at most 150 characters.
-                var texts = await previews.ReadAsync(
-                    entry.OrgId, entry.AccountId, [messageId], NotificationRequestedPayload.MaxPreviewLength, cancellationToken);
-                preview = texts.GetValueOrDefault(messageId);
-            }
-
-            await live.PublishAsync(
-                new NotificationRequestedPayload(
-                    entry.OrgId, entry.AccountId, entry.Id, entry.Kind, entry.ConversationId, entry.MessageId, entry.ActorAccountId, preview),
-                cancellationToken);
+            await live.PublishAsync(payload, cancellationToken);
         }
 #pragma warning disable CA1031 // Best effort: a live event can be lost, the bell has the entry.
         catch (Exception exception) when (exception is not OperationCanceledException)
 #pragma warning restore CA1031
         {
-            LogAnnounceFailed(logger, exception.GetType().Name, entry.OrgId, entry.Id);
+            LogAnnounceFailed(logger, exception.GetType().Name, payload.OrgId, payload.NotificationId);
         }
     }
 
@@ -160,6 +166,9 @@ internal sealed partial class ActivityAddedHandler(
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Debug, Message = "Event {EventId} of organization {OrganizationId}: {Recipients} recipients, {Added} bell entries added.")]
     private static partial void LogDecided(ILogger logger, Guid eventId, Guid organizationId, int recipients, int added);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Event {EventId} of organization {OrganizationId} names a message but no conversation and was ignored.")]
+    private static partial void LogMalformed(ILogger logger, Guid eventId, Guid organizationId);
 
     // The exception type only: its message could carry the payload.
     [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Announcing notification {NotificationId} of organization {OrganizationId} failed ({ExceptionType}).")]

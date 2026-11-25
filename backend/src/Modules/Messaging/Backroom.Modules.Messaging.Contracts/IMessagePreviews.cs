@@ -11,7 +11,7 @@ public interface IMessagePreviews
     public const int MaxMessages = 100;
 
     /// <summary>
-    /// The first <paramref name="maxLength"/> characters (plain text, whole text elements) of each message the account may read; the
+    /// At most <paramref name="maxLength"/> UTF-16 characters (plain text, cut back to a text element boundary) of each message the account may read; the
     /// others are left out of the answer. Runs in the current unit of work, which row-level security limits to the entered organization.
     /// </summary>
     Task<IReadOnlyDictionary<Guid, string>> ReadAsync(

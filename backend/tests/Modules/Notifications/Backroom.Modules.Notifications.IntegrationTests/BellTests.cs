@@ -110,7 +110,7 @@ public sealed class BellTests(PostgresDatabase database) : NotificationsTestBase
 
     [Fact]
     [Trait("Category", "Privacy")]
-    public async Task List_WhenAccessWasLost_ShowsTheEntryWithoutPreviewAsync()
+    public async Task List_WhenAccessWasLost_LeavesTheEntryOutAsync()
     {
         await NotifyAsync(_org, _bob, ActivityKinds.Mention, "private words");
         (await ListAsync(_org, _bob)).Entries.Single().Preview.Should().Be("private words");
@@ -118,7 +118,7 @@ public sealed class BellTests(PostgresDatabase database) : NotificationsTestBase
         Access.Revoke(_conversation, _bob);
         var after = await ListAsync(_org, _bob);
 
-        after.Entries.Should().ContainSingle().Which.Preview.Should().BeNull();
+        after.Entries.Should().BeEmpty();
     }
 
     [Fact]

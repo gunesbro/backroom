@@ -17,13 +17,37 @@ internal sealed class FakeConversationAccess : IConversationReadAccess
         }
     }
 
+    /// <summary>The real check starts with active organization members.</summary>
+    public FakeMembers? Members { get; set; }
+
     public void Revoke(Guid conversationId, Guid account) => _allowed.Remove((conversationId, account));
 
     public Task<bool> CanReadAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
         Task.FromResult(_allowed.Contains((conversationId, accountId)));
 
+    public Task<IReadOnlyList<Guid>> FilterReadersAsync(Guid organizationId, Guid conversationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Guid>>([.. accountIds.Where(account => _allowed.Contains((conversationId, account)) && Members?.IsMember(account) != false)]);
+
+    public Task<IReadOnlySet<Guid>> ReadableConversationsAsync(Guid organizationId, Guid accountId, IReadOnlyCollection<Guid> conversationIds, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlySet<Guid>>(conversationIds.Where(conversation => _allowed.Contains((conversation, accountId))).ToHashSet());
+
     public Task<bool> IsMemberAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
         Task.FromResult(_allowed.Contains((conversationId, accountId)));
+}
+
+/// <summary>The organization's member check: everyone is an active member except those marked removed (a guest is not a member either).</summary>
+internal sealed class FakeMembers : Backroom.BuildingBlocks.Application.Organizations.IOrganizationMembershipCheck
+{
+    private readonly HashSet<Guid> _notMembers = [];
+
+    public void Remove(Guid accountId) => _notMembers.Add(accountId);
+
+    public bool IsMember(Guid accountId) => !_notMembers.Contains(accountId);
+
+    public Task<bool> IsActiveMemberAsync(Guid accountId, CancellationToken cancellationToken) => Task.FromResult(!_notMembers.Contains(accountId));
+
+    public Task<IReadOnlyList<Guid>> SelectActiveMembersAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Guid>>([.. accountIds.Where(account => !_notMembers.Contains(account))]);
 }
 
 /// <summary>
