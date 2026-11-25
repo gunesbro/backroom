@@ -2,8 +2,6 @@ import type { Messages } from '@backroom/i18n';
 
 // Turkish texts from docs/design (Main: the shell, the channel list, the message actions and the composer; Dialogs:
 // create channel) where they show them; the rest as approved in review.
-export type MessageKey = Key;
-
 type Key =
   | 'channels'
   | 'addChannel'
