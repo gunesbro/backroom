@@ -6,6 +6,7 @@ using Backroom.Modules.Files.Presentation;
 using Backroom.Modules.Notifications.Presentation;
 using Backroom.Modules.Messaging.Presentation;
 using Backroom.Modules.Organization.Presentation;
+using Backroom.Modules.Permissions.Presentation;
 using Backroom.Modules.Presence.Presentation;
 using Backroom.Modules.Realtime.Infrastructure;
 using Backroom.ServiceDefaults;
@@ -73,6 +74,7 @@ internal static class CellApp
         if (role == CellRole.App)
         {
             app.MapOrganizationEndpoints();
+            app.MapPermissionsEndpoints();
             app.MapMessagingEndpoints();
             app.MapPresenceEndpoints();
             if (app.Configuration.GetValue<bool>(FilesEndpoints.FilesFlag))

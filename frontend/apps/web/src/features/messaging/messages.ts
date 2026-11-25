@@ -115,7 +115,6 @@ type Key =
   | 'channelOwner'
   | 'you'
   | 'showMoreMembers'
-  | 'membersCapped'
   | 'add'
   | 'edit'
   | 'editChannel'
@@ -143,7 +142,12 @@ type Key =
   | 'channelArchivedError'
   | 'notAllowed'
   | 'ownerMustBeMember'
-  | 'notAvailableYet';
+  | 'notAvailableYet'
+  | 'archivedChannels'
+  | 'noArchivedChannels'
+  | 'open'
+  | 'openChannel'
+  | 'sendArchived';
 
 export type MessageKey = Key;
 
@@ -263,7 +267,6 @@ export const messages: Messages<Key> = {
     channelOwner: 'Channel owner',
     you: '(you)',
     showMoreMembers: 'Show more members',
-    membersCapped: 'Showing the first {count} members.',
     add: 'Add',
     edit: 'Edit',
     editChannel: 'Edit channel',
@@ -296,6 +299,11 @@ export const messages: Messages<Key> = {
     notAllowed: 'You are not allowed to do this.',
     ownerMustBeMember: 'That person is no longer a member of this channel.',
     notAvailableYet: 'This is not available yet.',
+    archivedChannels: 'Archived channels',
+    noArchivedChannels: 'You are in no archived channels.',
+    open: 'Open',
+    openChannel: 'Open {name}',
+    sendArchived: 'This channel is archived. The message was not sent.',
   },
   tr: {
     channels: 'Kanallar',
@@ -411,7 +419,6 @@ export const messages: Messages<Key> = {
     channelOwner: 'Kanal sahibi',
     you: '(sen)',
     showMoreMembers: 'Daha fazla üye göster',
-    membersCapped: 'İlk {count} üye gösteriliyor.',
     add: 'Ekle',
     edit: 'Düzenle',
     editChannel: 'Kanalı düzenle',
@@ -443,5 +450,10 @@ export const messages: Messages<Key> = {
     notAllowed: 'Bunu yapma iznin yok.',
     ownerMustBeMember: 'Bu kişi artık bu kanalın üyesi değil.',
     notAvailableYet: 'Bu henüz kullanılamıyor.',
+    archivedChannels: 'Arşivlenmiş kanallar',
+    noArchivedChannels: 'Üyesi olduğun arşivlenmiş kanal yok.',
+    open: 'Aç',
+    openChannel: '{name} kanalını aç',
+    sendArchived: 'Bu kanal arşivlendi. Mesaj gönderilmedi.',
   },
 };

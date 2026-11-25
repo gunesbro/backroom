@@ -86,6 +86,48 @@ public sealed class ChannelManagementTests(PostgresDatabase database, KeycloakRe
     }
 
     [Fact]
+    public async Task ListConversations_Archived_ListsOnlyTheCallersArchivedConversationsByPagesAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var open = await CreateChannelAsync(organizationId, Alice, "open");
+        var first = await CreateChannelAsync(organizationId, Alice, "first");
+        var second = await CreatePrivateChannelAsync(organizationId, Alice, "second");
+        var third = await CreateChannelAsync(organizationId, Alice, "third");
+        // Bob's own private channel, and a public one Alice left: archived, but not Alice's.
+        var bobs = await CreatePrivateChannelAsync(organizationId, Bob, "bobs");
+        var left = await CreateChannelAsync(organizationId, Alice, "left");
+        (await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{left}/leave", Alice, null)).EnsureSuccessStatusCode();
+        foreach (var (channelId, owner) in new[] { (first, Alice), (second, Alice), (third, Alice), (bobs, Bob), (left, Alice) })
+        {
+            (await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/archive", owner, null)).EnsureSuccessStatusCode();
+        }
+
+        var path = $"/api/v1/orgs/{organizationId}/conversations";
+        var seen = new List<Guid>();
+        string? after = null;
+        var pages = 0;
+        do
+        {
+            var body = await ReadJsonAsync(await GetAsync($"{path}?archived=true&limit=2{(after is null ? "" : $"&after={Uri.EscapeDataString(after)}")}", Alice));
+            seen.AddRange(body["items"]!.AsArray().Select(item => item!["id"]!.GetValue<Guid>()));
+            after = body["next"]?.GetValue<string>();
+            pages++;
+        }
+        while (after is not null && pages < 10);
+        var openOnes = await ReadJsonAsync(await GetAsync(path, Alice));
+        using var tooMany = await GetAsync($"{path}?archived=true&limit=101", Alice);
+        using var outsider = await GetAsync($"{path}?archived=true", null);
+
+        pages.Should().Be(2);
+        seen.Should().BeEquivalentTo([first, second, third]);
+        openOnes["items"]!.AsArray().Select(item => item!["id"]!.GetValue<Guid>()).Should().Contain(open).And.NotContain([first, second, third]);
+        tooMany.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await ErrorCodeAsync(tooMany)).Should().Be("messaging.page_invalid");
+        outsider.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Archive_APublicChannel_FreesItsNameAndUnarchiveNeedsItBackAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);

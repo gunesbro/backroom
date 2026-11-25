@@ -484,7 +484,9 @@ const MessageRow = memo(function MessageRow({
                 ? t('channelGone')
                 : pending.code === 'messaging.not_a_member'
                   ? t('notAMember')
-                  : t('sendFailed')}{' '}
+                  : pending.code === 'messaging.conversation_archived'
+                    ? t('sendArchived')
+                    : t('sendFailed')}{' '}
             {pending.code === 'messaging.not_a_member' && (
               <button
                 type="button"

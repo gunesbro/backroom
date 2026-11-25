@@ -1,9 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type SubmitEvent } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Alert, Avatar, Button, Dialog, LinkButton, Note, Spinner, Status } from '@backroom/ui';
 import { ApiError } from '@/shared/http';
 import { useLocale, useTranslate } from '@/shared/locale';
-import { PAGE_SIZE, type Channel, type ConversationDetail, type MessagingApi } from './api';
+import type { Channel, ConversationDetail, ConversationMember, MessagingApi } from './api';
 import {
   descriptionProblem,
   MAX_DESCRIPTION_UNITS,
@@ -20,12 +21,14 @@ import {
   conversationKey,
   conversationMembersKey,
   conversationsKey,
-  managePublicKey,
+  archivedConversationsKey,
   useConversation,
+  useMyPermissions,
 } from './queries';
 
-/** Pages of members shown at most (50 each); the list is not virtualized. */
-const MAX_MEMBER_LIST_PAGES = 10;
+/** Every member row is this tall, so the list can be virtualized without measuring rows. */
+const MEMBER_ROW_HEIGHT = 40;
+const MANAGE_PUBLIC = 'channels.manage-public';
 
 type Mode =
   | { kind: 'view' }
@@ -100,12 +103,7 @@ export function ChannelInfoDialog({
   const memberIds = useMemo(() => new Set(members.map((member) => member.accountId)), [members]);
 
   // Asked only for a public channel: a private one is managed by its owner, whatever their role.
-  const managePublic = useQuery({
-    queryKey: managePublicKey(orgId),
-    queryFn: ({ signal }) => api.canManagePublicChannels(orgId, signal),
-    enabled: detail !== undefined && !isPrivate,
-    staleTime: 5 * 60_000,
-  });
+  const permissions = useMyPermissions(api, orgId, detail !== undefined && !isPrivate);
 
   const gone = isConversationGone(detailQuery.error) || isConversationGone(membersQuery.error);
   useEffect(() => {
@@ -144,6 +142,7 @@ export function ChannelInfoDialog({
       // The sidebar shows the name, and leaves archived channels out.
       if (action.do !== 'add' && action.do !== 'transfer') {
         void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
+        void queryClient.invalidateQueries({ queryKey: archivedConversationsKey(orgId) });
       }
 
       setMode(VIEW);
@@ -297,8 +296,7 @@ export function ChannelInfoDialog({
     const isOwner = isPrivate && detail.role === 'owner';
     const isMember = detail.role !== null;
     const archived = detail.archivedAt !== null;
-    const canManage = isPrivate ? isOwner : managePublic.data === true;
-    const pages = membersQuery.data?.pages.length ?? 0;
+    const canManage = isPrivate ? isOwner : permissions.data?.includes(MANAGE_PUBLIC) === true;
     content = (
       <>
         <div className="ph-dialog__body">
@@ -320,23 +318,22 @@ export function ChannelInfoDialog({
             </div>
             <MemberList
               count={detail.memberCount}
-              capped={membersQuery.hasNextPage && pages >= MAX_MEMBER_LIST_PAGES}
               loading={membersQuery.isPending}
               failed={membersQuery.isError && !membersQuery.data && !gone}
               onRetry={() => {
                 void membersQuery.refetch();
               }}
-              hasMore={membersQuery.hasNextPage && pages < MAX_MEMBER_LIST_PAGES}
+              hasMore={membersQuery.hasNextPage}
               loadingMore={membersQuery.isFetchingNextPage}
               onMore={() => {
                 void membersQuery.fetchNextPage();
               }}
-            >
-              {members.map((member) => {
+              members={members}
+              renderMember={(member) => {
                 const own = member.accountId === ownAccountId;
                 const displayName = memberName(member.accountId);
                 return (
-                  <li key={member.accountId} className="bm-member">
+                  <>
                     <Avatar name={displayName} toneKey={member.accountId} size="sm" />
                     <span className="bm-member__name">
                       {displayName} {own && <span className="ph-muted">{t('you')}</span>}
@@ -355,10 +352,10 @@ export function ChannelInfoDialog({
                         {t('transferOwnership')}
                       </Button>
                     )}
-                  </li>
+                  </>
                 );
-              })}
-            </MemberList>
+              }}
+            />
             {isPrivate && isMember && !archived && (
               <div>
                 <Button
@@ -416,29 +413,44 @@ export function ChannelInfoDialog({
   );
 }
 
+/**
+ * The members, virtualized: only the rows in view are drawn, however many pages are loaded. Rows have one height;
+ * each says its place in the whole list, as only some of them are in the document.
+ */
 function MemberList({
   count,
-  capped,
+  members,
+  renderMember,
   loading,
   failed,
   onRetry,
   hasMore,
   loadingMore,
   onMore,
-  children,
 }: {
+  /** Members of the channel, loaded or not. */
   count: number;
-  capped: boolean;
+  members: readonly ConversationMember[];
+  renderMember: (member: ConversationMember) => ReactNode;
   loading: boolean;
   failed: boolean;
   onRetry: () => void;
   hasMore: boolean;
   loadingMore: boolean;
   onMore: () => void;
-  children: ReactNode;
 }) {
   const t = useTranslate(messages);
   const headingId = useId();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // The virtualizer is used only in this component and its functions are not passed to memoized children.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: members.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => MEMBER_ROW_HEIGHT,
+    getItemKey: (index) => members[index]?.accountId ?? index,
+    overscan: 6,
+  });
   return (
     <section className="bm-info__members" aria-labelledby={headingId}>
       <h3 id={headingId} className="bm-info__heading">
@@ -459,16 +471,35 @@ function MemberList({
           <Button onClick={onRetry}>{t('tryAgain')}</Button>
         </div>
       )}
-      <ul className="bm-members" aria-labelledby={headingId}>
-        {children}
-      </ul>
+      {/* Focusable, so the list can be scrolled with the keyboard when no row has a button. */}
+      <div ref={scrollRef} className="bm-members" tabIndex={0} role="group" aria-labelledby={headingId}>
+        <ul
+          className="bm-members__rows"
+          aria-labelledby={headingId}
+          style={{ height: `${String(virtualizer.getTotalSize())}px` }}
+        >
+          {virtualizer.getVirtualItems().map((item) => {
+            const member = members[item.index];
+            return (
+              member && (
+                <li
+                  key={item.key}
+                  className="bm-member"
+                  aria-setsize={Math.max(count, members.length)}
+                  aria-posinset={item.index + 1}
+                  style={{ transform: `translateY(${String(item.start)}px)` }}
+                >
+                  {renderMember(member)}
+                </li>
+              )
+            );
+          })}
+        </ul>
+      </div>
       {hasMore && (
         <LinkButton disabled={loadingMore} onClick={onMore}>
           {t('showMoreMembers')}
         </LinkButton>
-      )}
-      {capped && (
-        <p className="ph-muted">{t('membersCapped', { count: MAX_MEMBER_LIST_PAGES * PAGE_SIZE })}</p>
       )}
     </section>
   );

@@ -20,6 +20,7 @@ using Backroom.Modules.Organization.Infrastructure;
 using Backroom.Modules.Organization.Presentation;
 using Backroom.Modules.Permissions.Contracts;
 using Backroom.Modules.Permissions.Infrastructure;
+using Backroom.Modules.Permissions.Presentation;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 
@@ -62,6 +63,7 @@ public sealed class OrganizationAccessTests(PostgresDatabase database, KeycloakR
         _cell.UseAuthentication();
         _cell.UseAuthorization();
         _cell.MapOrganizationEndpoints();
+        _cell.MapPermissionsEndpoints();
         _cell.MapGet("/api/v1/orgs/{orgId:guid}/guarded", () => TypedResults.Ok())
             .InOrganization()
             .RequirePermission(SystemRoles.MembersManageInvitations);
@@ -310,6 +312,71 @@ public sealed class OrganizationAccessTests(PostgresDatabase database, KeycloakR
         using var response = await GetAsAsync($"/api/v1/orgs/{organizationId}/members", Bob);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Theory]
+    [InlineData(SystemRoles.Admin)]
+    [InlineData(SystemRoles.Member)]
+    public async Task MyPermissions_ForARole_AreThatRolesPermissionsAsync(string role)
+    {
+        var organizationId = await ProvisionForAsync(Alice, "Acme");
+        var bob = await AccountAsync(Bob);
+        await AddMemberAsync(organizationId, bob, "Bob", Bob, "active");
+        await AssignRoleAsync(organizationId, bob, role);
+
+        using var response = await GetAsAsync($"/api/v1/orgs/{organizationId}/me/permissions", Bob);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Headers.CacheControl!.NoStore.Should().BeTrue();
+        var permissions = (await ReadJsonAsync(response))["permissions"]!.AsArray().Select(permission => permission!.GetValue<string>()).ToArray();
+        permissions.Should().Equal(SystemRoles.Permissions[role].Order(StringComparer.Ordinal));
+        permissions.Contains(SystemRoles.ChannelsManagePublic).Should().Be(role == SystemRoles.Admin);
+    }
+
+    [Fact]
+    public async Task MyPermissions_ForTheOwner_AreAllOfThemAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice, "Acme");
+
+        using var response = await GetAsAsync($"/api/v1/orgs/{organizationId}/me/permissions", Alice);
+
+        var permissions = (await ReadJsonAsync(response))["permissions"]!.AsArray().Select(permission => permission!.GetValue<string>());
+        permissions.Should().Equal(SystemRoles.AllPermissions.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task MyPermissions_AsSomeoneElseOrAfterTheMembershipEnded_AnswerLikeAnUnknownOrganizationAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice, "Acme");
+        var bob = await AccountAsync(Bob);
+
+        using var outsider = await GetAsAsync($"/api/v1/orgs/{organizationId}/me/permissions", Bob);
+        using var unknown = await GetAsAsync($"/api/v1/orgs/{Guid.CreateVersion7()}/me/permissions", Bob);
+        // The roles of an ended membership are still stored: they must not answer.
+        await AddMemberAsync(organizationId, bob, "Bob", Bob, "removed");
+        await AssignRoleAsync(organizationId, bob, SystemRoles.Admin);
+        using var removed = await GetAsAsync($"/api/v1/orgs/{organizationId}/me/permissions", Bob);
+        using var anonymous = await GetWithTokenAsync($"/api/v1/orgs/{organizationId}/me/permissions", null);
+
+        outsider.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        removed.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        var unknownBody = (await ReadJsonAsync(unknown)).ToJsonString();
+        (await ReadJsonAsync(outsider)).ToJsonString().Should().Be(unknownBody);
+        (await ReadJsonAsync(removed)).ToJsonString().Should().Be(unknownBody);
+    }
+
+    [Fact]
+    public async Task MyPermissions_ForAMemberWithoutARole_AreNoneAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice, "Acme");
+        var bob = await AccountAsync(Bob);
+        await AddMemberAsync(organizationId, bob, "Bob", Bob, "active");
+
+        using var response = await GetAsAsync($"/api/v1/orgs/{organizationId}/me/permissions", Bob);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ReadJsonAsync(response))["permissions"]!.AsArray().Should().BeEmpty();
     }
 
     private async Task<Guid> AccountAsync(string username) => Guid.Parse(await keycloak.UserIdAsync(username));

@@ -1,5 +1,6 @@
 import { type QueryClient } from '@tanstack/react-query';
 import {
+  archivedConversationsKey,
   browseChannelsKey,
   conversationKey,
   conversationMembersKey,
@@ -112,6 +113,9 @@ export function applyConversationUpdated(
   if (!found.listed && archivedAt === null) {
     void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
   }
+
+  // Read again only where the archived channels are on screen.
+  void queryClient.invalidateQueries({ queryKey: archivedConversationsKey(orgId) });
 
   queryClient.setQueryData<ConversationDetail>(
     conversationKey(orgId, conversationId),

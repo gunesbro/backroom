@@ -95,9 +95,9 @@ public static class MessagingEndpoints
         return result.ToHttpResult(channel => TypedResults.Created((string?)null, ToResponse(channel)));
     }
 
-    private static async Task<IResult> ListConversationsAsync(string? after, int? limit, ICurrentAccount account, ConversationService conversations, CancellationToken cancellationToken)
+    private static async Task<IResult> ListConversationsAsync(bool? archived, string? after, int? limit, ICurrentAccount account, ConversationService conversations, CancellationToken cancellationToken)
     {
-        var result = await conversations.ListAsync(account.AccountId, after, limit, cancellationToken);
+        var result = await conversations.ListAsync(account.AccountId, archived ?? false, after, limit, cancellationToken);
         return result.ToHttpResult(page => TypedResults.Ok(new ConversationsResponse(
             [.. page.Items.Select(item => new ConversationResponse(item.Id, item.Kind, item.Name, item.CreatedAt))], page.Next)));
     }

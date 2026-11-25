@@ -114,7 +114,7 @@ function fakeApi(count = 3, extra: Partial<MessagingApi> = {}) {
     listConversationMembers: () => Promise.resolve({ members: [], next: null }),
     addConversationMembers: vi.fn(),
     transferOwnership: vi.fn(),
-    canManagePublicChannels: () => Promise.resolve(false),
+    listMyPermissions: () => Promise.resolve([]),
     listMessages: vi.fn((_org: string, _channel: string, cursor: MessageCursor) => {
       calls.push(cursor);
       if (cursor && 'after' in cursor) {

@@ -193,25 +193,21 @@ describe('createMessagingApi conversation routes', () => {
     ]);
   });
 
-  it.each([
-    [200, true],
-    [403, false],
-  ])('CanManagePublicChannels_WhenTheAdminsCountAnswers%i_Is%s', async (status, expected) => {
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        Response.json(status === 200 ? { count: 3 } : { code: 'permissions.forbidden' }, { status }),
-      );
+  it('ListMyPermissions_ReadsTheCallersKeys', async () => {
+    const fetchSpy = answer({ permissions: ['channels.create-public', 'channels.manage-public'] });
 
-    await expect(api.canManagePublicChannels('o')).resolves.toBe(expected);
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe(`${base}/private-channels/count`);
+    await expect(api.listMyPermissions('o')).resolves.toEqual([
+      'channels.create-public',
+      'channels.manage-public',
+    ]);
+    expect(sent(fetchSpy)).toEqual({ url: `${base}/me/permissions`, method: 'GET', body: undefined });
   });
 
-  it('CanManagePublicChannels_WhenTheCellFails_Throws', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      Response.json({ code: 'messaging.system' }, { status: 500 }),
-    );
+  it('ListConversations_Archived_AsksForTheArchivedOnes', async () => {
+    const fetchSpy = answer({ items: [], next: null });
 
-    await expect(api.canManagePublicChannels('o')).rejects.toMatchObject({ status: 500 });
+    await api.listConversations('o', 'c0', undefined, { archived: true });
+
+    expect(sent(fetchSpy).url).toBe(`${base}/conversations?limit=50&archived=true&after=c0`);
   });
 });

@@ -16,8 +16,10 @@ export const conversationKey = (orgId: string, conversationId: string) =>
   ['orgs', orgId, 'conversations', conversationId, 'detail'] as const;
 export const conversationMembersKey = (orgId: string, conversationId: string) =>
   ['orgs', orgId, 'conversations', conversationId, 'members'] as const;
-export const managePublicKey = (orgId: string) =>
-  ['orgs', orgId, 'permissions', 'channels.manage-public'] as const;
+/** The person's archived conversations, which the sidebar's list leaves out. */
+export const archivedConversationsKey = (orgId: string) =>
+  ['orgs', orgId, 'conversations', 'archived'] as const;
+export const myPermissionsKey = (orgId: string) => ['orgs', orgId, 'me', 'permissions'] as const;
 export const messagesKey = (orgId: string, conversationId: string) =>
   ['orgs', orgId, 'conversations', conversationId, 'messages'] as const;
 
@@ -35,6 +37,19 @@ export function useOrganizationMembers(api: MessagingApi, orgId: string) {
     getNextPageParam: (last) => last.next ?? undefined,
     staleTime: 5 * 60_000,
     maxPages: MAX_MEMBER_PAGES,
+  });
+}
+
+/**
+ * The person's own permission keys in the organization, to decide what to offer; the server checks every request
+ * for itself. A role change shows after five minutes at the latest, or when the page is loaded again.
+ */
+export function useMyPermissions(api: MessagingApi, orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: myPermissionsKey(orgId),
+    queryFn: ({ signal }) => api.listMyPermissions(orgId, signal),
+    staleTime: 5 * 60_000,
+    enabled,
   });
 }
 

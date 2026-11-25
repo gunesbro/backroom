@@ -100,17 +100,24 @@ const server = setupServer(
       next: null,
     }),
   ),
-  http.get(`${BASE}/conversations`, () =>
-    HttpResponse.json({
+  http.get(`${BASE}/conversations`, ({ request }) => {
+    const archived = new URL(request.url).searchParams.get('archived') === 'true';
+    return HttpResponse.json({
       items: conversations
-        .filter((conversation) => ownRole(conversation) !== null && conversation.archivedAt === null)
+        .filter(
+          (conversation) => ownRole(conversation) !== null && (conversation.archivedAt !== null) === archived,
+        )
         .map(({ id, kind, name }) => ({ id, kind, name, createdAt: CREATED_AT })),
       next: null,
-    }),
-  ),
+    });
+  }),
   http.get(`${BASE}/channels`, () => HttpResponse.json({ channels: [], next: null })),
-  http.get(`${BASE}/private-channels/count`, () =>
-    canManagePublic ? HttpResponse.json({ count: 1 }) : problem(403, 'permissions.forbidden'),
+  http.get(`${BASE}/me/permissions`, () =>
+    HttpResponse.json({
+      permissions: ['channels.create-private', 'channels.create-public'].concat(
+        canManagePublic ? ['channels.manage-public'] : [],
+      ),
+    }),
   ),
   http.get(`${BASE}/conversations/:id`, ({ params }) => {
     const conversation = find(params.id);
@@ -119,7 +126,7 @@ const server = setupServer(
   http.get(`${BASE}/conversations/:id/messages`, ({ params }) =>
     readable(find(params.id)) ? HttpResponse.json({ items: [], next: null }) : notFound(),
   ),
-  // Two members a page, by account id, so paging shows with few people.
+  // Two members a page, by account id, so paging shows with few people; fifty a page in a large channel.
   http.get(`${BASE}/conversations/:id/members`, ({ params, request }) => {
     const conversation = find(params.id);
     if (!readable(conversation)) return notFound();
@@ -127,9 +134,10 @@ const server = setupServer(
     const rest = conversation.members
       .toSorted((a, b) => a.accountId.localeCompare(b.accountId, 'en-US'))
       .filter(({ accountId }) => accountId > after);
+    const size = conversation.members.length > 10 ? 50 : 2;
     return HttpResponse.json({
-      items: rest.slice(0, 2).map((member) => ({ ...member, joinedAt: CREATED_AT })),
-      next: rest.length > 2 ? rest[1]?.accountId : null,
+      items: rest.slice(0, size).map((member) => ({ ...member, joinedAt: CREATED_AT })),
+      next: rest.length > size ? rest[size - 1]?.accountId : null,
     });
   }),
   http.post(`${BASE}/channels`, async ({ request }) => {
@@ -189,6 +197,46 @@ const server = setupServer(
 
 beforeAll(() => {
   server.listen({ onUnhandledFrame: 'error' });
+  // jsdom has no layout: the message log is 400 px tall, the member list 240 px, and a row of either 40 px.
+  const height = (element: HTMLElement) =>
+    element.getAttribute('role') === 'feed' ? 400 : element.classList.contains('bm-members') ? 240 : 40;
+  const tops = new WeakMap<Element, number>();
+  Object.defineProperties(HTMLElement.prototype, {
+    offsetHeight: {
+      configurable: true,
+      get: function (this: HTMLElement) {
+        return height(this);
+      },
+    },
+    offsetWidth: { configurable: true, get: () => 600 },
+    clientHeight: {
+      configurable: true,
+      get: function (this: HTMLElement) {
+        return this.getAttribute('role') === 'feed' ? 400 : this.classList.contains('bm-members') ? 240 : 0;
+      },
+    },
+    scrollHeight: {
+      configurable: true,
+      get: function (this: HTMLElement) {
+        return Number.parseInt(this.querySelector('ol')?.style.height ?? '0', 10);
+      },
+    },
+    scrollTo: {
+      configurable: true,
+      value: function (this: HTMLElement, options: { top?: number }) {
+        tops.set(this, options.top ?? 0);
+      },
+    },
+    scrollTop: {
+      configurable: true,
+      get: function (this: HTMLElement) {
+        return tops.get(this) ?? 0;
+      },
+      set: function (this: HTMLElement, value: number) {
+        tops.set(this, value);
+      },
+    },
+  });
 });
 
 beforeEach(() => {
@@ -585,8 +633,53 @@ describe('Archived channels and lost access', () => {
     type(composer, 'hello');
     fireEvent.keyDown(composer, { key: 'Enter' });
 
-    expect(await screen.findByText(/This channel is archived\./)).toBeVisible();
+    expect(await screen.findByText(/This channel is archived\. You can read it/)).toBeVisible();
     expect(screen.queryByRole('textbox', { name: 'Message #general' })).not.toBeInTheDocument();
+    // The message that was refused says why, not only that it failed.
+    const refused = within(screen.getByRole('feed')).getByText(/hello/).closest('li') as HTMLElement;
+    expect(within(refused).getByText(/This channel is archived\. The message was not sent\./)).toBeVisible();
+    expect(within(refused).queryByText(/Could not send|Not sent\.$/)).not.toBeInTheDocument();
+  });
+
+  it('ArchivedChannels_FromBrowse_OpenReadOnly_AndUnarchivingBringsTheChannelBack', async () => {
+    const archived = { ...plans(), archivedAt: '2026-11-25T10:00:00Z' };
+    conversations = [general(), archived];
+    renderWorkspace('tr');
+    await screen.findByRole('button', { name: 'general' });
+    expect(screen.queryByRole('button', { name: 'Özel kanal plans' })).not.toBeInTheDocument();
+
+    click('Kanallara göz at');
+    const browse = await screen.findByRole('dialog', { name: 'Kanallara göz at' });
+    click('Arşivlenmiş kanallar', browse);
+    expect(within(browse).getByRole('group', { name: 'Arşivlenmiş kanallar' })).toHaveFocus();
+    const openButton = await within(browse).findByRole('button', { name: 'plans kanalını aç' });
+    await expectNoViolations(browse);
+    fireEvent.click(openButton);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Özel kanal plans' })).toBeVisible();
+    expect(
+      await screen.findByText('Bu kanal arşivlendi. Okuyabilirsin, ama kimse mesaj gönderemez.'),
+    ).toBeVisible();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    const dialog = await openInfo('Kanal bilgisi');
+    click('Arşivden çıkar', dialog);
+
+    expect(await screen.findByRole('button', { name: 'Özel kanal plans' })).toBeVisible();
+    expect(await screen.findByRole('textbox', { name: /plans/ })).toBeVisible();
+    expect(sent).toEqual([{ method: 'POST', path: '/conversations/c-plans/unarchive', body: undefined }]);
+  });
+
+  it('ArchivedChannels_WhenThereAreNone_SaysSo', async () => {
+    renderWorkspace();
+    await screen.findByRole('button', { name: 'general' });
+
+    click('Browse channels');
+    const browse = await screen.findByRole('dialog', { name: 'Browse channels' });
+    click('Archived channels', browse);
+
+    expect(await within(browse).findByText('You are in no archived channels.')).toBeVisible();
+    click('Browse channels', browse);
+    expect(within(browse).queryByText('You are in no archived channels.')).not.toBeInTheDocument();
   });
 
   it('Channel_ThatAnswersNotFound_IsLeftWithANotice', async () => {
@@ -628,6 +721,35 @@ describe('Channel info', () => {
     expect(within(dialog).getByRole('heading', { name: 'Members 3 members' })).toBeVisible();
     // Removing other people is switched off on the server: it is not offered.
     expect(within(dialog).queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
+  });
+
+  it('Info_WithManyMembers_DrawsOnlyTheRowsInView', async () => {
+    const many = Array.from({ length: 120 }, (_, index) => ({
+      accountId: `00000000-0000-4000-8000-0000000002${String(index).padStart(2, '0')}`.slice(0, 36),
+      role: 'member' as const,
+    }));
+    conversations = [general(), { ...plans(), members: [{ accountId: OWN_ID, role: 'owner' }, ...many] }];
+    renderWorkspace();
+    await open('plans', 'Private channel plans');
+    const dialog = await openInfo();
+    const list = within(dialog).getByRole('list', { name: /^Members/ });
+
+    click('Show more members', dialog);
+    click(
+      await within(dialog)
+        .findByRole('button', { name: 'Show more members' })
+        .then(() => 'Show more members'),
+      dialog,
+    );
+
+    await waitFor(() => {
+      expect(list.style.height).toBe(`${String(121 * 40)}px`);
+    });
+    const rows = within(list).getAllByRole('listitem');
+    expect(rows.length).toBeLessThan(20);
+    expect(rows[0]).toHaveAttribute('aria-posinset', '1');
+    expect(rows[0]).toHaveAttribute('aria-setsize', '121');
+    await expectNoViolations(dialog);
   });
 
   it('Info_ForTheOwnerOfAPrivateChannel_OffersEveryActionAndHasNoAccessibilityViolations', async () => {

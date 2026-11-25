@@ -222,6 +222,10 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
             setChosen(channel);
             setBrowsing(false);
           }}
+          onOpenArchived={(channel) => {
+            select(channel);
+            setBrowsing(false);
+          }}
         />
       )}
       {creating && (

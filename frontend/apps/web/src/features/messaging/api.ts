@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { ApiError, requestJson, type AccessTokenSource } from '@/shared/http';
+import { requestJson, type AccessTokenSource } from '@/shared/http';
 import type { Block } from './rich-text/blocks';
 
 /** The kinds of conversation (docs/contracts/phase-2.md, flow 1); the sidebar lists channels only so far. */
@@ -69,6 +69,8 @@ export interface MessagingApi {
     orgId: string,
     after: string | undefined,
     signal?: AbortSignal,
+    /** `archived`: only the person's archived conversations instead, which the plain list leaves out. */
+    options?: { archived?: boolean },
   ) => Promise<ConversationPage>;
   /** Public channels of the organization, joined or not: the browse list. */
   browseChannels: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<ChannelPage>;
@@ -102,8 +104,8 @@ export interface MessagingApi {
   ) => Promise<void>;
   /** Hands a private channel to one of its members (its owner only). */
   transferOwnership: (orgId: string, conversationId: string, accountId: string) => Promise<void>;
-  /** Whether the person may manage public channels: see `createMessagingApi`. */
-  canManagePublicChannels: (orgId: string, signal?: AbortSignal) => Promise<boolean>;
+  /** The person's own permission keys in the organization (`GET /me/permissions`): what to offer, never a grant. */
+  listMyPermissions: (orgId: string, signal?: AbortSignal) => Promise<string[]>;
   /** Joins a public channel; joining one the person is in succeeds. */
   joinConversation: (orgId: string, conversationId: string) => Promise<void>;
   /** Leaves a conversation (not a DM); leaving one the person is not in succeeds. */
@@ -164,8 +166,9 @@ export function createMessagingApi(
   const conversation = (orgId: string, conversationId: string) =>
     `${org(orgId)}/conversations/${encodeURIComponent(conversationId)}`;
   return {
-    listConversations: async (orgId, after, signal) => {
+    listConversations: async (orgId, after, signal, options) => {
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (options?.archived) query.set('archived', 'true');
       if (after) query.set('after', after);
       const page = await requestJson<{ items: Channel[]; next: string | null }>(
         `${org(orgId)}/conversations?${query.toString()}`,
@@ -209,18 +212,12 @@ export function createMessagingApi(
         method: 'PUT',
         body: { accountId },
       }),
-    // The cell has no endpoint that lists the person's own permissions yet. The admins' count of private channels
-    // asks for exactly `channels.manage-public` and answers one number, so whether it is allowed tells; the number
-    // itself is not read.
-    canManagePublicChannels: async (orgId, signal) => {
-      try {
-        await requestJson(`${org(orgId)}/private-channels/count`, getAccessToken, { signal });
-        return true;
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 403) return false;
-        throw error;
-      }
-    },
+    listMyPermissions: async (orgId, signal) =>
+      (
+        await requestJson<{ permissions: string[] }>(`${org(orgId)}/me/permissions`, getAccessToken, {
+          signal,
+        })
+      ).permissions,
     joinConversation: (orgId, conversationId) =>
       requestJson(`${conversation(orgId, conversationId)}/join`, getAccessToken, { method: 'POST' }),
     leaveConversation: (orgId, conversationId) =>
