@@ -124,7 +124,8 @@ internal static class DevelopmentServices
         // ClamAV (clamd over TCP), the malware scanner behind IFileScanner; a separate process, so its license does not
         // touch our code. It downloads its signatures on first start (a minute or two); until then scans fail and files
         // stay unscanned. StreamMaxLength must cover the largest file (100 MB). Published on localhost only.
-        var clamAv = builder.AddContainer("clamav", ClamAvImage, ClamAvImageTag).WithImageSHA256(ClamAvImageDigest);
+        // WithImageSHA256 takes the hex digest only: it writes image@sha256:{value} itself.
+        var clamAv = builder.AddContainer("clamav", ClamAvImage, ClamAvImageTag).WithImageSHA256(ClamAvImageDigest["sha256:".Length..]);
         clamAv
             // What clamd cannot scan fully (over a limit, encrypted archives) is reported as found, never as clean.
             .WithEnvironment("CLAMD_CONF_AlertExceedsMax", "yes")

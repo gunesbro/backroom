@@ -3,6 +3,7 @@ import type { ConnectionStatus } from '@backroom/realtime';
 import { Alert, Button, Icon, LinkButton, SoonButton, Spinner, Status, type IconName } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
 import type { Channel } from './api';
+import { ChannelMark } from './channel-mark';
 import { ConnectionNotice } from './connection-notice';
 import { messages } from './messages';
 
@@ -134,10 +135,17 @@ export function ChannelSidebar({
                       onSelect(channel);
                     }}
                   >
-                    <span className="bm-item__icon bm-item__hash" aria-hidden="true">
-                      #
+                    <span className="bm-item__icon bm-item__hash">
+                      <ChannelMark isPrivate={channel.kind === 'private_channel'} size={15} />
                     </span>
-                    <span className="bm-item__text">{channel.name}</span>
+                    <span className="bm-item__text">
+                      {channel.kind === 'private_channel' && (
+                        <>
+                          <span className="bm-sr-only">{t('privateChannel')}</span>{' '}
+                        </>
+                      )}
+                      {channel.name}
+                    </span>
                     {unread && (
                       <span className="bm-dot">
                         <span className="bm-sr-only">{t('newActivity')}</span>

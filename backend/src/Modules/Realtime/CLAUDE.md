@@ -17,7 +17,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 ## Rules
 
 - Live events never go through RabbitMQ and never wait for it.
-- Payloads are versioned by event name (`MessagePosted`, later `MessagePosted.v2`), because clients may talk to cells on different versions. `MessagePosted.v2` (`MessagePostedV2Payload`: version and change numbers and the cell epoch) is published by Messaging in place of `MessagePosted` when `Features:MessageSync` is on (Phase 2 step 5).
+- Payloads are versioned by event name (`MessagePosted`, later `MessagePosted.v2`; `MessagePosted` has an additive optional `blocks`, `LiveMessage.Blocks`, the same shape as in v2), because clients may talk to cells on different versions. `MessagePosted.v2` (`MessagePostedV2Payload`: version and change numbers and the cell epoch) is published by Messaging in place of `MessagePosted` when `Features:MessageSync` is on (Phase 2 step 5).
 - Message text is in live events but never in logs; the `access_token` query parameter is redacted.
 
 ## Status
@@ -71,7 +71,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 
 - Methods `WatchPresence(orgId, accountIds)` (active member; replaces the connection's watch set; at most 200 ids; ids of people who are not active members there are dropped without a word; counts as a subscribe call) and `ReportActivity("active" | "idle")` (at most one per 10 s per connection, extras dropped). Both answer `realtime.not_found` while `Features:Presence` is off. Connect and disconnect go to `IPresenceTracker` (Presence.Contracts; a no-op fallback when the Presence module is not added).
 - Groups `cell:{cellId}:org:{orgId}:presence:{accountId}`, tracked per connection with their organization, so member removal drops them too. Limits: 600 groups per connection (conversations plus presence), receive size 16 KB (200 ids).
-- `PresenceChanged { orgId, accountId, state, dndUntil?, customStatus? }` (timestamps as ISO 8601 strings) through `ILiveEventPublisher` to the person's presence group.
+- `PresenceChanged { orgId, accountId, state, dndUntil?, customStatus? }` (timestamps as ISO 8601 strings; away chosen by hand arrives as the state `idle`, the payload has no field for it) through `ILiveEventPublisher` to the person's presence group.
 - The member-removed consumer also calls `IPresenceMemberships.ForgetAsync`, so the person's presence stops reaching that organization at once.
 
 ## NotificationRequested (Phase 2 step 29)

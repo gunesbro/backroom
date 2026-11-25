@@ -781,10 +781,20 @@
   font-size: 0.92em;
 }
 
+/* Link text sits in a <bdi>, so bidirectional controls in it cannot reorder the text around it. */
 .bm-rt-link,
 .bm-body a {
   color: var(--ph-accent);
   text-decoration: underline;
+}
+
+/* A mention in a received message: a chip with the name, not editable and not a link. */
+.bm-mention {
+  padding: 0 3px;
+  border-radius: var(--ph-radius-sm);
+  background: var(--ph-sunken);
+  color: var(--ph-accent);
+  font-weight: 600;
 }
 
 .bm-quote {

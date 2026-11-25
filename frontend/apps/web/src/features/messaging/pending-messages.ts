@@ -20,6 +20,8 @@ export type PendingMessage = {
   status: 'sending' | 'failed' | 'confirmed';
   /** The error code of a failed send. */
   code?: string | undefined;
+  /** The server's `reason` token of a refused message (`messaging.message_invalid`, `messaging.mention_invalid`). */
+  reason?: string | undefined;
   /** The server's message, once confirmed. */
   message?: Message | undefined;
 };
@@ -61,7 +63,7 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
           ),
         );
       };
-      patch({ status: 'sending', code: undefined });
+      patch({ status: 'sending', code: undefined, reason: undefined });
       try {
         const message = await api.sendMessage(orgId, channelId, {
           clientMessageId: pending.clientMessageId,
@@ -77,7 +79,11 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
         }
         patch({ status: 'confirmed', message });
       } catch (error) {
-        patch({ status: 'failed', code: error instanceof ApiError ? error.code : 'client.failed' });
+        patch({
+          status: 'failed',
+          code: error instanceof ApiError ? error.code : 'client.failed',
+          reason: error instanceof ApiError ? error.reason : undefined,
+        });
       } finally {
         inFlight.current.delete(pending.clientMessageId);
       }

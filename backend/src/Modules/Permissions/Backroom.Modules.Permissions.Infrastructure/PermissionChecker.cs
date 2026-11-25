@@ -37,6 +37,13 @@ internal sealed class PermissionChecker(DatabaseSession session) : IPermissionCh
         return (await GrantsAsync(accountId, cancellationToken)).Allows(permission);
     }
 
+    public async Task<IReadOnlyList<string>> ListPermissionsAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        var grants = await GrantsAsync(accountId, cancellationToken);
+        // Only keys the code knows: a row left behind by a removed permission is not handed out.
+        return [.. SystemRoles.AllPermissions.Where(grants.Allows).Order(StringComparer.Ordinal)];
+    }
+
     public async Task<bool> CanGrantRoleAsync(Guid accountId, string roleKey, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(roleKey);

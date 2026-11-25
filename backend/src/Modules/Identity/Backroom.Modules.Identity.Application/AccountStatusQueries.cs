@@ -22,7 +22,7 @@ internal sealed class AccountStatusQueries(IAccountStatusStore store, IDirectory
         var now = timeProvider.GetUtcNow();
         var statuses = (await store.ListAsync(accounts, cancellationToken))
             .Select(status => AccountStatusRules.Effective(status, now))
-            .Where(status => status.DndUntil is not null || status.CustomEmoji is not null || status.CustomText is not null || status.TimeZone is not null)
+            .Where(status => status.DndUntil is not null || status.Away || status.CustomEmoji is not null || status.CustomText is not null || status.TimeZone is not null)
             .ToList();
         return (statuses, accounts.Count < IAccountStatusQueries.PageSize ? null : accounts[^1]);
     }

@@ -1,7 +1,8 @@
 import type { Messages } from '@backroom/i18n';
 
 // Turkish texts from docs/design (Thread, the status menu) where it shows them; the dialogs are not drawn there, so
-// their texts are written to match (the Turkish UI says "sen").
+// their texts are written to match (the Turkish UI says "sen"). "awayHint" differs from the design on purpose: away
+// can be chosen by hand since the owner's decision of 2026-11-25, so it no longer says "automatic" only.
 type Key =
   | 'online'
   | 'away'
@@ -53,7 +54,7 @@ export const messages: Messages<Key> = {
   en: {
     online: 'Online',
     away: 'Away',
-    awayHint: 'Automatic after 10 min of inactivity',
+    awayHint: 'Until you change it · automatic after 10 min idle',
     doNotDisturb: 'Do not disturb',
     dndHint: '30 min · 1 hr · until tomorrow · custom',
     dndEnds: 'Until {time}',
@@ -100,7 +101,7 @@ export const messages: Messages<Key> = {
   tr: {
     online: 'Çevrimiçi',
     away: 'Boşta',
-    awayHint: '10 dk hareketsizlikte otomatik',
+    awayHint: 'Sen değiştirene kadar · 10 dk hareketsizlikte otomatik',
     doNotDisturb: 'Rahatsız etme',
     dndHint: '30 dk · 1 sa · yarına kadar · özel',
     dndEnds: 'Bitiş: {time}',

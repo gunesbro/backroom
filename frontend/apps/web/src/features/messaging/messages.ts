@@ -2,6 +2,8 @@ import type { Messages } from '@backroom/i18n';
 
 // Turkish texts from docs/design (Main: the shell, the channel list, the message actions and the composer; Dialogs:
 // create channel) where they show them; the rest as approved in review.
+export type MessageKey = Key;
+
 type Key =
   | 'channels'
   | 'addChannel'
@@ -80,6 +82,16 @@ type Key =
   | 'linkRemove'
   | 'linkInvalid'
   | 'formattingTooLarge'
+  | 'errorLinksLimit'
+  | 'errorLinkHref'
+  | 'errorBlocksDisabled'
+  | 'errorTextLength'
+  | 'errorEmpty'
+  | 'errorCharacters'
+  | 'errorMention'
+  | 'errorMentionLimit'
+  | 'errorGroupMention'
+  | 'linksLimit'
   | 'addMenu'
   | 'toggleFormatting'
   | 'emoji'
@@ -95,7 +107,62 @@ type Key =
   | 'visibilityPublic'
   | 'visibilityPublicDetail'
   | 'visibilityPrivate'
-  | 'visibilityPrivateDetail';
+  | 'visibilityPrivateDetail'
+  | 'descriptionInvalid'
+  | 'addPeople'
+  | 'searchPeople'
+  | 'chosenPeople'
+  | 'removePerson'
+  | 'noPeopleFound'
+  | 'peopleLimit'
+  | 'peoplePartial'
+  | 'morePeopleMatch'
+  | 'privateNote'
+  | 'sameNameWarning'
+  | 'privateChannel'
+  | 'memberCount'
+  | 'memberCountOne'
+  | 'noDescription'
+  | 'members'
+  | 'channelOwner'
+  | 'you'
+  | 'showMoreMembers'
+  | 'add'
+  | 'edit'
+  | 'editChannel'
+  | 'leaveChannel'
+  | 'leaveConfirm'
+  | 'leavePublicNote'
+  | 'leavePrivateNote'
+  | 'leaveOwnerNote'
+  | 'leaveLastNote'
+  | 'archive'
+  | 'unarchive'
+  | 'archiveConfirm'
+  | 'archiveNote'
+  | 'archived'
+  | 'archivedBanner'
+  | 'transferOwnership'
+  | 'transferTo'
+  | 'transferConfirm'
+  | 'transferNote'
+  | 'lostAccess'
+  | 'rateLimited'
+  | 'rateLimitedIn'
+  | 'membershipLimit'
+  | 'memberNotInOrganization'
+  | 'channelArchivedError'
+  | 'notAllowed'
+  | 'ownerMustBeMember'
+  | 'notAvailableYet'
+  | 'archivedChannels'
+  | 'noArchivedChannels'
+  | 'open'
+  | 'openChannel'
+  | 'sendArchived'
+  | 'membersWindow';
+
+export type MessageKey = Key;
 
 export const messages: Messages<Key> = {
   en: {
@@ -176,6 +243,16 @@ export const messages: Messages<Key> = {
     linkRemove: 'Remove link',
     linkInvalid: 'Enter a valid web or email address (http, https or mailto).',
     formattingTooLarge: 'This message has too much formatting to send. Simplify it.',
+    errorLinksLimit: 'This message has too many different links (50 at most). Remove some and send it again.',
+    errorLinkHref: 'One of the links is not a valid web or email address. Fix or remove it.',
+    errorBlocksDisabled: "Formatted messages aren't available on this server yet. Send plain text.",
+    errorTextLength: 'This message is too long. Shorten it to 4,000 characters.',
+    errorEmpty: 'This message has no text. Write something before sending.',
+    errorCharacters: 'This message has characters that cannot be sent. Remove them and try again.',
+    errorMention: "One of the people you mentioned can't be mentioned. Remove the mention and try again.",
+    errorMentionLimit: 'This message mentions too many people (50 at most).',
+    errorGroupMention: "Mentioning everyone or a group isn't available yet.",
+    linksLimit: 'This message has {count} different links; 50 is the most. Remove some to send it.',
     addMenu: 'Add',
     toggleFormatting: 'Show or hide formatting',
     emoji: 'Emoji',
@@ -191,7 +268,66 @@ export const messages: Messages<Key> = {
     visibilityPublic: 'Public',
     visibilityPublicDetail: 'Everyone in the organization can see, search and join it.',
     visibilityPrivate: 'Private',
-    visibilityPrivateDetail: 'Only the people added can see it.',
+    visibilityPrivateDetail:
+      'Only the people added can see it. Members can add people; removing, renaming and archiving belong to the channel owner (you).',
+    descriptionInvalid: 'The description can have at most 250 characters and no control characters.',
+    addPeople: 'Add people',
+    searchPeople: 'Type a name…',
+    chosenPeople: 'People to add',
+    removePerson: 'Remove {name}',
+    noPeopleFound: 'Nobody matches.',
+    peopleLimit: 'You can add up to {count} people at a time.',
+    peoplePartial: 'Only the first {count} members are searched.',
+    morePeopleMatch: 'Showing the first {count}. Type more of the name to narrow the list.',
+    privateNote:
+      'Nobody who is not a member, admins included, can see the name or the content of a private channel.',
+    sameNameWarning: 'You can already see another channel with this name.',
+    privateChannel: 'Private channel',
+    memberCount: '{count} members',
+    memberCountOne: '1 member',
+    noDescription: 'No description.',
+    members: 'Members',
+    channelOwner: 'Channel owner',
+    you: '(you)',
+    showMoreMembers: 'Show more members',
+    add: 'Add',
+    edit: 'Edit',
+    editChannel: 'Edit channel',
+    leaveChannel: 'Leave channel',
+    leaveConfirm: 'Leave {name}?',
+    leavePublicNote: 'You can join again from "Browse channels".',
+    leavePrivateNote: 'To come back, a member has to add you again.',
+    leaveOwnerNote:
+      'You are the channel owner. When you leave, ownership passes to the member who joined earliest.',
+    leaveLastNote:
+      'You are the last member. When you leave, the channel is archived and nobody can reach it again.',
+    archive: 'Archive',
+    unarchive: 'Unarchive',
+    archiveConfirm: 'Archive {name}?',
+    archiveNote: 'Messages stay readable, but nobody can send new ones until the channel is unarchived.',
+    archived: 'Archived',
+    archivedBanner: 'This channel is archived. You can read it, but nobody can send messages.',
+    transferOwnership: 'Make owner',
+    transferTo: 'Make {name} the owner',
+    transferConfirm: 'Make {name} the owner of this channel?',
+    transferNote: 'You stay a member, but only the new owner can rename, archive or hand over the channel.',
+    lostAccess: 'You no longer have access to that channel.',
+    rateLimited: 'You have done this too often. Try again later.',
+    rateLimitedIn: 'You have done this too often. Try again in {duration}.',
+    membershipLimit:
+      'One of these people is already in the largest number of conversations a person can be in. Nothing was changed.',
+    memberNotInOrganization:
+      'One of these people is no longer an active member of the organization. Review the list and try again.',
+    channelArchivedError: 'This channel is archived, so it cannot be changed.',
+    notAllowed: 'You are not allowed to do this.',
+    ownerMustBeMember: 'That person is no longer a member of this channel.',
+    notAvailableYet: 'This is not available yet.',
+    archivedChannels: 'Archived channels',
+    noArchivedChannels: 'You are in no archived channels.',
+    open: 'Open',
+    openChannel: 'Open {name}',
+    sendArchived: 'This channel is archived. The message was not sent.',
+    membersWindow: 'Showing the last {count} members loaded.',
   },
   tr: {
     channels: 'Kanallar',
@@ -271,6 +407,18 @@ export const messages: Messages<Key> = {
     linkRemove: 'Bağlantıyı kaldır',
     linkInvalid: 'Geçerli bir web veya e-posta adresi gir (http, https veya mailto).',
     formattingTooLarge: 'Bu mesajda çok fazla biçimlendirme var, gönderilemiyor. Sadeleştir.',
+    errorLinksLimit:
+      'Bu mesajda çok fazla farklı bağlantı var (en fazla 50). Birkaçını kaldırıp yeniden gönder.',
+    errorLinkHref: 'Bağlantılardan biri geçerli bir web ya da e-posta adresi değil. Düzelt ya da kaldır.',
+    errorBlocksDisabled: 'Biçimli mesajlar bu sunucuda henüz kullanılamıyor. Düz metin gönder.',
+    errorTextLength: 'Bu mesaj çok uzun. 4.000 karaktere kısalt.',
+    errorEmpty: 'Bu mesajda metin yok. Göndermeden önce bir şey yaz.',
+    errorCharacters: 'Bu mesajda gönderilemeyen karakterler var. Kaldırıp yeniden dene.',
+    errorMention: 'Anmak istediğin kişilerden biri anılamıyor. Anmayı kaldırıp yeniden dene.',
+    errorMentionLimit: 'Bu mesajda çok fazla kişi anılıyor (en fazla 50).',
+    errorGroupMention: 'Herkesi ya da bir grubu anma henüz kullanılamıyor.',
+    linksLimit:
+      'Bu mesajda {count} farklı bağlantı var; en fazla 50 olabilir. Göndermek için birkaçını kaldır.',
     addMenu: 'Ekle',
     toggleFormatting: 'Biçimlendirmeyi göster/gizle',
     emoji: 'Emoji',
@@ -286,6 +434,63 @@ export const messages: Messages<Key> = {
     visibilityPublic: 'Açık',
     visibilityPublicDetail: 'Organizasyondaki herkes görür, arar ve katılabilir.',
     visibilityPrivate: 'Özel',
-    visibilityPrivateDetail: 'Yalnızca eklenen kişiler görür.',
+    visibilityPrivateDetail:
+      'Yalnızca eklenen kişiler görür. Üyeler kişi ekleyebilir; çıkarma, ad değiştirme ve arşivleme kanal sahibinde (sen).',
+    descriptionInvalid: 'Açıklama en fazla 250 karakter olabilir ve denetim karakteri içeremez.',
+    addPeople: 'Kişi ekle',
+    searchPeople: 'Ad yaz…',
+    chosenPeople: 'Eklenecek kişiler',
+    removePerson: '{name} kişisini kaldır',
+    noPeopleFound: 'Eşleşen kimse yok.',
+    peopleLimit: 'Bir seferde en fazla {count} kişi ekleyebilirsin.',
+    peoplePartial: 'Yalnızca ilk {count} üye aranıyor.',
+    morePeopleMatch: 'İlk {count} kişi gösteriliyor. Listeyi daraltmak için adın devamını yaz.',
+    privateNote: 'Özel kanalın adını ve içeriğini üye olmayan kimse, yöneticiler dahil, göremez.',
+    sameNameWarning: 'Bu adda görebildiğin başka bir kanal var.',
+    privateChannel: 'Özel kanal',
+    memberCount: '{count} üye',
+    memberCountOne: '1 üye',
+    noDescription: 'Açıklama yok.',
+    members: 'Üyeler',
+    channelOwner: 'Kanal sahibi',
+    you: '(sen)',
+    showMoreMembers: 'Daha fazla üye göster',
+    add: 'Ekle',
+    edit: 'Düzenle',
+    editChannel: 'Kanalı düzenle',
+    leaveChannel: 'Kanaldan ayrıl',
+    leaveConfirm: '{name} kanalından ayrılmak istiyor musun?',
+    leavePublicNote: '"Kanallara göz at" üzerinden yeniden katılabilirsin.',
+    leavePrivateNote: 'Geri dönmek için bir üyenin seni yeniden eklemesi gerekir.',
+    leaveOwnerNote: 'Kanal sahibisin. Ayrıldığında sahiplik, kanala en önce katılan üyeye geçer.',
+    leaveLastNote: 'Son üyesin. Ayrıldığında kanal arşivlenir ve kimse bir daha erişemez.',
+    archive: 'Arşivle',
+    unarchive: 'Arşivden çıkar',
+    archiveConfirm: '{name} kanalını arşivlemek istiyor musun?',
+    archiveNote: 'Mesajlar okunabilir kalır; kanal arşivden çıkarılana kadar kimse yeni mesaj gönderemez.',
+    archived: 'Arşivlendi',
+    archivedBanner: 'Bu kanal arşivlendi. Okuyabilirsin, ama kimse mesaj gönderemez.',
+    transferOwnership: 'Sahipliği devret',
+    transferTo: 'Sahipliği {name} kişisine devret',
+    transferConfirm: 'Kanalın sahipliğini {name} kişisine devretmek istiyor musun?',
+    transferNote:
+      'Üye olarak kalırsın; ancak kanalın adını değiştirmek, kanalı arşivlemek veya devretmek yalnızca yeni sahibin elinde olur.',
+    lostAccess: 'O kanala artık erişimin yok.',
+    rateLimited: 'Bunu çok sık yaptın. Daha sonra tekrar dene.',
+    rateLimitedIn: 'Bunu çok sık yaptın. {duration} sonra tekrar dene.',
+    membershipLimit:
+      'Bu kişilerden biri, bir kişinin üye olabileceği en fazla sohbet sayısına ulaşmış. Hiçbir şey değişmedi.',
+    memberNotInOrganization:
+      'Bu kişilerden biri artık organizasyonun aktif üyesi değil. Listeyi gözden geçirip tekrar dene.',
+    channelArchivedError: 'Bu kanal arşivlendiği için değiştirilemiyor.',
+    notAllowed: 'Bunu yapma iznin yok.',
+    ownerMustBeMember: 'Bu kişi artık bu kanalın üyesi değil.',
+    notAvailableYet: 'Bu henüz kullanılamıyor.',
+    archivedChannels: 'Arşivlenmiş kanallar',
+    noArchivedChannels: 'Üyesi olduğun arşivlenmiş kanal yok.',
+    open: 'Aç',
+    openChannel: '{name} kanalını aç',
+    sendArchived: 'Bu kanal arşivlendi. Mesaj gönderilmedi.',
+    membersWindow: 'Yüklenen son {count} üye gösteriliyor.',
   },
 };

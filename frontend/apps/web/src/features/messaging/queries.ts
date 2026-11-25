@@ -1,7 +1,7 @@
-import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { rememberSeq } from './seq-memory';
 import { useCallback } from 'react';
-import type { Message, MessageCursor, MessagePage, MessagingApi } from './api';
+import type { ConversationPage, Message, MessageCursor, MessagePage, MessagingApi } from './api';
 
 // Explicit cache keys, per organization and conversation. The conversations list has its own segment so that
 // invalidating it never touches the messages of a conversation.
@@ -9,8 +9,58 @@ export const conversationsKey = (orgId: string) => ['orgs', orgId, 'conversation
 /** The public channels to browse, joined or not. */
 export const browseChannelsKey = (orgId: string) => ['orgs', orgId, 'channels'] as const;
 export const membersKey = (orgId: string) => ['orgs', orgId, 'members'] as const;
+/** Everything cached about one conversation: its details, members and messages. */
+export const conversationScopeKey = (orgId: string, conversationId: string) =>
+  ['orgs', orgId, 'conversations', conversationId] as const;
+export const conversationKey = (orgId: string, conversationId: string) =>
+  ['orgs', orgId, 'conversations', conversationId, 'detail'] as const;
+export const conversationMembersKey = (orgId: string, conversationId: string) =>
+  ['orgs', orgId, 'conversations', conversationId, 'members'] as const;
+/** The person's archived conversations, which the sidebar's list leaves out. */
+export const archivedConversationsKey = (orgId: string) =>
+  ['orgs', orgId, 'conversations', 'archived'] as const;
+export const myPermissionsKey = (orgId: string) => ['orgs', orgId, 'me', 'permissions'] as const;
 export const messagesKey = (orgId: string, conversationId: string) =>
   ['orgs', orgId, 'conversations', conversationId, 'messages'] as const;
+
+export type ConversationPages = InfiniteData<ConversationPage, string | undefined>;
+
+/** At most this many pages of the organization's members (100 each) are held, for names and for choosing people. */
+export const MAX_MEMBER_PAGES = 5;
+
+/** The organization's members, page by page; callers load further pages only while they need them. */
+export function useOrganizationMembers(api: MessagingApi, orgId: string) {
+  return useInfiniteQuery({
+    queryKey: membersKey(orgId),
+    queryFn: ({ pageParam, signal }) => api.listMembers(orgId, pageParam, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next ?? undefined,
+    staleTime: 5 * 60_000,
+    maxPages: MAX_MEMBER_PAGES,
+  });
+}
+
+/**
+ * The person's own permission keys in the organization, to decide what to offer; the server checks every request
+ * for itself. A role change shows after five minutes at the latest, or when the page is loaded again.
+ */
+export function useMyPermissions(api: MessagingApi, orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: myPermissionsKey(orgId),
+    queryFn: ({ signal }) => api.listMyPermissions(orgId, signal),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+/** One conversation: its kind, description, archive state, member count and the person's own role in it. */
+export function useConversation(api: MessagingApi, orgId: string, conversationId: string) {
+  return useQuery({
+    queryKey: conversationKey(orgId, conversationId),
+    queryFn: ({ signal }) => api.getConversation(orgId, conversationId, signal),
+    staleTime: 60_000,
+  });
+}
 
 /** At most this many pages of a channel stay in memory; reading further back drops the newest ones. */
 export const MAX_MESSAGE_PAGES = 10;

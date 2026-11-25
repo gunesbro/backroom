@@ -44,6 +44,7 @@ function fakeRealtime() {
     SessionRevoked: [],
     PresenceChanged: [],
     MembershipChanged: [],
+    ConversationUpdated: [],
   };
   const statusListeners: ((status: ConnectionStatus, reconnected: boolean) => void)[] = [];
   let status: ConnectionStatus = 'stopped';
@@ -95,6 +96,25 @@ function fakeApi(count = 3, extra: Partial<MessagingApi> = {}) {
     joinConversation: vi.fn(),
     leaveConversation: vi.fn(),
     createChannel: vi.fn(),
+    getConversation: (_org: string, conversationId: string) =>
+      Promise.resolve({
+        id: conversationId,
+        kind: 'public_channel' as const,
+        name: conversationId === RANDOM.id ? RANDOM.name : GENERAL.name,
+        description: null,
+        createdAt: GENERAL.createdAt,
+        archivedAt: null,
+        memberCount: 2,
+        ownerAccountId: null,
+        role: 'member' as const,
+      }),
+    updateConversation: vi.fn(),
+    archiveConversation: vi.fn(),
+    unarchiveConversation: vi.fn(),
+    listConversationMembers: () => Promise.resolve({ members: [], next: null }),
+    addConversationMembers: vi.fn(),
+    transferOwnership: vi.fn(),
+    listMyPermissions: () => Promise.resolve([]),
     listMessages: vi.fn((_org: string, _channel: string, cursor: MessageCursor) => {
       calls.push(cursor);
       if (cursor && 'after' in cursor) {
@@ -425,6 +445,25 @@ describe('applyLiveMessage', () => {
 
     const data = queryClient.getQueryData<MessagePages>(messagesKey(ORG, GENERAL.id));
     expect(data?.pages[0]?.messages.map(({ seq }) => seq)).toEqual([4, 3, 2, 1]);
+  });
+});
+
+describe('applyLiveMessage blocks', () => {
+  it('LiveMessage_WithBlocks_KeepsThemInTheCache', () => {
+    forgetSeqs();
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<MessagePages>(messagesKey(ORG, GENERAL.id), {
+      pages: [{ messages: [message(1)], next: null }],
+      pageParams: [undefined],
+    });
+    const blocks = [
+      { type: 'paragraph', children: [{ type: 'text', text: 'hi', marks: [{ type: 'bold' }] }] },
+    ];
+
+    applyLiveMessage(queryClient, ORG, GENERAL.id, message(2, { blocks }));
+
+    const data = queryClient.getQueryData<MessagePages>(messagesKey(ORG, GENERAL.id));
+    expect(data?.pages[0]?.messages[0]?.blocks).toEqual(blocks);
   });
 });
 

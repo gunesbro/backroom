@@ -6,13 +6,20 @@ import { requestJson, type AccessTokenSource } from '@/shared/http';
 /** The person's own status in the control plane (docs/contracts/phase-2.md, flow 9); expired parts come back null. */
 export type AccountStatus = {
   dndUntil: string | null;
+  /** Away chosen by hand: no end, never together with do not disturb. Others only see the same "idle" as the automatic one. */
+  away: boolean;
   customStatus: CustomStatus | null;
   timeZone: string | null;
   version: number;
 };
 
 /** A whole status: PUT replaces everything, so every change sends the parts it keeps too. */
-export type StatusInput = { dndUntil: string | null; customStatus: CustomStatus | null; timeZone: string };
+export type StatusInput = {
+  dndUntil: string | null;
+  away: boolean;
+  customStatus: CustomStatus | null;
+  timeZone: string;
+};
 
 /** Another member's presence, as the cell answers it (state and status only; never platform, device or time zone). */
 export type MemberPresence = {

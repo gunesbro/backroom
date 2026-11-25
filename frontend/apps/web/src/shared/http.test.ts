@@ -127,3 +127,13 @@ describe('requestJson', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('requestJson reason', () => {
+  it('Request_WhenAProblemNamesAReason_ThrowsItOnlyIfItIsAFixedToken', async () => {
+    respond('{"code":"messaging.message_invalid","reason":"links.limit"}', { status: 400 });
+    await expect(requestJson('/api', token)).rejects.toMatchObject({ reason: 'links.limit' });
+
+    respond('{"code":"messaging.message_invalid","reason":"<script>alert(1)</script>"}', { status: 400 });
+    await expect(requestJson('/api', token)).rejects.toMatchObject({ reason: undefined });
+  });
+});

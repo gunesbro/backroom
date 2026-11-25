@@ -439,6 +439,13 @@
           "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
         }
       },
+      "backroom.modules.permissions.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "Backroom.BuildingBlocks.Presentation": "[1.0.0, )",
+          "Backroom.Modules.Permissions.Contracts": "[1.0.0, )"
+        }
+      },
       "backroom.testing": {
         "type": "Project",
         "dependencies": {

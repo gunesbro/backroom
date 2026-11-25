@@ -5,12 +5,13 @@ difference is gone.
 
 ## Texts not taken verbatim
 
-| Where                                  | Design                                      | App                       | Why                                                                     |
-| -------------------------------------- | ------------------------------------------- | ------------------------- | ----------------------------------------------------------------------- |
-| Invite dialog title, organization menu | "Acme'ye davet et", "Acme'ye kişi davet et" | "Acme için kişi davet et" | A Turkish suffix cannot be put right on every organization name.        |
-| Invite dialog tab list name            | none                                        | "Davet yolu"              | The tab list needs an accessible name.                                  |
-| Account bar region                     | none                                        | "Hesap"                   | Everything on the page must sit in a landmark; the region needs a name. |
-| Controls of later phases               | none                                        | "Yakında"                 | Phase 2 and later controls are shown disabled and say they are coming.  |
+| Where                                  | Design                                      | App                                                      | Why                                                                         |
+| -------------------------------------- | ------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Invite dialog title, organization menu | "Acme'ye davet et", "Acme'ye kişi davet et" | "Acme için kişi davet et"                                | A Turkish suffix cannot be put right on every organization name.            |
+| Invite dialog tab list name            | none                                        | "Davet yolu"                                             | The tab list needs an accessible name.                                      |
+| Status menu, "Boşta" detail            | "10 dk hareketsizlikte otomatik"            | "Sen değiştirene kadar · 10 dk hareketsizlikte otomatik" | Away can be chosen by hand since 2026-11-25; the canvas is not updated yet. |
+| Account bar region                     | none                                        | "Hesap"                                                  | Everything on the page must sit in a landmark; the region needs a name.     |
+| Controls of later phases               | none                                        | "Yakında"                                                | Phase 2 and later controls are shown disabled and say they are coming.      |
 
 ## Structure
 

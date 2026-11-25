@@ -239,6 +239,9 @@ message AccountStatusChanged {
   string time_zone = 6;
   // Monotonic per account.
   uint64 version = 7;
+  // Away chosen by hand (owner decision of 2026-11-25): no end, never together with dnd_until. A cell that does not know the
+  // field ignores it and keeps showing the automatic state.
+  bool away = 8;
 }
 
 message FullSyncRequest {}
@@ -256,7 +259,7 @@ message SyncAccountStatusesRequest {
 }
 
 message SyncAccountStatusesResponse {
-  // Statuses of members of the cell with something in force (do not disturb, a custom status or a time zone); expired parts are
+  // Statuses of members of the cell with something in force (do not disturb, away, a custom status or a time zone); expired parts are
   // left out. At most 1,000 per page.
   repeated AccountStatusChanged statuses = 1;
   // The cursor for the next page; empty when this was the last one.

@@ -4,6 +4,7 @@ import {
   blocksJsonBytes,
   blocksToText,
   canonicalMarks,
+  derivedMentionNames,
   hrefFromInput,
   mergeRuns,
   parseBlocks,
@@ -133,7 +134,15 @@ describe('parseBlocks', () => {
       },
       { type: 'heading', children: [{ type: 'text', text: 'dropped' }] },
     ]);
-    expect(parsed).toEqual([{ type: 'paragraph', children: [{ type: 'text', text: 'kept' }] }]);
+    expect(parsed).toEqual([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'text', text: 'kept' },
+          { type: 'mention', accountId: 'x' },
+        ],
+      },
+    ]);
   });
 
   it('ParseBlocks_WhenNothingKnown_ReturnsNull', () => {
@@ -159,5 +168,72 @@ describe('parseBlocks', () => {
     expect(parsed).toEqual([
       { type: 'paragraph', children: [{ type: 'text', text: 'x', marks: [{ type: 'italic' }] }] },
     ]);
+  });
+});
+
+describe('derivedMentionNames', () => {
+  it('DerivedMentionNames_WhenNamesHaveSpacesAndTurkishLetters_FindsEachBetweenItsNeighbours', () => {
+    const blocks = parseBlocks([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'text', text: 'Merhaba ' },
+          { type: 'mention', accountId: 'a' },
+          { type: 'text', text: ' ve ' },
+          { type: 'mention', accountId: 'b' },
+        ],
+      },
+      {
+        type: 'quote',
+        children: [
+          { type: 'mention', special: 'here' },
+          { type: 'text', text: ' tamam' },
+        ],
+      },
+    ]);
+
+    const names = derivedMentionNames(blocks ?? [], 'Merhaba @\u0130pek \u015Eahin ve @Ali\n@burada tamam');
+
+    expect([...names.values()]).toEqual(['\u0130pek \u015Eahin', 'Ali', 'burada']);
+  });
+
+  it('DerivedMentionNames_WhenTextDoesNotMatch_ReturnsWhatItFoundWithoutThrowing', () => {
+    const blocks = parseBlocks([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'text', text: 'hi ' },
+          { type: 'mention', accountId: 'a' },
+        ],
+      },
+    ]);
+
+    expect(derivedMentionNames(blocks ?? [], 'something else').size).toBe(0);
+  });
+});
+
+describe('derivedMentionNames boundaries', () => {
+  it('DerivedMentionNames_WhenNextRunIsNotFoundOrMentionsAreAdjacent_GivesNoNameInsteadOfGuessing', () => {
+    const adjacent = parseBlocks([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'mention', accountId: 'a' },
+          { type: 'mention', accountId: 'b' },
+        ],
+      },
+    ]);
+    const missing = parseBlocks([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'mention', accountId: 'a' },
+          { type: 'text', text: ' says hello' },
+        ],
+      },
+    ]);
+
+    expect(derivedMentionNames(adjacent ?? [], '@Ann Bob').size).toBe(0);
+    expect(derivedMentionNames(missing ?? [], '@Ann says hi').size).toBe(0);
   });
 });

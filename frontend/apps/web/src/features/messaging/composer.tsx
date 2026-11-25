@@ -12,7 +12,14 @@ import { Icon, SoonButton, Toolbar, type IconName } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
 import { config } from '@/config';
 import { messages } from './messages';
-import { MAX_BLOCKS_JSON_BYTES, blocksJsonBytes, blocksToText, type Block } from './rich-text/blocks';
+import {
+  MAX_BLOCKS_JSON_BYTES,
+  MAX_LINKS,
+  blocksJsonBytes,
+  blocksToText,
+  distinctWebLinks,
+  type Block,
+} from './rich-text/blocks';
 import type { RichFieldHandle, RichValue } from './rich-text/rich-field';
 import { COUNTER_FROM_REMAINING, MAX_MESSAGE_LENGTH, normalizeMessageText } from './text';
 
@@ -84,7 +91,9 @@ export function Composer({
   const text = rich ? blocksToText(blocks) : normalizeMessageText(value);
   const remaining = MAX_MESSAGE_LENGTH - text.length;
   const tooLarge = rich && blocksJsonBytes(blocks) > MAX_BLOCKS_JSON_BYTES;
-  const over = remaining < 0 || tooLarge;
+  const links = rich ? distinctWebLinks(blocks) : 0;
+  const tooManyLinks = links > MAX_LINKS;
+  const over = remaining < 0 || tooLarge || tooManyLinks;
   const canSend = text.length > 0 && !over;
 
   const submit = () => {
@@ -110,7 +119,7 @@ export function Composer({
     }
   };
 
-  const showCounter = remaining <= COUNTER_FROM_REMAINING || tooLarge;
+  const showCounter = remaining <= COUNTER_FROM_REMAINING || tooLarge || tooManyLinks;
   const soon = t('soon');
   const passive = (key: SoonKey, content: ReactNode, className?: string) => (
     <SoonButton key={key} label={t(key)} soon={soon} className={className}>
@@ -196,11 +205,13 @@ export function Composer({
               className={over ? 'bm-counter bm-counter--over' : 'bm-counter'}
               role={over ? 'status' : undefined}
             >
-              {tooLarge
-                ? t('formattingTooLarge')
-                : over
-                  ? t('charactersOver', { count: -remaining })
-                  : t('charactersLeft', { count: remaining })}
+              {tooManyLinks
+                ? t('linksLimit', { count: links })
+                : tooLarge
+                  ? t('formattingTooLarge')
+                  : over
+                    ? t('charactersOver', { count: -remaining })
+                    : t('charactersLeft', { count: remaining })}
             </p>
           ) : null}
           <p id={hintId} className="bm-composer__hint">

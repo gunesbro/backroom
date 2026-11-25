@@ -17,6 +17,7 @@ import { useTranslate } from '@/shared/locale';
 import type { Message } from './api';
 import { messages } from './messages';
 import type { PendingMessage } from './pending-messages';
+import { isRefusedContent, refusalKey } from './send-errors';
 import { MessageBody } from './rich-text/message-blocks';
 
 export type Row =
@@ -48,6 +49,7 @@ export function MessageList({
   loadingNewer,
   onLoadNewer,
   authorName,
+  mentionName,
   ownAccountId,
   ownName,
   locale,
@@ -65,6 +67,8 @@ export function MessageList({
   loadingNewer: boolean;
   onLoadNewer: () => void;
   authorName: (accountId: string) => string;
+  /** The name of a mentioned member if the client knows it. */
+  mentionName?: ((accountId: string) => string | undefined) | undefined;
   ownAccountId: string | undefined;
   /** The signed-in account's name, shown on its own messages. */
   ownName: string;
@@ -318,6 +322,7 @@ export function MessageList({
                 tabStop={row.key === tabStopKey}
                 position={item.index + 1}
                 authorName={authorName}
+                mentionName={mentionName}
                 ownAccountId={ownAccountId}
                 ownName={ownName}
                 locale={locale}
@@ -373,6 +378,7 @@ const MessageRow = memo(function MessageRow({
   tabStop,
   position,
   authorName,
+  mentionName,
   ownAccountId,
   ownName,
   locale,
@@ -386,6 +392,8 @@ const MessageRow = memo(function MessageRow({
   /** One-based place in the feed (aria-posinset); the size is unknown, as more pages load. */
   position: number;
   authorName: (accountId: string) => string;
+  /** The name of a mentioned member if the client knows it. */
+  mentionName?: ((accountId: string) => string | undefined) | undefined;
   ownAccountId: string | undefined;
   ownName: string;
   locale: Locale;
@@ -471,6 +479,7 @@ const MessageRow = memo(function MessageRow({
             blocks={pending?.blocks ?? message?.blocks}
             text={text}
             sending={pending?.status === 'sending'}
+            {...(mentionName ? { mentionName } : {})}
           />
         ) : (
           <p className={pending?.status === 'sending' ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>
@@ -478,13 +487,15 @@ const MessageRow = memo(function MessageRow({
         {pending?.status === 'sending' && <p className="bm-message__state ph-muted">{t('sending')}</p>}
         {pending?.status === 'failed' && (
           <p className="bm-message__state bm-message__error">
-            {pending.code === 'messaging.message_invalid'
-              ? t('messageInvalid')
+            {isRefusedContent(pending.code)
+              ? t(refusalKey(pending.code ?? '', pending.reason))
               : pending.code === 'messaging.conversation_not_found'
                 ? t('channelGone')
                 : pending.code === 'messaging.not_a_member'
                   ? t('notAMember')
-                  : t('sendFailed')}{' '}
+                  : pending.code === 'messaging.conversation_archived'
+                    ? t('sendArchived')
+                    : t('sendFailed')}{' '}
             {pending.code === 'messaging.not_a_member' && (
               <button
                 type="button"
@@ -496,7 +507,7 @@ const MessageRow = memo(function MessageRow({
                 {t('join')}
               </button>
             )}{' '}
-            {pending.code !== 'messaging.message_invalid' && (
+            {!isRefusedContent(pending.code) && (
               <button
                 type="button"
                 className="ph-link"

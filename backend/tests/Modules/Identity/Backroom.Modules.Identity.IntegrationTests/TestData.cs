@@ -73,6 +73,13 @@ internal sealed class TestData(PostgresDatabase database)
         return (reader.GetString(0), reader.GetDateTime(1), reader.GetDateTime(2));
     }
 
+    /// <summary>
+    /// Leaves the row an instance built before the <c>away</c> column leaves when do not disturb is set on an account that is away:
+    /// <c>dnd_until</c> replaced, <c>away</c> untouched.
+    /// </summary>
+    public Task SetDndLikeAnOlderInstanceAsync(Guid accountId, DateTimeOffset dndUntil) =>
+        ExecuteAsync("UPDATE identity.account_status SET dnd_until = $2, version = version + 1 WHERE account_id = $1", accountId, dndUntil);
+
     /// <summary>Inserts a revoked session directly (an arranged row, whatever the clock says).</summary>
     public Task AddRevokedSessionAsync(Guid accountId, string sessionId, DateTimeOffset revokedAt, DateTimeOffset keepUntil) =>
         ExecuteAsync(

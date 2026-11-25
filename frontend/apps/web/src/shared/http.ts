@@ -7,6 +7,8 @@ export class ApiError extends Error {
     readonly code: string,
     /** Seconds from the Retry-After header (a 429, or a 503 of a fenced write). */
     readonly retryAfterSeconds?: number,
+    /** The problem's fixed `reason` token (never text from the request), when the server names one. */
+    readonly reason?: string,
   ) {
     super(`HTTP ${String(status)} ${code}`);
     this.name = 'ApiError';
@@ -30,7 +32,7 @@ const MAX_FENCED_RETRIES = 3;
 const MAX_FENCED_WAIT_SECONDS = 5;
 
 type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal | undefined;
 };
@@ -112,11 +114,35 @@ async function requestOnce<T>(
   }
 
   if (!response.ok) {
-    throw new ApiError(response.status, problemCode(text, response.status), retryAfter(response.headers));
+    throw new ApiError(
+      response.status,
+      problemCode(text, response.status),
+      retryAfter(response.headers),
+      problemReason(text),
+    );
   }
 
   // A 204 has no body.
   return (text === '' ? undefined : JSON.parse(text)) as T;
+}
+
+function problemReason(text: string): string | undefined {
+  try {
+    const problem: unknown = JSON.parse(text);
+    if (
+      typeof problem === 'object' &&
+      problem !== null &&
+      'reason' in problem &&
+      typeof problem.reason === 'string' &&
+      /^[a-z0-9_.]{1,64}$/.test(problem.reason)
+    ) {
+      return problem.reason;
+    }
+  } catch {
+    // Not a problem document.
+  }
+
+  return undefined;
 }
 
 function problemCode(text: string, status: number): string {

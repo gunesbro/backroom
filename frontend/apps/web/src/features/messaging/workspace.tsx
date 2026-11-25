@@ -1,22 +1,47 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Icon, SoonButton, Spinner, Status } from '@backroom/ui';
 import { CellSignInPendingError, CellSignInPrompt, CellUnavailableError, useAuth } from '@/features/auth';
-import { ApiError } from '@/shared/http';
 import { useLocale, useTranslate } from '@/shared/locale';
 import { useMessagingApiFactory, type Cell, type Channel, type MessagingApi } from './api';
+import { ChannelMark } from './channel-mark';
 import { ChannelSidebar, type ChannelsState } from './channel-sidebar';
 import { Composer } from './composer';
+import { isConversationGone } from './conversation-errors';
 import { CreateChannelDialog } from './create-channel-dialog';
+import { forgetConversation } from './live-cache';
 import { MessageList, type Row } from './message-list';
 import { rowKey } from './row-key';
 import { messages } from './messages';
 import { NewMessageAnnouncer } from './new-message-announcer';
 import { usePendingMessages } from './pending-messages';
 import { BrowseChannelsDialog } from './browse-channels-dialog';
-import { conversationsKey, membersKey, oldestFirst, useChannelMessages } from './queries';
+import {
+  conversationsKey,
+  MAX_MEMBER_PAGES,
+  oldestFirst,
+  useChannelMessages,
+  useConversation,
+  useOrganizationMembers,
+} from './queries';
 import { useLiveUpdates } from './use-live-updates';
 import './messaging.css';
+import './channels.css';
+
+/** The channel's details and what can be done with it: loaded when it is first opened. */
+const ChannelInfoDialog = lazy(() =>
+  import('./channel-info-dialog').then(({ ChannelInfoDialog: dialog }) => ({ default: dialog })),
+);
 
 export type WorkspaceOrganization = { id: string; name: string; cell: Cell };
 
@@ -52,25 +77,73 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
   const [chosen, setChosen] = useState<Channel | undefined>();
   const [creating, setCreating] = useState(false);
   const [browsing, setBrowsing] = useState(false);
-  const selected = chosen ?? channels.channels[0];
+  /** The channel whose info is open. */
+  const [infoFor, setInfoFor] = useState<string | undefined>();
+  /** Said once, politely, when the open channel was taken away. */
+  const [notice, setNotice] = useState('');
+  /** The conversation the person last lost: not opened by default while the list still has it. */
+  const [dropped, setDropped] = useState<string | undefined>();
+  const first = channels.channels.find((channel) => channel.id !== dropped);
+  // The open channel is chosen once, not derived from the list: it stays open when it leaves the list (an archived
+  // channel does), so its banner and its info can still be reached.
+  if (!chosen && first) setChosen(first);
+  const selected = chosen ?? first;
+  const selectedId = selected?.id;
   const pending = usePendingMessages(api, orgId);
   const { user } = useAuth();
+  const selectedRef = useRef(selectedId);
+  useLayoutEffect(() => {
+    selectedRef.current = selectedId;
+  });
+  /** Conversations the person is leaving themself: losing them needs no notice. */
+  const leaving = useRef(new Set<string>());
+  const lostAccess = t('lostAccess');
+  const drop = useCallback(
+    (conversationId: string) => {
+      const own = leaving.current.delete(conversationId);
+      if (!own && selectedRef.current === conversationId) setNotice(lostAccess);
+      setDropped(conversationId);
+      setChosen((current) => (current?.id === conversationId ? undefined : current));
+      setInfoFor((current) => (current === conversationId ? undefined : current));
+    },
+    [lostAccess],
+  );
+  /** The server says the conversation cannot be read (any more): forget it and leave it. */
+  const gone = useCallback(
+    (conversationId: string) => {
+      drop(conversationId);
+      forgetConversation(queryClient, orgId, conversationId);
+    },
+    [drop, queryClient, orgId],
+  );
+  const noteLeaving = useCallback((conversationId: string, started: boolean) => {
+    if (started) leaving.current.add(conversationId);
+    else leaving.current.delete(conversationId);
+  }, []);
   const channelIds = useMemo(() => channels.channels.map((channel) => channel.id), [channels.channels]);
   const live = useLiveUpdates({
     cell: organization.cell,
     api,
     orgId,
     channelIds,
-    selectedId: selected?.id,
+    selectedId,
     ownAccountId: user.accountId,
+    detailedId: infoFor,
+    onRemoved: drop,
   });
   const { clearActivity } = live;
   const select = useCallback(
     (channel: Channel) => {
       clearActivity(channel.id);
       setChosen(channel);
+      setNotice('');
     },
     [clearActivity],
+  );
+  const channelNames = useMemo(() => channels.channels.map((channel) => channel.name), [channels.channels]);
+  const otherNames = useMemo(
+    () => channels.channels.filter((channel) => channel.id !== selectedId).map((channel) => channel.name),
+    [channels.channels, selectedId],
   );
 
   return (
@@ -97,7 +170,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
           <ChannelSidebar
             organizationName={organization.name}
             state={channels}
-            selectedId={selected?.id}
+            selectedId={selectedId}
             onSelect={select}
             onAdd={() => {
               setCreating(true);
@@ -111,10 +184,26 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
           {account}
         </div>
         <main className="bm-main">
+          <div className="bm-notice" role="status">
+            {notice}
+          </div>
           {channels.signInPending ? (
             <CellSignInPrompt onDismiss={channels.reload} />
           ) : selected ? (
-            <ChannelView key={selected.id} api={api} orgId={orgId} channel={selected} pending={pending} />
+            <ChannelView
+              key={selected.id}
+              api={api}
+              orgId={orgId}
+              channel={selected}
+              pending={pending}
+              otherNames={otherNames}
+              infoOpen={infoFor === selected.id}
+              onInfoOpenChange={(open) => {
+                setInfoFor(open ? selected.id : undefined);
+              }}
+              onGone={gone}
+              onLeaving={noteLeaving}
+            />
           ) : (
             !channels.loading && !channels.failed && <p className="ph-muted bm-empty">{t('selectChannel')}</p>
           )}
@@ -134,18 +223,24 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
             setChosen(channel);
             setBrowsing(false);
           }}
+          onOpenArchived={(channel) => {
+            select(channel);
+            setBrowsing(false);
+          }}
         />
       )}
       {creating && (
         <CreateChannelDialog
           api={api}
           orgId={orgId}
+          existingNames={channelNames}
           onClose={() => {
             setCreating(false);
           }}
           onCreated={(channel) => {
             void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
             setChosen(channel);
+            setNotice('');
             setCreating(false);
           }}
         />
@@ -181,32 +276,42 @@ function useChannels(api: MessagingApi, orgId: string): ChannelsState {
   };
 }
 
-/** Names of the organization's members, loaded page by page only while an author on screen is unknown. */
-const MAX_MEMBER_PAGES = 5;
-
 function ChannelView({
   api,
   orgId,
   channel,
   pending,
+  otherNames,
+  infoOpen,
+  onInfoOpenChange,
+  onGone,
+  onLeaving,
 }: {
   api: MessagingApi;
   orgId: string;
   channel: Channel;
   pending: ReturnType<typeof usePendingMessages>;
+  /** Names of the other channels the person can see. */
+  otherNames: readonly string[];
+  infoOpen: boolean;
+  onInfoOpenChange: (open: boolean) => void;
+  /** The channel cannot be read any more, or the person left it. */
+  onGone: (conversationId: string) => void;
+  /** The person is about to leave the channel themself (`started`), or that leave failed. */
+  onLeaving: (conversationId: string, started: boolean) => void;
 }) {
   const t = useTranslate(messages);
   const locale = useLocale();
   const { user } = useAuth();
   const query = useChannelMessages(api, orgId, channel.id);
-  const members = useInfiniteQuery({
-    queryKey: membersKey(orgId),
-    queryFn: ({ pageParam, signal }) => api.listMembers(orgId, pageParam, signal),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.next ?? undefined,
-    staleTime: 5 * 60_000,
-    maxPages: MAX_MEMBER_PAGES,
-  });
+  // Names of the organization's members, loaded page by page only while an author on screen is unknown.
+  const members = useOrganizationMembers(api, orgId);
+  // The channel's kind, archive state and member count; the messages do not wait for it.
+  const detail = useConversation(api, orgId, channel.id);
+  const info = detail.data;
+  const name = info?.name ?? channel.name;
+  const isPrivate = (info?.kind ?? channel.kind) === 'private_channel';
+  const archived = info ? info.archivedAt !== null : false;
 
   const names = useMemo(
     () =>
@@ -228,9 +333,27 @@ function ChannelView({
         ?.accountId,
     [members.data, user.accountId, user.email],
   );
+  const mentionName = useCallback((accountId: string) => names.get(accountId), [names]);
   const authorName = useCallback((accountId: string) => names.get(accountId) ?? t('member'), [names, t]);
 
   const pendingHere = pending.forChannel(channel.id);
+
+  // A conversation the person lost access to answers 404 everywhere: leave it instead of showing an error.
+  const lost = isConversationGone(query.error) || isConversationGone(detail.error);
+  useEffect(() => {
+    if (lost) onGone(channel.id);
+  }, [lost, onGone, channel.id]);
+  // A send refused because the channel was archived or taken away meanwhile: read its state again, which shows the
+  // archive banner or leaves the channel.
+  const refused = pendingHere.some(
+    (item) =>
+      item.status === 'failed' &&
+      (item.code === 'messaging.conversation_archived' || item.code === 'messaging.conversation_not_found'),
+  );
+  const { refetch: refetchDetail } = detail;
+  useEffect(() => {
+    if (refused) void refetchDetail();
+  }, [refused, refetchDetail]);
   const confirmed = useMemo(() => oldestFirst(query.data), [query.data]);
   const rows = useMemo<Row[]>(() => {
     const known = new Set(confirmed.map((message) => message.id));
@@ -317,17 +440,22 @@ function ChannelView({
     <>
       <header className="bm-header">
         <h2 className="bm-header__title">
-          <span aria-hidden="true">#</span> {channel.name}
+          <ChannelMark isPrivate={isPrivate} label={t('privateChannel')} /> {name}
         </h2>
-        <SoonButton
+        {info && (
+          <span className="ph-muted bm-header__count">
+            {info.memberCount === 1 ? t('memberCountOne') : t('memberCount', { count: info.memberCount })}
+          </span>
+        )}
+        <button
+          type="button"
           className="bm-header__button"
-          label={t('channelInfo')}
-          soon={t('soon')}
-          placement="bottom-end"
-          showLabel
+          onClick={() => {
+            onInfoOpenChange(true);
+          }}
         >
           {t('channelInfo')}
-        </SoonButton>
+        </button>
       </header>
       {query.isPending && (
         <Status>
@@ -335,13 +463,9 @@ function ChannelView({
           {t('loading')}
         </Status>
       )}
-      {query.isError && !query.data && (
+      {query.isError && !query.data && !lost && (
         <div className="bm-stack">
-          <Alert>
-            {query.error instanceof ApiError && query.error.code === 'messaging.conversation_not_found'
-              ? t('channelGone')
-              : t('generic')}
-          </Alert>
+          <Alert>{t('generic')}</Alert>
           <Button
             onClick={() => {
               void query.refetch();
@@ -355,7 +479,7 @@ function ChannelView({
         <>
           {rows.length === 0 && <p className="ph-muted bm-empty">{t('emptyChannel')}</p>}
           <MessageList
-            channelName={channel.name}
+            channelName={name}
             rows={rows}
             hasEarlier={query.hasNextPage}
             loadingEarlier={query.isFetchingNextPage}
@@ -364,6 +488,7 @@ function ChannelView({
             loadingNewer={query.isFetchingPreviousPage}
             onLoadNewer={loadNewer}
             authorName={authorName}
+            mentionName={mentionName}
             ownAccountId={ownAccountId}
             ownName={user.name}
             locale={locale}
@@ -379,12 +504,43 @@ function ChannelView({
           />
         </>
       )}
-      <Composer
-        channelName={channel.name}
-        onSend={(text, blocks) => {
-          pending.send(channel.id, text, blocks);
-        }}
-      />
+      {archived ? (
+        <p className="bm-archived">{t('archivedBanner')}</p>
+      ) : (
+        <Composer
+          channelName={name}
+          onSend={(text, blocks) => {
+            pending.send(channel.id, text, blocks);
+          }}
+        />
+      )}
+      {infoOpen && (
+        <Suspense fallback={null}>
+          <ChannelInfoDialog
+            api={api}
+            orgId={orgId}
+            channel={channel}
+            ownAccountId={ownAccountId}
+            memberName={authorName}
+            existingNames={otherNames}
+            onClose={() => {
+              onInfoOpenChange(false);
+            }}
+            onLeaving={() => {
+              onLeaving(channel.id, true);
+            }}
+            onLeaveFailed={() => {
+              onLeaving(channel.id, false);
+            }}
+            onLeft={() => {
+              onGone(channel.id);
+            }}
+            onGone={() => {
+              onGone(channel.id);
+            }}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

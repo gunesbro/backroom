@@ -93,6 +93,18 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         LIMIT $5
         """;
 
+    // The same walk and order for the archived ones the person is still a member of ("?archived=true").
+    private const string ListArchivedForAccountSql = """
+        SELECT c.id, c.kind, c.name, c.created_at, COALESCE(c.last_message_at, c.created_at) AS sort_at
+        FROM messaging.conversation_members m
+        JOIN messaging.conversations c ON c.org_id = m.org_id AND c.id = m.conversation_id
+        WHERE m.org_id = $1 AND m.account_id = $2 AND m.left_at IS NULL
+            AND c.archived_at IS NOT NULL AND c.kind <> 'thread'
+            AND (COALESCE(c.last_message_at, c.created_at), c.id) < ($3, $4)
+        ORDER BY sort_at DESC, c.id DESC
+        LIMIT $5
+        """;
+
     public async Task<ConversationAccess?> FindAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(FindSql, session.Connection, session.Transaction);
@@ -176,9 +188,11 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
     }
 
     public async Task<IReadOnlyList<ConversationEntry>> ListForAccountAsync(
-        Guid organizationId, Guid accountId, DateTimeOffset afterSortAt, Guid afterId, int count, CancellationToken cancellationToken)
+        Guid organizationId, Guid accountId, bool archived, DateTimeOffset afterSortAt, Guid afterId, int count, CancellationToken cancellationToken)
     {
-        await using var command = new NpgsqlCommand(ListForAccountSql, session.Connection, session.Transaction);
+        await using var command = archived
+            ? new NpgsqlCommand(ListArchivedForAccountSql, session.Connection, session.Transaction)
+            : new NpgsqlCommand(ListForAccountSql, session.Connection, session.Transaction);
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = afterSortAt });

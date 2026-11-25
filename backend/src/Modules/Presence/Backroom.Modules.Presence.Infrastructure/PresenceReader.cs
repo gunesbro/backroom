@@ -30,7 +30,7 @@ internal sealed class PresenceReader(
         {
             entries.Add(new PresenceEntry(
                 accountId,
-                PresenceRules.StateOf(connections, nowMs, idleAfterMs),
+                PresenceRules.Shown(PresenceRules.StateOf(connections, nowMs, idleAfterMs), status[4]),
                 PresenceRules.DndUntil(status[0], nowMs),
                 PresenceRules.Custom(status[1], status[2], status[3], nowMs)));
         }

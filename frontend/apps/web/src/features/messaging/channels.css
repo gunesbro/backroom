@@ -1,0 +1,266 @@
+/* Private channels and channel management: the lock, the channel's info, the people picker, the archive banner. */
+
+.bm-mark {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: -2px;
+}
+
+.bm-header__count {
+  flex: none;
+  font-size: 12px;
+}
+
+.bm-header__button {
+  cursor: pointer;
+}
+
+.bm-header__button:hover {
+  background: var(--ph-hover);
+}
+
+/* Said when the open channel was taken away; empty the rest of the time. */
+.bm-notice {
+  flex: none;
+  padding: var(--ph-space-8) var(--ph-space-20);
+  background: var(--ph-note);
+  color: var(--ph-on-note);
+  font-size: 13px;
+}
+
+.bm-notice:empty {
+  display: none;
+}
+
+/* Where the composer would be: an archived channel is read-only. */
+.bm-archived {
+  flex: none;
+  margin: 0 var(--ph-space-20) var(--ph-space-16);
+  padding: var(--ph-space-12);
+  border: 1px solid var(--ph-line);
+  border-radius: var(--ph-radius-md);
+  background: var(--ph-subtle);
+  color: var(--ph-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.bm-badge {
+  flex: none;
+  align-self: flex-start;
+  padding: 2px var(--ph-space-8);
+  border-radius: 999px;
+  background: var(--ph-sunken);
+  color: var(--ph-ink);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The channel's info. Each view takes focus when it replaces another; the ring would only be noise. */
+.bm-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ph-space-12);
+  min-width: 0;
+}
+
+.bm-info:focus {
+  outline: none;
+}
+
+.bm-info__about {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ph-space-4);
+}
+
+.bm-info__description {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.bm-info__heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.bm-info__count {
+  font-weight: 400;
+  color: var(--ph-muted);
+}
+
+.bm-info__members {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ph-space-8);
+}
+
+.bm-picker__list,
+.bm-chips {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bm-members,
+.bm-picker__list {
+  align-self: stretch;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.bm-members:focus-visible {
+  outline: 2px solid var(--ph-accent);
+  outline-offset: 2px;
+}
+
+/* Virtualized: the list is as tall as all its rows, and each row drawn is moved to its place. */
+.bm-members__rows {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bm-member {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-8);
+  height: 40px;
+  box-sizing: border-box;
+  padding: 2px 0;
+}
+
+.bm-foot-start {
+  margin-right: auto;
+}
+
+.bm-member__name,
+.bm-picker__name,
+.bm-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-member__name {
+  flex: 1;
+}
+
+.bm-member .ph-button.bm-member__action {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--ph-space-8);
+  font-size: 12px;
+}
+
+.ph-button.bm-danger {
+  margin-right: auto;
+  border-color: var(--ph-danger);
+  color: var(--ph-danger);
+}
+
+/* Choosing people (docs/design: Dialogs, "Kişi ekle"). */
+.bm-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.bm-picker legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.bm-picker .ph-muted,
+.bm-picker__hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.bm-picker__hint:empty {
+  display: none;
+}
+
+.bm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 4px 0 2px;
+  border-radius: 13px;
+  background: var(--ph-sunken);
+  font-size: 12px;
+}
+
+.bm-chip__remove {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ph-muted);
+  cursor: pointer;
+}
+
+.bm-chip__remove:hover {
+  background: var(--ph-hover-strong);
+  color: var(--ph-ink);
+}
+
+.bm-picker__row {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-8);
+  min-height: 32px;
+  padding: 2px var(--ph-space-4);
+  border-radius: var(--ph-radius-sm);
+  cursor: pointer;
+}
+
+.bm-picker__row:hover {
+  background: var(--ph-row-hover);
+}
+
+.bm-chip__remove:focus-visible,
+.bm-picker__row:focus-within {
+  outline: 2px solid var(--ph-accent);
+  outline-offset: -2px;
+}
+
+@media (max-width: 640px) {
+  .bm-header__count {
+    display: none;
+  }
+
+  .bm-archived {
+    margin: 0 var(--ph-space-8) var(--ph-space-8);
+  }
+}

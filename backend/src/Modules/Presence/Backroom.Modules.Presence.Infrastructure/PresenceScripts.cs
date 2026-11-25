@@ -10,7 +10,8 @@ internal static class PresenceScripts
     /// Evaluates one person. KEYS: connections hash, published record, due set, status copy, watch set. ARGV: account id, now, idle
     /// after, event interval, record lifetime, connection key grace, most organizations. Connection fields are
     /// <c>{expiresAt}:{lastActiveAt}:{idle 0|1}</c>; expired ones are deleted. The state is online when a connection is active and had
-    /// input within the idle time, idle when connections remain, offline otherwise. The published record is
+    /// input within the idle time, idle when connections remain, offline otherwise; away chosen by hand (the status copy's
+    /// <c>away</c>) shows an online person as idle. The published record is
     /// <c>{state}:{statusVersion}:{nextAllowedAt}</c>: when the state or the status version differs from it and the event interval has
     /// passed, the record is replaced and the script returns <c>{state + 1, organizations, {dnd, emoji, text, expiresAt}}</c> for the
     /// caller to publish; otherwise <c>{0}</c>. Either way the person is due again at the earliest of the next connection expiry, the
@@ -41,6 +42,7 @@ internal static class PresenceScripts
           end
         end
         if maxExp > 0 then redis.call('PEXPIREAT', KEYS[1], maxExp + tonumber(ARGV[6])) end
+        if state == 2 and redis.call('HGET', KEYS[4], 'away') == '1' then state = 1 end
         local current = state .. ':' .. (redis.call('HGET', KEYS[4], 'v') or '0')
         local published = '0:0'
         local allowed = 0
@@ -80,7 +82,7 @@ internal static class PresenceScripts
 
     /// <summary>
     /// Stores an account status copy if its version is newer. KEYS: status copy, due set. ARGV: version, dnd, emoji, text, expires at,
-    /// time zone, retention, account id, now. Returns 1 when stored (the person becomes due now, so watchers hear of it), 0 otherwise
+    /// time zone, retention, account id, now, away (0 or 1). Returns 1 when stored (the person becomes due now, so watchers hear of it), 0 otherwise
     /// (the copy's expiry is renewed).
     /// </summary>
     public const string ApplyStatus = """
@@ -90,7 +92,7 @@ internal static class PresenceScripts
           return 0
         end
         redis.call('DEL', KEYS[1])
-        redis.call('HSET', KEYS[1], 'v', ARGV[1], 'dnd', ARGV[2], 'emoji', ARGV[3], 'text', ARGV[4], 'exp', ARGV[5], 'tz', ARGV[6])
+        redis.call('HSET', KEYS[1], 'v', ARGV[1], 'dnd', ARGV[2], 'emoji', ARGV[3], 'text', ARGV[4], 'exp', ARGV[5], 'tz', ARGV[6], 'away', ARGV[10])
         redis.call('PEXPIRE', KEYS[1], ARGV[7])
         redis.call('ZADD', KEYS[2], 'LT', ARGV[9], ARGV[8])
         return 1
