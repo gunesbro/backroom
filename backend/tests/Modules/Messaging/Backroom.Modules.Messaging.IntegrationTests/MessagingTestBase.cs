@@ -49,6 +49,11 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
 
     internal ScriptedIdGenerator IdScript { get; } = new();
 
+    internal TestCellEpoch CellEpoch { get; } = new();
+
+    /// <summary><c>Features:MessageSync</c> for the cell of this test class.</summary>
+    protected virtual bool MessageSyncEnabled => false;
+
     protected PostgresDatabase Database => database;
 
     protected IServiceProvider Services => _cell.Services;
@@ -70,6 +75,8 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         builder.Services.AddPermissions();
         builder.Services.AddOrganization();
         builder.Services.AddSingleton<ILiveEventPublisher>(Publisher);
+        builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Cells.ICellEpoch>(CellEpoch);
+        builder.Configuration["Features:MessageSync"] = MessageSyncEnabled ? "true" : "false";
         builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Identifiers.IIdGenerator>(IdScript);
         builder.Services.AddMessaging();
         // Development would throw on a bad query string before the filters; production answers through them.
@@ -134,6 +141,27 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         response.EnsureSuccessStatusCode();
         return await ReadJsonAsync(response);
     }
+
+    /// <summary>
+    /// Deletes the message the way the delete endpoint will (docs/contracts/phase-2.md, step 9): the conversation's
+    /// next change number becomes the message's <c>version_seq</c>, and the content is erased, leaving the tombstone.
+    /// </summary>
+    protected Task DeleteAsync(Guid conversationId, Guid messageId) => ExecuteAsync(
+        """
+        WITH change AS (UPDATE messaging.conversations SET change_seq = change_seq + 1 WHERE id = $1 RETURNING change_seq)
+        UPDATE messaging.messages m SET version_seq = change.change_seq, deleted_at = now(), text = NULL, blocks = NULL
+        FROM change WHERE m.id = $2
+        """,
+        conversationId, messageId);
+
+    /// <summary>Edits the message the way the edit endpoint will: the next change number becomes its <c>version_seq</c>.</summary>
+    protected Task EditAsync(Guid conversationId, Guid messageId, string text) => ExecuteAsync(
+        """
+        WITH change AS (UPDATE messaging.conversations SET change_seq = change_seq + 1 WHERE id = $1 RETURNING change_seq)
+        UPDATE messaging.messages m SET version_seq = change.change_seq, edited_at = now(), text = $3
+        FROM change WHERE m.id = $2
+        """,
+        conversationId, messageId, text);
 
     /// <summary>An organization of its own for each test, with the account as its owner, as the control plane's message creates it.</summary>
     protected async Task<Guid> ProvisionForAsync(string username)

@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Backroom.BuildingBlocks.Application.Accounts;
+using Backroom.BuildingBlocks.Domain.Errors;
 using Backroom.BuildingBlocks.Presentation.Errors;
 using Backroom.BuildingBlocks.Presentation.Organizations;
 using Backroom.Modules.Messaging.Application.Channels;
@@ -66,18 +68,48 @@ public static class MessagingEndpoints
     }
 
     private static async Task<IResult> ListMessagesAsync(
-        Guid conversationId, long? before, long? after, int? limit, ICurrentAccount account, MessageService messages, CancellationToken cancellationToken)
+        Guid conversationId,
+        string? epoch,
+        long? before,
+        long? after,
+        [FromQuery(Name = "changed_after")] long? changedAfter,
+        int? limit,
+        ICurrentAccount account,
+        MessageService messages,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
     {
-        var result = await messages.ListAsync(account.AccountId, conversationId, before, after, limit, cancellationToken);
-        return result.ToHttpResult(page => TypedResults.Ok(new MessagesResponse([.. page.Messages.Select(ToResponse)], page.Next)));
+        var result = await messages.ListAsync(account.AccountId, conversationId, epoch, before, after, changedAfter, limit, cancellationToken);
+        return IsEpochUnconfirmed(result)
+            ? EpochUnconfirmed(httpContext)
+            : result.ToHttpResult(page => TypedResults.Ok(new MessagesResponse([.. page.Messages.Select(ToResponse)], page.Next, page.Epoch)));
     }
 
-    private static async Task<IResult> SendMessageAsync(Guid conversationId, SendMessageRequest request, ICurrentAccount account, MessageService messages, CancellationToken cancellationToken)
+    private static async Task<IResult> SendMessageAsync(
+        Guid conversationId, SendMessageRequest request, ICurrentAccount account, MessageService messages, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await messages.SendAsync(account.AccountId, conversationId, request.ClientMessageId, request.Text, cancellationToken);
-        return result.ToHttpResult(sent => sent.Created
-            ? TypedResults.Created((string?)null, ToResponse(sent.Message))
-            : TypedResults.Ok(ToResponse(sent.Message)));
+        return IsEpochUnconfirmed(result)
+            ? EpochUnconfirmed(httpContext)
+            : result.ToHttpResult(sent => sent.Created
+                ? TypedResults.Created((string?)null, ToResponse(sent.Message, sent.Epoch))
+                : TypedResults.Ok(ToResponse(sent.Message, sent.Epoch)));
+    }
+
+    private static bool IsEpochUnconfirmed<T>(Result<T> result) => !result.IsSuccess && result.Error == MessageService.EpochUnconfirmed;
+
+    /// <summary>
+    /// No number can be handed out while the cell has no confirmed epoch (docs/adr/0011, "Cell epoch"): the same answer
+    /// as a fenced write (<c>Retry-After</c>, never cached), so clients retry after the worker has reconnected.
+    /// </summary>
+    private static ProblemHttpResult EpochUnconfirmed(HttpContext httpContext)
+    {
+        httpContext.Response.Headers.RetryAfter = "5";
+        httpContext.Response.Headers.CacheControl = "no-store";
+        return TypedResults.Problem(
+            statusCode: StatusCodes.Status503ServiceUnavailable,
+            detail: MessageService.EpochUnconfirmed.Description,
+            extensions: new Dictionary<string, object?>(StringComparer.Ordinal) { [ErrorResults.CodeExtension] = MessageService.EpochUnconfirmed.Code });
     }
 
     private static async Task<IResult> JoinAsync(Guid conversationId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
@@ -88,6 +120,12 @@ public static class MessagingEndpoints
 
     private static ChannelResponse ToResponse(ChannelEntry channel) => new(channel.Id, channel.Name, channel.CreatedAt);
 
-    private static MessageResponse ToResponse(MessageEntry message) =>
-        new(message.Id, message.Seq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.CreatedAt);
+    // A tombstone answers with its numbers and times only (docs/adr/0011): no author, no client id, no content.
+    private static MessageResponse ToResponse(MessageEntry message) => message.DeletedAt is null
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.CreatedAt, null)
+        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, message.CreatedAt, message.DeletedAt);
+
+    private static SentMessageResponse ToResponse(MessageEntry message, string epoch) => message.DeletedAt is null
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.CreatedAt, null, epoch)
+        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, message.CreatedAt, message.DeletedAt, epoch);
 }

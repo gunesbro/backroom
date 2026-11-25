@@ -88,6 +88,7 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         builder.Services.AddPermissions();
         builder.Services.AddOrganization();
         builder.Services.AddSingleton<ILiveEventPublisher, NullLiveEventPublisher>();
+        builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Cells.ICellEpoch, FixedCellEpoch>();
         ConfigureServices(builder.Services);
         builder.Services.AddMessaging();
         builder.Services.AddFiles().BindConfiguration("Files:Storage");
@@ -317,9 +318,16 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
 
     protected sealed record StartedUpload(Guid FileId, Uri Url, IReadOnlyDictionary<string, string> Headers, DateTimeOffset ExpiresAt);
 
+    private sealed class FixedCellEpoch : Backroom.BuildingBlocks.Application.Cells.ICellEpoch
+    {
+        public ValueTask<long?> ConfirmedEpochAsync(CancellationToken cancellationToken) => ValueTask.FromResult<long?>(1);
+    }
+
     private sealed class NullLiveEventPublisher : ILiveEventPublisher
     {
         public Task PublishAsync(MessagePostedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task PublishAsync(MessagePostedV2Payload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 

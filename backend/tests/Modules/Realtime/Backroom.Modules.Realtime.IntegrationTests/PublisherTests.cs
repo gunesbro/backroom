@@ -95,10 +95,15 @@ public sealed class PublisherTests
 
         await publisher.PublishAsync(s_message, CancellationToken);
         await publisher.PublishAsync(channel, CancellationToken);
+        await publisher.PublishAsync(
+            new MessagePostedV2Payload(
+                s_message.OrgId, s_message.ChannelId, new LiveMessageV2(Guid.NewGuid(), 2, 2, "text", Guid.NewGuid(), Guid.NewGuid(), SecretText, DateTimeOffset.UtcNow), 2, "1"),
+            CancellationToken);
 
         sent.Should().Equal(
             ($"cell:cellx:org:{s_message.OrgId:D}:conversation:{s_message.ChannelId:D}", "MessagePosted"),
-            ($"cell:cellx:org:{s_message.OrgId:D}", "ChannelCreated"));
+            ($"cell:cellx:org:{s_message.OrgId:D}", "ChannelCreated"),
+            ($"cell:cellx:org:{s_message.OrgId:D}:conversation:{s_message.ChannelId:D}", "MessagePosted.v2"));
     }
 
     [Fact]

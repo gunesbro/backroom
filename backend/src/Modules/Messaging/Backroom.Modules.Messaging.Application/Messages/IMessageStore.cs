@@ -12,9 +12,12 @@ internal interface IMessageStore
     /// <summary>The message the author sent to the channel with that client message id, if any.</summary>
     Task<MessageEntry?> FindAsync(Guid channelId, Guid authorAccountId, Guid clientMessageId, CancellationToken cancellationToken);
 
-    /// <summary>Messages with a sequence number below <paramref name="before"/>, newest first, at most <paramref name="count"/>.</summary>
+    /// <summary>Messages (tombstones included) with a sequence number below <paramref name="before"/>, newest first, at most <paramref name="count"/>.</summary>
     Task<IReadOnlyList<MessageEntry>> ListBeforeAsync(Guid channelId, long before, int count, CancellationToken cancellationToken);
 
-    /// <summary>Messages with a sequence number above <paramref name="after"/>, oldest first, at most <paramref name="count"/>.</summary>
+    /// <summary>Messages (tombstones included) with a sequence number above <paramref name="after"/>, oldest first, at most <paramref name="count"/>.</summary>
     Task<IReadOnlyList<MessageEntry>> ListAfterAsync(Guid channelId, long after, int count, CancellationToken cancellationToken);
+
+    /// <summary>Messages whose latest change has a number above <paramref name="changedAfter"/> (tombstones included), in the order of those changes, at most <paramref name="count"/>.</summary>
+    Task<IReadOnlyList<MessageEntry>> ListChangedAfterAsync(Guid conversationId, long changedAfter, int count, CancellationToken cancellationToken);
 }

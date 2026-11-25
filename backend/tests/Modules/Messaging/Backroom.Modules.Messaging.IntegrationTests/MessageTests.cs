@@ -28,7 +28,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = (await ReadJsonAsync(response)).AsObject();
-        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "seq", "clientMessageId", "authorAccountId", "text", "createdAt"]);
+        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "createdAt", "deletedAt", "epoch"]);
         const string Stored = "<b>Hi</b> & \"bye\" 'x'\nnext";
         body["text"]!.GetValue<string>().Should().Be(Stored);
         body["clientMessageId"]!.GetValue<Guid>().Should().Be(clientMessageId);
@@ -373,7 +373,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         Ids(body).Should().Equal(Enumerable.Reverse(ids));
         body["next"].Should().BeNull();
         body["items"]![0]!.AsObject().Select(property => property.Key)
-            .Should().BeEquivalentTo(["id", "seq", "clientMessageId", "authorAccountId", "text", "createdAt"]);
+            .Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "createdAt", "deletedAt"]);
     }
 
     [Fact]
@@ -417,8 +417,8 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         var (organizationId, channelId) = await ChannelAsync();
         await ExecuteAsync(
             """
-            INSERT INTO messaging.messages (id, org_id, conversation_id, seq, author_account_id, client_message_id, text, blocks, created_at)
-            SELECT uuidv7(), $1, $2, n, $3, uuidv7(), 'm', '[]'::jsonb, now() FROM generate_series(1, 120) AS n
+            INSERT INTO messaging.messages (id, org_id, conversation_id, seq, version_seq, author_account_id, client_message_id, text, blocks, created_at)
+            SELECT uuidv7(), $1, $2, n, n, $3, uuidv7(), 'm', '[]'::jsonb, now() FROM generate_series(1, 120) AS n
             """,
             organizationId, channelId, await AccountAsync(Alice));
 
@@ -517,15 +517,17 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
     }
 
     [Fact]
-    public async Task List_LeavesOutDeletedMessagesAsync()
+    public async Task List_KeepsADeletedMessageAsATombstoneWithoutItsTextAsync()
     {
         var (organizationId, channelId) = await ChannelAsync();
         var ids = await SendManyAsync(organizationId, channelId, 3);
-        await ExecuteAsync("UPDATE messaging.messages SET deleted_at = now() WHERE id = $1", ids[1]);
+        await DeleteAsync(channelId, ids[1]);
 
         var body = await ReadJsonAsync(await GetAsync(MessagesPath(organizationId, channelId), Alice));
 
-        Ids(body).Should().Equal(ids[2], ids[0]);
+        Ids(body).Should().Equal(ids[2], ids[1], ids[0]);
+        body["items"]![1]!["text"].Should().BeNull();
+        body["items"]![1]!["deletedAt"].Should().NotBeNull();
     }
 
     [Fact]

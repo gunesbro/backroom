@@ -1,4 +1,5 @@
-# Phase 2 contracts: messaging core
+; `503 cell.epoch_unconfirmed` |# Phase 2 contracts: messaging core
+| Tombstones carry nothing of the message     | `Tombstone_KeepsItsPlaceInEveryRead_WithoutContentAuthorOrClientIdAsync` (history, `after`, `before`, `changed_after`): a deleted message answers with `id`, `seq`, `versionSeq`, `createdAt` and `deletedAt` only, never its author, client id or content; `Tombstone_WhenItsSendIsRepeated_AnswersWithoutTheContentAndStoresNothingAsync`; the check constraint keeps the row empty (`Tombstone_CannotKeepItsContentInTheDatabaseAsync`) |
 
 - Status: Proposed (needs the owner's approval before implementation)
 - Date: 2026-11-24
@@ -31,6 +32,9 @@ ADR 0011 fixes the observable guarantees, and [ADR 0012](../adr/0012-durable-sen
 - Numbers are positive 64-bit integers, increasing in commit order within one conversation; gaps are allowed; a cursor never skips a committed change.
 - Clients treat them as opaque per-conversation cursors and never assume density.
 - **Every cursor carries the cell epoch** (ADR 0011). Every response and live event that contains `seq`, `versionSeq`, `changeSeq`, `lastReadSeq`, `seenSeq` or a feed cursor also carries `epoch` (a string of at most 32 characters). Every request that takes one (`before`, `after`, `changed_after`, read-state `lastReadSeq`, the sync cursor) also takes `epoch`; a missing or different epoch, or a number ahead of the conversation's counter, answers `409 messaging.resync_required`, and the client runs a full resync of that cell. The sync cursor embeds the epoch itself.
+
+- **Unconfirmed epoch.** While the cell has no confirmed epoch (flow 3, "Cell epoch"), no sequence number can be handed out, so reads that carry one (`GET /conversations/{id}/messages`) also answer `503 cell.epoch_unconfirmed` with `Retry-After`, like fenced writes.
+- **Rollout flag.** `Features:MessageSync` (off until the clients send the epoch, step 15) guards the two parts that would break a client that does not know the epoch: with it on, `before` and `after` need `epoch`, and a send announces `MessagePosted.v2` in place of `MessagePosted`. `changed_after` always needs `epoch`, and a presented epoch is always checked.
 
 - **History boundary.** When an organization limits visible history (flow 12), every message read also returns, per conversation, `historyBoundary { visibleFrom, visibleFromSeq, reason: "plan" }`: messages with `seq` below `visibleFromSeq` exist but are hidden. A read whose cursor or page reaches the boundary stops there with `historyBoundaryReached: true`, never `resync_required`; every conversation entry in sync carries the boundary; clients hide or drop cached messages below it and never treat them as missing. Nothing is deleted, so ADR 0011's tombstones stay permanent and its cursors stay valid. The boundary moves with time and with plan changes (`HistoryBoundaryChanged`).
 
@@ -523,7 +527,7 @@ None at the moment.
 2. Realtime: conversation and account groups (replacing the channel methods), removal broadcast. _(human review)_
 3. Web switched to conversation routes; Phase 1 channel message routes removed.
 4. Cell epoch: control plane field, `Welcome`, connector storage, write fencing. _(human review)_
-5. `change_seq`, `last_message_seq`, `version_seq`, tombstones, `changed_after`, epoch on every cursor and live payload.
+5. `change_seq`, `last_message_seq`, `version_seq`, tombstones, `changed_after`, epoch on every cursor and live payload. Flag `Features:MessageSync` (the epoch required on `before`/`after`, and `MessagePosted.v2`); it is turned on and removed with step 15.
 6. Rich text: block schema, validation, derivation, mentions and links tables; web editor (Lexical).
 7. Private channels: create, members, owner rules, archive; the private channel count for admins; privacy tests. _(human review)_
 8. DMs and group DMs, conversion to private channel; privacy tests. _(human review)_

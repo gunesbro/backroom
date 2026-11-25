@@ -26,9 +26,20 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         LIMIT $3
         """;
 
-    // The row lock this takes is held until the transaction ends.
+    // The row lock this takes is held until the transaction ends. A new message takes the next change number as its seq,
+    // so it is also the conversation's newest message (the right-hand sides read the row before the update).
     private const string NextSequenceSql =
-        "UPDATE messaging.conversations SET last_seq = last_seq + 1, last_message_at = $3 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING last_seq";
+        "UPDATE messaging.conversations SET change_seq = change_seq + 1, last_message_seq = change_seq + 1, last_message_at = $3 WHERE org_id = $1 AND id = $2 AND archived_at IS NULL RETURNING change_seq";
+
+    // Only after a lost idempotent race (rare): one probe of the unique index (conversation_id, seq) read backwards.
+    private const string RestoreLastMessageSql = """
+        UPDATE messaging.conversations c
+        SET last_message_seq = COALESCE(newest.seq, 0), last_message_at = newest.created_at
+        FROM (SELECT 1) AS one
+        LEFT JOIN LATERAL (
+            SELECT seq, created_at FROM messaging.messages WHERE conversation_id = $2 ORDER BY seq DESC LIMIT 1) AS newest ON true
+        WHERE c.org_id = $1 AND c.id = $2
+        """;
 
     public async Task<bool> AddAsync(NewChannel channel, CancellationToken cancellationToken)
     {
@@ -65,5 +76,13 @@ internal sealed class ChannelStore(DatabaseSession session) : IChannelStore
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = sentAt });
         return await command.ExecuteScalarAsync(cancellationToken) is long seq ? seq : null;
+    }
+
+    public async Task RestoreLastMessageAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(RestoreLastMessageSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

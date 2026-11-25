@@ -17,6 +17,7 @@ internal sealed class HubClient : IAsyncDisposable
 
     private readonly HubConnection _connection;
     private readonly Channel<MessagePostedPayload> _messages = Channel.CreateUnbounded<MessagePostedPayload>();
+    private readonly Channel<MessagePostedV2Payload> _messagesV2 = Channel.CreateUnbounded<MessagePostedV2Payload>();
     private readonly Channel<ChannelCreatedPayload> _channels = Channel.CreateUnbounded<ChannelCreatedPayload>();
     private readonly Channel<SessionRevokedPayload> _revoked = Channel.CreateUnbounded<SessionRevokedPayload>();
     private readonly Channel<PresenceChangedPayload> _presence = Channel.CreateUnbounded<PresenceChangedPayload>();
@@ -27,6 +28,7 @@ internal sealed class HubClient : IAsyncDisposable
     {
         _connection = connection;
         connection.On<MessagePostedPayload>(LiveEventNames.MessagePosted, payload => _messages.Writer.TryWrite(payload));
+        connection.On<MessagePostedV2Payload>(LiveEventNames.MessagePostedV2, payload => _messagesV2.Writer.TryWrite(payload));
         connection.On<ChannelCreatedPayload>(LiveEventNames.ChannelCreated, payload => _channels.Writer.TryWrite(payload));
         connection.On<SessionRevokedPayload>(LiveEventNames.SessionRevoked, payload => _revoked.Writer.TryWrite(payload));
         connection.On<PresenceChangedPayload>(LiveEventNames.PresenceChanged, payload => _presence.Writer.TryWrite(payload));
@@ -94,6 +96,8 @@ internal sealed class HubClient : IAsyncDisposable
     public bool HasUnreadPresence => _presence.Reader.TryPeek(out _);
 
     public Task<MessagePostedPayload> NextMessageAsync() => ReadAsync(_messages.Reader);
+
+    public Task<MessagePostedV2Payload> NextMessageV2Async() => ReadAsync(_messagesV2.Reader);
 
     public Task<ChannelCreatedPayload> NextChannelAsync() => ReadAsync(_channels.Reader);
 
