@@ -17,6 +17,7 @@ import { useTranslate } from '@/shared/locale';
 import type { Message } from './api';
 import { messages } from './messages';
 import type { PendingMessage } from './pending-messages';
+import { isRefusedContent, refusalKey } from './send-errors';
 import { MessageBody } from './rich-text/message-blocks';
 
 export type Row =
@@ -478,8 +479,8 @@ const MessageRow = memo(function MessageRow({
         {pending?.status === 'sending' && <p className="bm-message__state ph-muted">{t('sending')}</p>}
         {pending?.status === 'failed' && (
           <p className="bm-message__state bm-message__error">
-            {pending.code === 'messaging.message_invalid'
-              ? t('messageInvalid')
+            {isRefusedContent(pending.code)
+              ? t(refusalKey(pending.code ?? '', pending.reason))
               : pending.code === 'messaging.conversation_not_found'
                 ? t('channelGone')
                 : pending.code === 'messaging.not_a_member'
@@ -496,7 +497,7 @@ const MessageRow = memo(function MessageRow({
                 {t('join')}
               </button>
             )}{' '}
-            {pending.code !== 'messaging.message_invalid' && (
+            {!isRefusedContent(pending.code) && (
               <button
                 type="button"
                 className="ph-link"

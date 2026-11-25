@@ -25,6 +25,9 @@ export type Block =
 export const MAX_HREF_LENGTH = 2048;
 export const MAX_BLOCKS_JSON_BYTES = 32 * 1024;
 
+/** At most this many different web addresses in one message (`links.limit`). */
+export const MAX_LINKS = 50;
+
 const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
 /**
@@ -123,6 +126,26 @@ export function blocksToText(blocks: readonly Block[]): string {
     }
   }
   return normalizeMessageText(lines.join('\n'));
+}
+
+/** How many different `http` and `https` addresses the blocks link to, as the server counts them (mailto is not). */
+export function distinctWebLinks(blocks: readonly Block[]): number {
+  const hrefs = new Set<string>();
+  const visit = (runs: readonly TextNode[]) => {
+    for (const run of runs) {
+      for (const mark of run.marks ?? []) {
+        if (mark.type === 'link' && !mark.href.startsWith('mailto:')) hrefs.add(mark.href);
+      }
+    }
+  };
+  for (const block of blocks) {
+    if (block.type === 'bulleted_list' || block.type === 'numbered_list') {
+      for (const item of block.children) visit(item.children);
+    } else {
+      visit(block.children);
+    }
+  }
+  return hrefs.size;
 }
 
 /** The JSON size the server limits (UTF-8 bytes). */

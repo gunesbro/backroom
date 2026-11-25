@@ -40,6 +40,8 @@ function run(node: TextNode, key: number): ReactNode {
     content = (
       <a
         href={href}
+        // The real address is always there to read (hover, long press, screen readers), whatever the text says.
+        title={href}
         {...(desktop ? {} : { target: '_blank' })}
         rel="noopener noreferrer"
         onClick={
@@ -57,7 +59,8 @@ function run(node: TextNode, key: number): ReactNode {
             : undefined
         }
       >
-        {content}
+        {/* Link text may carry bidirectional controls: it is isolated, so it cannot reorder what is around it. */}
+        <bdi>{content}</bdi>
       </a>
     );
   }

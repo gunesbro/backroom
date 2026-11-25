@@ -286,3 +286,67 @@ describe('A send refused because the person has not joined', () => {
     expect(onJoin).toHaveBeenCalledWith('client-1');
   });
 });
+
+function failedRow(code: string, reason?: string): Row {
+  return {
+    key: 'p-1',
+    pending: {
+      clientMessageId: 'client-1',
+      text: 'hello',
+      createdAt: '2026-11-24T10:00:00Z',
+      status: 'failed',
+      code,
+      reason,
+    },
+  };
+}
+
+function renderFailed(row: Row, locale: 'en' | 'tr') {
+  const onRetry = vi.fn();
+  render(
+    <LocaleProvider locale={locale}>
+      <MessageList
+        channelName="general"
+        rows={[row]}
+        hasEarlier={false}
+        loadingEarlier={false}
+        onLoadEarlier={vi.fn()}
+        hasNewer={false}
+        loadingNewer={false}
+        onLoadNewer={vi.fn()}
+        authorName={() => 'Veli'}
+        ownAccountId={undefined}
+        ownName="Alice"
+        locale={locale}
+        onRetry={onRetry}
+        onDiscard={vi.fn()}
+        onJoin={vi.fn()}
+      />
+    </LocaleProvider>,
+  );
+  return onRetry;
+}
+
+describe('A refused rich text send', () => {
+  it('FailedSend_WhenLinksLimit_ShowsTheEnglishTextAndNoRetry', () => {
+    renderFailed(failedRow('messaging.message_invalid', 'links.limit'), 'en');
+
+    expect(screen.getByText(/too many different links/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy();
+  });
+
+  it('FailedSend_WhenLinksLimit_ShowsTheTurkishText', () => {
+    renderFailed(failedRow('messaging.message_invalid', 'links.limit'), 'tr');
+
+    expect(screen.getByText(/çok fazla farklı bağlantı/)).toBeTruthy();
+  });
+
+  it('FailedSend_WhenTransportFails_OffersRetry', () => {
+    const onRetry = renderFailed(failedRow('http.502'), 'en');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(onRetry).toHaveBeenCalledWith('client-1');
+  });
+});
