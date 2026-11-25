@@ -118,6 +118,9 @@ describe('isSingleEmoji', () => {
   it('Keycaps_AreOneEmoji_ButDigitsAndTextAreNot', () => {
     expect(isSingleEmoji('1️⃣')).toBe(true);
     expect(isSingleEmoji('#️⃣')).toBe(true);
+    // The keycap mark alone or on a letter is not a keycap.
+    expect(isSingleEmoji('⃣')).toBe(false);
+    expect(isSingleEmoji('a⃣')).toBe(false);
     expect(isSingleEmoji('1')).toBe(false);
     expect(isSingleEmoji('a')).toBe(false);
     expect(isSingleEmoji('🎯🎯')).toBe(false);

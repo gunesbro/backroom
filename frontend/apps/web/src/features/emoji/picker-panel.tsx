@@ -1,4 +1,14 @@
-import { useEffect, useId, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from 'react';
 import { useTranslate } from '@/shared/locale';
 import { searchEmojis, type Emoji, type EmojiData, type EmojiGroupKey } from './data';
 import { messages } from './messages';
@@ -36,6 +46,67 @@ interface Cell {
   readonly emoji: string;
   readonly label: string;
 }
+
+/**
+ * One emoji of the grid. Memoized with its row, so moving with the arrow keys renders only the emoji that lost the
+ * tab stop and the one that got it, not the whole group.
+ */
+const EmojiCell = memo(function EmojiCell({
+  cell,
+  index,
+  active,
+  onPick,
+}: {
+  cell: Cell;
+  index: number;
+  active: boolean;
+  onPick: (cell: Cell) => void;
+}) {
+  return (
+    <div role="gridcell" aria-colindex={(index % COLUMNS) + 1}>
+      <button
+        type="button"
+        className="be-picker__emoji"
+        data-index={index}
+        aria-label={cell.label}
+        title={cell.label}
+        tabIndex={active ? 0 : -1}
+        onClick={() => {
+          onPick(cell);
+        }}
+      >
+        {cell.emoji}
+      </button>
+    </div>
+  );
+});
+
+const EmojiRow = memo(function EmojiRow({
+  row,
+  rowIndex,
+  activeColumn,
+  onPick,
+}: {
+  row: readonly Cell[];
+  rowIndex: number;
+  /** The column of the emoji with the tab stop, or -1 when it is in another row. */
+  activeColumn: number;
+  onPick: (cell: Cell) => void;
+}) {
+  return (
+    <div className="be-picker__row" role="row" aria-rowindex={rowIndex + 1}>
+      {row.map((cell, column) => (
+        <EmojiCell
+          key={cell.emoji}
+          cell={cell}
+          index={rowIndex * COLUMNS + column}
+          active={column === activeColumn}
+          onPick={onPick}
+        />
+      ))}
+    </div>
+  );
+});
 
 /**
  * The picker itself: a search box, the skin tone, the groups as tabs and one group (or the search results) as a
@@ -115,10 +186,15 @@ export function PickerPanel({
     gridRef.current?.querySelector<HTMLElement>(`[data-index="${String(index)}"]`)?.focus();
   };
 
-  const pick = (cell: Cell) => {
+  // The caller's function may be a new one on every render; the cells keep one that never changes.
+  const onPickRef = useRef(onPick);
+  useEffect(() => {
+    onPickRef.current = onPick;
+  }, [onPick]);
+  const pick = useCallback((cell: Cell) => {
     setRecent(addRecent(cell.emoji));
-    onPick(cell.emoji);
-  };
+    onPickRef.current(cell.emoji);
+  }, []);
 
   const selectTab = (next: Tab) => {
     setChosenTab(next);
@@ -216,7 +292,6 @@ export function PickerPanel({
     }
   };
 
-  const title = searching ? t('searchResults') : t(tab);
   return (
     <div className="be-picker" role="group" aria-label={t('picker')} onKeyDown={keyDown}>
       <div className="be-picker__top">
@@ -267,6 +342,7 @@ export function PickerPanel({
             type="button"
             role="tab"
             className="be-picker__tab"
+            id={`${id}-tab-${key}`}
             data-tab={key}
             aria-selected={!searching && key === tab}
             aria-controls={`${id}-panel`}
@@ -281,7 +357,13 @@ export function PickerPanel({
           </button>
         ))}
       </div>
-      <div id={`${id}-panel`} className="be-picker__panel" role="tabpanel" aria-label={title}>
+      {/* Named after its group (or the search); the grid inside is just "Emoji", so the name is not read twice. */}
+      <div
+        id={`${id}-panel`}
+        className="be-picker__panel"
+        role="tabpanel"
+        {...(searching ? { 'aria-label': t('searchResults') } : { 'aria-labelledby': `${id}-tab-${tab}` })}
+      >
         {rows.length > 0 && (
           <div
             // A new group starts at its top.
@@ -289,35 +371,20 @@ export function PickerPanel({
             ref={gridRef}
             className="be-picker__grid"
             role="grid"
-            aria-label={title}
+            aria-label={t('grid')}
             aria-rowcount={rows.length}
             aria-colcount={COLUMNS}
             onKeyDown={gridKeyDown}
             onFocus={gridFocus}
           >
             {rows.map((row, rowIndex) => (
-              <div key={rowIndex} className="be-picker__row" role="row" aria-rowindex={rowIndex + 1}>
-                {row.map((cell, columnIndex) => {
-                  const index = rowIndex * COLUMNS + columnIndex;
-                  return (
-                    <div key={cell.emoji} role="gridcell" aria-colindex={columnIndex + 1}>
-                      <button
-                        type="button"
-                        className="be-picker__emoji"
-                        data-index={index}
-                        aria-label={cell.label}
-                        title={cell.label}
-                        tabIndex={index === current ? 0 : -1}
-                        onClick={() => {
-                          pick(cell);
-                        }}
-                      >
-                        {cell.emoji}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+              <EmojiRow
+                key={rowIndex}
+                row={row}
+                rowIndex={rowIndex}
+                activeColumn={rowIndex === Math.floor(current / COLUMNS) ? current % COLUMNS : -1}
+                onPick={pick}
+              />
             ))}
           </div>
         )}

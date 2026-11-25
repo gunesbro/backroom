@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      # Test data shared with the backend (the emoji list).
+      - "docs/contracts/test-data/**"
       - "load-tests/**"
       - ".editorconfig"
       - ".github/workflows/frontend.yml"
@@ -47,7 +49,7 @@ jobs:
           fi
           # Pull requests are checked out as a merge commit: its first parent is the base branch. Any error means relevant.
           files=$(git diff --no-renames --name-only HEAD^1 HEAD) || { echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0; }
-          if grep -qE '^(frontend/|load-tests/|\.editorconfig$|\.github/workflows/frontend\.yml$)' <<<"$files"; then
+          if grep -qE '^(frontend/|docs/contracts/test-data/|load-tests/|\.editorconfig$|\.github/workflows/frontend\.yml$)' <<<"$files"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"

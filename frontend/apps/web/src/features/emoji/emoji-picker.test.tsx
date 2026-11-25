@@ -22,6 +22,11 @@ const search = (value: string, name = 'Search emoji') => {
   fireEvent.change(screen.getByRole('searchbox', { name }), { target: { value } });
 };
 
+/** The grid of the group (or of the search) with this name; the grid itself is always just "Emoji". */
+const gridIn = (panel: string) => within(screen.getByRole('tabpanel', { name: panel })).getByRole('grid');
+const findGrid = async (panel: string) =>
+  within(await screen.findByRole('tabpanel', { name: panel })).getByRole('grid');
+
 const emojiNames = (grid: HTMLElement) =>
   within(grid)
     .getAllByRole('button')
@@ -39,7 +44,7 @@ describe('EmojiPicker', () => {
     const { onPick } = renderPicker();
     expect(screen.getByRole('status')).toHaveTextContent('Loading emoji…');
 
-    const grid = await screen.findByRole('grid', { name: 'Smileys and emotion' });
+    const grid = await findGrid('Smileys and emotion');
     expect(screen.getByRole('searchbox', { name: 'Search emoji' })).toHaveFocus();
     fireEvent.click(within(grid).getByRole('button', { name: 'grinning face' }));
 
@@ -52,7 +57,7 @@ describe('EmojiPicker', () => {
     await screen.findByRole('grid');
 
     search('  ROCK ');
-    const results = screen.getByRole('grid', { name: 'Search results' });
+    const results = gridIn('Search results');
     const names = emojiNames(results);
     expect(names).toContain('rocket');
     expect(names[0]).toBe('rock');
@@ -89,11 +94,11 @@ describe('EmojiPicker', () => {
 
   it('Search_InTurkish_FindsTurkishNamesWithoutAccentsAndEnglishOnes', async () => {
     renderPicker('tr');
-    expect(await screen.findByRole('grid', { name: 'İfadeler ve duygular' })).toBeInTheDocument();
+    expect(await findGrid('İfadeler ve duygular')).toBeInTheDocument();
 
     // "gulen" for "gülen", upper case with the Turkish dotted İ and dotless I.
     search('gulen', 'Emoji ara');
-    expect(emojiNames(screen.getByRole('grid', { name: 'Arama sonuçları' }))).toContain('gülen yüz');
+    expect(emojiNames(gridIn('Arama sonuçları'))).toContain('gülen yüz');
     search('IŞIK', 'Emoji ara');
     expect(emojiNames(screen.getByRole('grid'))).toContain('ışık halkalı gülümseme');
     search('İNEK', 'Emoji ara');
@@ -162,7 +167,7 @@ describe('EmojiPicker', () => {
     const eleven = ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉'];
     localStorage.setItem(RECENT_KEY, JSON.stringify(eleven));
     renderPicker();
-    const cells = within(await screen.findByRole('grid', { name: 'Recently used' })).getAllByRole('button');
+    const cells = within(await findGrid('Recently used')).getAllByRole('button');
     expect(cells).toHaveLength(11);
 
     // From the end of the first row there is nothing straight below.
@@ -229,7 +234,7 @@ describe('EmojiPicker', () => {
 
   it('Tabs_ArrowKeysAndClicks_ChangeTheGroup', async () => {
     renderPicker();
-    await screen.findByRole('grid', { name: 'Smileys and emotion' });
+    await findGrid('Smileys and emotion');
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map((tab) => tab.getAttribute('aria-label'))).toEqual([
       'Smileys and emotion',
@@ -248,12 +253,10 @@ describe('EmojiPicker', () => {
     expect(tabs[1]).toHaveFocus();
     expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
     expect(tabs.filter((tab) => tab.tabIndex === 0)).toEqual([tabs[1]]);
-    expect(screen.getByRole('grid', { name: 'People and body' })).toBeInTheDocument();
+    expect(gridIn('People and body')).toBeInTheDocument();
 
     fireEvent.keyDown(tabs[1] as HTMLElement, { key: 'End' });
-    expect(within(screen.getByRole('grid', { name: 'Flags' })).getAllByRole('button').length).toBeGreaterThan(
-      200,
-    );
+    expect(within(gridIn('Flags')).getAllByRole('button').length).toBeGreaterThan(200);
     fireEvent.keyDown(tabs.at(-1) as HTMLElement, { key: 'ArrowRight' });
     expect(tabs[0]).toHaveFocus();
 
@@ -261,14 +264,14 @@ describe('EmojiPicker', () => {
     search('rocket');
     fireEvent.click(screen.getByRole('tab', { name: 'Objects' }));
     expect(screen.getByRole('searchbox')).toHaveValue('');
-    expect(screen.getByRole('grid', { name: 'Objects' })).toBeInTheDocument();
+    expect(gridIn('Objects')).toBeInTheDocument();
   });
 
   it('Recent_StoredEmoji_ComeFirstNewestFirst', async () => {
     localStorage.setItem(RECENT_KEY, JSON.stringify(['🚀', '👍🏽', 'not an emoji', '🚀', 7]));
     const { onPick } = renderPicker();
 
-    const grid = await screen.findByRole('grid', { name: 'Recently used' });
+    const grid = await findGrid('Recently used');
     // Known emoji only, each once, as they were picked (with the skin tone).
     expect(
       within(grid)
@@ -288,7 +291,7 @@ describe('EmojiPicker', () => {
 
   it('Recent_AfterManyPicks_KeepsOnlyTheLastTwentyFour', async () => {
     renderPicker();
-    const grid = await screen.findByRole('grid', { name: 'Smileys and emotion' });
+    const grid = await findGrid('Smileys and emotion');
     const cells = within(grid).getAllByRole('button').slice(0, 30);
 
     for (const cell of cells) fireEvent.click(cell);
@@ -305,7 +308,7 @@ describe('EmojiPicker', () => {
     });
     const { onPick } = renderPicker();
 
-    const grid = await screen.findByRole('grid', { name: 'Smileys and emotion' });
+    const grid = await findGrid('Smileys and emotion');
     fireEvent.click(within(grid).getByRole('button', { name: 'grinning face' }));
 
     expect(onPick).toHaveBeenCalledExactlyOnceWith('😀');

@@ -9,6 +9,7 @@ type Key =
   | 'resultCount'
   | 'noResults'
   | 'categories'
+  | 'grid'
   | 'recent'
   | EmojiGroupKey
   | 'skinTone'
@@ -27,6 +28,7 @@ export const messages: Messages<Key> = {
     resultCount: '{count} emoji found',
     noResults: 'No emoji found.',
     categories: 'Emoji categories',
+    grid: 'Emoji',
     recent: 'Recently used',
     'smileys-emotion': 'Smileys and emotion',
     'people-body': 'People and body',
@@ -52,6 +54,7 @@ export const messages: Messages<Key> = {
     resultCount: '{count} emoji bulundu',
     noResults: 'Emoji bulunamadı.',
     categories: 'Emoji kategorileri',
+    grid: 'Emojiler',
     recent: 'Son kullanılanlar',
     'smileys-emotion': 'İfadeler ve duygular',
     'people-body': 'İnsanlar ve vücut',
