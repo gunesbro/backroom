@@ -44,3 +44,8 @@ Contracts: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (f
 - Creating a channel makes the creator a member (`joined_seq` 0) and writes `conversation-created` and `conversation-member-added` to the outbox.
 - `POST /api/v1/orgs/{orgId}/conversations/{id}/join` (open public channels; a member gets `204` without a change; archived `409 messaging.conversation_archived`) and `/leave` (any member; DMs `409 messaging.cannot_leave_dm`; not a member `204`); unreadable, unknown and foreign conversations are the same `404 messaging.conversation_not_found`. At most 10,000 open memberships per person (`409 messaging.membership_limit`; concurrent joins can exceed it by their number). Membership and `member_count` change in one statement; lock order membership row, then conversation row.
 - Left for later steps: live `MembershipChanged` and the removal broadcast (step 2), the conversation routes for messages and the removal of the Phase 1 routes (step 3), ownership transfer when a private channel's owner leaves (step 7), `change_seq` / `last_message_seq` (step 5).
+
+## Notifications contracts (Phase 2 step 29)
+
+- `ActivityAdded` (`messaging.activity-added.v1`, ids only, at most 500 accounts) and `ActivityKinds` are defined in Contracts for Notifications to consume; nothing publishes the event yet (the feed writer arrives with its step).
+- `IMessagePreviews.ReadAsync` (Contracts, implemented by `MessagePreviews`): the first N characters of messages the account may read (the same `ConversationAccess.CanRead` as everywhere), one query for the messages and one read check per distinct conversation; deleted, unknown and unreadable messages are left out. Never logged.
