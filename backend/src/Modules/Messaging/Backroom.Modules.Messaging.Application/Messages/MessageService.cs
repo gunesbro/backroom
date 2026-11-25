@@ -215,7 +215,7 @@ internal sealed partial class MessageService(
         }
         else
         {
-            liveEvents.Add(new MessagePostedPayload(organizationId, conversationId, new LiveMessage(message.Id, seq, clientId, authorAccountId, prepared, now)));
+            liveEvents.Add(new MessagePostedPayload(organizationId, conversationId, new LiveMessage(message.Id, seq, clientId, authorAccountId, prepared, now, MessageBlocks.ToLive(parsed.Blocks))));
         }
 
         LogPosted(logger, message.Id, conversationId, organizationId, authorAccountId);

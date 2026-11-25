@@ -21,6 +21,19 @@ export type Block =
   | { type: 'bulleted_list'; children: ListItem[] }
   | { type: 'numbered_list'; children: ListItem[] };
 
+/** A mention in a received message (the composer does not write them yet). Exactly one member names the target. */
+export type MentionNode =
+  | { type: 'mention'; accountId: string }
+  | { type: 'mention'; groupId: string }
+  | { type: 'mention'; special: 'everyone' | 'here' };
+
+/** What a received message can hold inline. */
+export type ReceivedRun = TextNode | MentionNode;
+export type ReceivedItem = { type: 'list_item'; children: ReceivedRun[] };
+export type ReceivedBlock =
+  | { type: 'paragraph' | 'quote' | 'code_block'; children: ReceivedRun[] }
+  | { type: 'bulleted_list' | 'numbered_list'; children: ReceivedItem[] };
+
 /** The server's limits on a link address and on the JSON of one message. */
 export const MAX_HREF_LENGTH = 2048;
 export const MAX_BLOCKS_JSON_BYTES = 32 * 1024;
@@ -183,11 +196,23 @@ function parseMarks(value: unknown): Mark[] | undefined {
   return canonical.length > 0 ? canonical : undefined;
 }
 
-function parseRuns(value: unknown): TextNode[] {
+function parseMention(raw: Record<string, unknown>): MentionNode | undefined {
+  if (typeof raw.accountId === 'string') return { type: 'mention', accountId: raw.accountId };
+  if (typeof raw.groupId === 'string') return { type: 'mention', groupId: raw.groupId };
+  if (raw.special === 'everyone' || raw.special === 'here') return { type: 'mention', special: raw.special };
+  return undefined;
+}
+
+function parseRuns(value: unknown): ReceivedRun[] {
   if (!Array.isArray(value)) return [];
-  const runs: TextNode[] = [];
+  const runs: ReceivedRun[] = [];
   for (const raw of value as unknown[]) {
-    if (!isRecord(raw) || raw.type !== 'text' || typeof raw.text !== 'string') continue; // mentions and unknown nodes
+    if (isRecord(raw) && raw.type === 'mention') {
+      const mention = parseMention(raw);
+      if (mention) runs.push(mention);
+      continue;
+    }
+    if (!isRecord(raw) || raw.type !== 'text' || typeof raw.text !== 'string') continue; // unknown nodes
     const marks = parseMarks(raw.marks);
     runs.push(marks ? { type: 'text', text: raw.text, marks } : { type: 'text', text: raw.text });
   }
@@ -198,9 +223,9 @@ function parseRuns(value: unknown): TextNode[] {
  * The blocks to show for a received message, or null when there is nothing to render (not an array, or no known
  * block). Unknown block types, unknown inline nodes and unknown marks are skipped, never shown as raw data.
  */
-export function parseBlocks(value: unknown): Block[] | null {
+export function parseBlocks(value: unknown): ReceivedBlock[] | null {
   if (!Array.isArray(value)) return null;
-  const blocks: Block[] = [];
+  const blocks: ReceivedBlock[] = [];
   for (const raw of value as unknown[]) {
     if (!isRecord(raw)) continue;
     switch (raw.type) {
@@ -211,7 +236,7 @@ export function parseBlocks(value: unknown): Block[] | null {
         break;
       case 'bulleted_list':
       case 'numbered_list': {
-        const items: ListItem[] = [];
+        const items: ReceivedItem[] = [];
         if (Array.isArray(raw.children)) {
           for (const item of raw.children as unknown[]) {
             if (isRecord(item) && item.type === 'list_item') {
@@ -227,4 +252,49 @@ export function parseBlocks(value: unknown): Block[] | null {
     }
   }
   return blocks.length > 0 ? blocks : null;
+}
+
+/**
+ * The names the server put into the derived `text` for the mentions of received blocks (`@` and the name it looked up),
+ * for a mention whose person this client does not know. The text is walked in step with the blocks: each text run is
+ * found again after the previous one, and a mention's name is what lies between its `@` and the next run. A name that
+ * cannot be found (the text was normalized differently) is simply missing. Never throws.
+ */
+export function derivedMentionNames(
+  blocks: readonly ReceivedBlock[],
+  text: string,
+): Map<MentionNode, string> {
+  const flat: ReceivedRun[] = [];
+  for (const block of blocks) {
+    for (const child of block.children) {
+      if (child.type === 'list_item') flat.push(...child.children);
+      else flat.push(child);
+    }
+  }
+  const names = new Map<MentionNode, string>();
+  let cursor = 0;
+  for (const [index, run] of flat.entries()) {
+    if (run.type === 'text') {
+      const at = text.indexOf(run.text, cursor);
+      if (at === -1) return names;
+      cursor = at + run.text.length;
+      continue;
+    }
+    const at = text.indexOf('@', cursor);
+    if (at === -1) return names;
+    const next = flat[index + 1];
+    const lineEnd = text.indexOf('\u000A', at);
+    let end = lineEnd === -1 ? text.length : lineEnd;
+    if (next?.type === 'text') {
+      const anchor = text.indexOf(next.text, at + 1);
+      if (anchor !== -1 && anchor < end) end = anchor;
+    } else if (next?.type === 'mention') {
+      const anchor = text.indexOf('@', at + 1);
+      if (anchor !== -1 && anchor < end) end = anchor;
+    }
+    const name = text.slice(at + 1, end).trim();
+    if (name.length > 0) names.set(run, name);
+    cursor = end;
+  }
+  return names;
 }

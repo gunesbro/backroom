@@ -81,12 +81,51 @@ describe('MessageBody rendering', () => {
     expect(screen.getByText('click')).toBeTruthy();
   });
 
-  it('Render_WhenMentionNode_SkipsItAndKeepsTheText', () => {
+  it('Render_WhenMentionOfAKnownMember_ShowsAChipWithTheirName', () => {
+    const blocks = [
+      { type: 'paragraph', children: [run('hi '), { type: 'mention', accountId: 'a-1' }, run(' there')] },
+    ];
+    const { container } = render(
+      <MessageBody
+        text="hi @Old Name there"
+        sending={false}
+        blocks={blocks}
+        mentionName={(id) => (id === 'a-1' ? 'Bob' : undefined)}
+      />,
+    );
+
+    expect(container.querySelector('[data-mention]')?.textContent).toBe('@Bob');
+    expect(container.textContent).toBe('hi @Bob there');
+    expect(container.querySelector('a, input, textarea')).toBeNull();
+  });
+
+  it('Render_WhenMentionOfAnUnknownMember_UsesTheNameInTheText', () => {
+    const blocks = [
+      { type: 'paragraph', children: [run('hi '), { type: 'mention', accountId: 'a-2' }, run(' there')] },
+    ];
+    const { container } = render(
+      <MessageBody text="hi @Carol Q there" sending={false} blocks={blocks} mentionName={() => undefined} />,
+    );
+
+    expect(container.querySelector('[data-mention]')?.textContent).toBe('@Carol Q');
+  });
+
+  it('Render_WhenMentionNameIsMarkup_ShowsItAsText', () => {
+    const blocks = [{ type: 'paragraph', children: [{ type: 'mention', accountId: 'a-3' }] }];
+    const { container } = render(
+      <MessageBody text="@x" sending={false} blocks={blocks} mentionName={() => '<b>x</b>'} />,
+    );
+
+    expect(container.querySelector('b')).toBeNull();
+    expect(container.textContent).toBe('@<b>x</b>');
+  });
+
+  it('Render_WhenMentionNodeHasNoNameAnywhere_ShowsAnAtSignAndKeepsTheText', () => {
     const blocks = [
       { type: 'paragraph', children: [run('hi '), { type: 'mention', accountId: 'a-1' }, run('there')] },
     ];
     const { container } = render(<MessageBody text="" sending={false} blocks={blocks} />);
 
-    expect(container.textContent).toBe('hi there');
+    expect(container.textContent).toBe('hi @there');
   });
 });

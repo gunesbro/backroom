@@ -49,6 +49,7 @@ export function MessageList({
   loadingNewer,
   onLoadNewer,
   authorName,
+  mentionName,
   ownAccountId,
   ownName,
   locale,
@@ -66,6 +67,8 @@ export function MessageList({
   loadingNewer: boolean;
   onLoadNewer: () => void;
   authorName: (accountId: string) => string;
+  /** The name of a mentioned member if the client knows it. */
+  mentionName?: ((accountId: string) => string | undefined) | undefined;
   ownAccountId: string | undefined;
   /** The signed-in account's name, shown on its own messages. */
   ownName: string;
@@ -319,6 +322,7 @@ export function MessageList({
                 tabStop={row.key === tabStopKey}
                 position={item.index + 1}
                 authorName={authorName}
+                mentionName={mentionName}
                 ownAccountId={ownAccountId}
                 ownName={ownName}
                 locale={locale}
@@ -374,6 +378,7 @@ const MessageRow = memo(function MessageRow({
   tabStop,
   position,
   authorName,
+  mentionName,
   ownAccountId,
   ownName,
   locale,
@@ -387,6 +392,8 @@ const MessageRow = memo(function MessageRow({
   /** One-based place in the feed (aria-posinset); the size is unknown, as more pages load. */
   position: number;
   authorName: (accountId: string) => string;
+  /** The name of a mentioned member if the client knows it. */
+  mentionName?: ((accountId: string) => string | undefined) | undefined;
   ownAccountId: string | undefined;
   ownName: string;
   locale: Locale;
@@ -472,6 +479,7 @@ const MessageRow = memo(function MessageRow({
             blocks={pending?.blocks ?? message?.blocks}
             text={text}
             sending={pending?.status === 'sending'}
+            {...(mentionName ? { mentionName } : {})}
           />
         ) : (
           <p className={pending?.status === 'sending' ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>

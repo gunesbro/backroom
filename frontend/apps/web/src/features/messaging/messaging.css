@@ -789,6 +789,16 @@
   text-decoration: underline;
 }
 
+/* A mention in a received message: a chip with the name, not editable and not a link. */
+.bm-mention {
+  padding: 0 3px;
+  border-radius: var(--ph-radius-sm);
+  background: var(--ph-sunken);
+  color: var(--ph-accent);
+  font-weight: 600;
+  unicode-bidi: isolate;
+}
+
 .bm-quote {
   margin: 2px 0;
   padding-left: var(--ph-space-8);

@@ -16,7 +16,7 @@ Contracts: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (f
 ## Publishes / depends on
 
 - Integration event `messaging.message-posted.v1` (no text).
-- Live events through `ILiveEventPublisher` (Realtime.Contracts) after commit: `MessagePosted` (`MessagePosted.v2` with `Features:MessageSync`) to the conversation group, `ChannelCreated` to the organization group; a leave asks Realtime to take the account's connections out of the conversation group (`RemoveFromConversationAsync`; the outbox event repeats it durably).
+- Live events through `ILiveEventPublisher` (Realtime.Contracts) after commit: `MessagePosted` (carries `blocks` too, an additive field; `MessagePosted.v2` with `Features:MessageSync`) to the conversation group, `ChannelCreated` to the organization group; a leave asks Realtime to take the account's connections out of the conversation group (`RemoveFromConversationAsync`; the outbox event repeats it durably).
 - `IPermissionChecker` (Permissions.Contracts); membership comes from the organization context.
 - `IMemberNames` (Organization.Contracts): the display names of active members, for the plain text of a mention and the "active member" check, in one statement.
 - `ICellEpoch` (BuildingBlocks.Application): the cell's confirmed epoch, registered by `AddCellEpochFence` (control plane connector).

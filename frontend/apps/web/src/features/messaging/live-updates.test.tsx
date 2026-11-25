@@ -428,6 +428,25 @@ describe('applyLiveMessage', () => {
   });
 });
 
+describe('applyLiveMessage blocks', () => {
+  it('LiveMessage_WithBlocks_KeepsThemInTheCache', () => {
+    forgetSeqs();
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<MessagePages>(messagesKey(ORG, GENERAL.id), {
+      pages: [{ messages: [message(1)], next: null }],
+      pageParams: [undefined],
+    });
+    const blocks = [
+      { type: 'paragraph', children: [{ type: 'text', text: 'hi', marks: [{ type: 'bold' }] }] },
+    ];
+
+    applyLiveMessage(queryClient, ORG, GENERAL.id, message(2, { blocks }));
+
+    const data = queryClient.getQueryData<MessagePages>(messagesKey(ORG, GENERAL.id));
+    expect(data?.pages[0]?.messages[0]?.blocks).toEqual(blocks);
+  });
+});
+
 describe('catchUpChannel', () => {
   const seeded = (newest: number) => {
     forgetSeqs();
