@@ -34,6 +34,13 @@ internal static class PresenceRules
         return state;
     }
 
+    /// <summary>
+    /// The state others see: away chosen by hand (<paramref name="away"/>, the stored flag) shows an online person as idle. Offline
+    /// stays offline, and idle is idle either way, so nobody can tell the two apart.
+    /// </summary>
+    public static PresenceState Shown(PresenceState state, string? away) =>
+        state == PresenceState.Online && away == "1" ? PresenceState.Idle : state;
+
     public static string StateName(PresenceState state) => state switch
     {
         PresenceState.Online => "online",

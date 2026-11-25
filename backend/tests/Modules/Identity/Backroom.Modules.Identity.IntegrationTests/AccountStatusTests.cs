@@ -116,6 +116,62 @@ public sealed class AccountStatusTests(PostgresDatabase database) : IAsyncLifeti
     }
 
     [Fact]
+    public async Task SetStatus_WithAway_IsStoredReturnedAndSentToTheCellsUntilAnotherStatusReplacesItAsync()
+    {
+        var account = Guid.NewGuid();
+        var cell = await _data.AddCellAsync();
+        await _data.AddMembershipAsync(account, cell);
+
+        using var response = await PutAsync(account, new { away = true, timeZone = "Europe/Istanbul" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await JsonAsync(response);
+        body["away"]!.GetValue<bool>().Should().BeTrue();
+        body["dndUntil"].Should().BeNull();
+        var message = (await _data.AccountStatusMessagesAsync(cell)).Should().ContainSingle().Subject;
+        message.Away.Should().BeTrue();
+        message.DndUntil.Should().BeNull();
+
+        // Away has no end: it is still there long after any timed status would be gone.
+        _time.Advance(TimeSpan.FromDays(40));
+        (await JsonAsync(await GetAsync(account)))["away"]!.GetValue<bool>().Should().BeTrue();
+
+        // Online is the whole status without away (PUT replaces everything; a missing value is false).
+        using var online = await PutAsync(account, new { timeZone = "Europe/Istanbul" });
+        (await JsonAsync(online))["away"]!.GetValue<bool>().Should().BeFalse();
+        var messages = await _data.AccountStatusMessagesAsync(cell);
+        messages.Select(sent => sent.Version).Should().Equal(1UL, 2UL);
+        messages[1].Away.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SetStatus_WithAwayAndDoNotDisturb_KeepsAwayClearedEvenAfterDoNotDisturbEndsAsync()
+    {
+        var account = Guid.NewGuid();
+        var cell = await _data.AddCellAsync();
+        await _data.AddMembershipAsync(account, cell);
+        using (var away = await PutAsync(account, new { away = true, timeZone = "Europe/Istanbul" }))
+        {
+            away.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using var response = await PutAsync(account, new { away = true, dndUntil = s_now.AddMinutes(30), timeZone = "Europe/Istanbul" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await JsonAsync(response);
+        body["away"]!.GetValue<bool>().Should().BeFalse("do not disturb comes before away");
+        body["dndUntil"]!.GetValue<DateTimeOffset>().Should().Be(s_now.AddMinutes(30));
+        var messages = await _data.AccountStatusMessagesAsync(cell);
+        messages[^1].Away.Should().BeFalse();
+        messages[^1].DndUntil.ToDateTimeOffset().Should().Be(s_now.AddMinutes(30));
+
+        _time.Advance(TimeSpan.FromMinutes(31));
+        var after = await JsonAsync(await GetAsync(account));
+        after["dndUntil"].Should().BeNull();
+        after["away"]!.GetValue<bool>().Should().BeFalse("away does not come back when do not disturb ends");
+    }
+
+    [Fact]
     public async Task GetStatus_AfterTheEnds_LeavesExpiredPartsOutAsync()
     {
         var account = Guid.NewGuid();
@@ -146,6 +202,7 @@ public sealed class AccountStatusTests(PostgresDatabase database) : IAsyncLifeti
         var body = await JsonAsync(await GetAsync(Guid.NewGuid()));
 
         body["dndUntil"].Should().BeNull();
+        body["away"]!.GetValue<bool>().Should().BeFalse();
         body["customStatus"].Should().BeNull();
         body["timeZone"].Should().BeNull();
         body["version"]!.GetValue<long>().Should().Be(0);

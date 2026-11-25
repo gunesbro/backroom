@@ -6,4 +6,5 @@ internal sealed record AccountStatusInput(
     string? CustomEmoji,
     string? CustomText,
     DateTimeOffset? CustomExpiresAt,
-    string TimeZone);
+    string TimeZone,
+    bool Away);

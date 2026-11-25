@@ -141,6 +141,7 @@ internal sealed class PresenceStore(PresenceValkey valkey, IOptions<PresenceOpti
                 (long)_options.StatusRetention.TotalMilliseconds,
                 status.AccountId.ToString("N"),
                 now.ToUnixTimeMilliseconds(),
+                status.Away && status.DndUntil is null ? "1" : "0",
             ]);
         return (int)result == 1;
     }
@@ -187,7 +188,7 @@ internal sealed class PresenceStore(PresenceValkey valkey, IOptions<PresenceOpti
             .Select(accountId => (
                 AccountId: accountId,
                 Connections: batch.HashValuesAsync(Connections(accountId)),
-                Status: batch.HashGetAsync(Status(accountId), [(RedisValue)"dnd", (RedisValue)"emoji", (RedisValue)"text", (RedisValue)"exp"])))
+                Status: batch.HashGetAsync(Status(accountId), [(RedisValue)"dnd", (RedisValue)"emoji", (RedisValue)"text", (RedisValue)"exp", (RedisValue)"away"])))
             .ToList();
         batch.Execute();
         var result = new List<(Guid, string?[], string?[])>(reads.Count);

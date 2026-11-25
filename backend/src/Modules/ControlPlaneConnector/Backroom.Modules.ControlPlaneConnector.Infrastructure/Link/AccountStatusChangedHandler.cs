@@ -54,7 +54,10 @@ internal sealed class AccountStatusChangedHandler(IAccountStatusSink sink) : IDo
                 message.CustomText.Length == 0 ? null : message.CustomText,
                 message.CustomExpiresAt?.ToDateTimeOffset(),
                 message.TimeZone.Length == 0 ? null : message.TimeZone,
-                (long)message.Version);
+                (long)message.Version)
+            {
+                Away = message.Away,
+            };
             return true;
         }
         catch (InvalidOperationException)

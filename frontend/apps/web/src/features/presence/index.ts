@@ -11,4 +11,6 @@ export {
 } from './api';
 export { PresenceDot, type OwnPresence } from './presence-dot';
 export { useStatusMenu, type StatusMenu } from './use-status-menu';
+export { useExpiryClock } from './use-expiry-clock';
+export { currentPresence, presenceExpiries } from './status';
 export { useActivityReporting, useLocalActivity } from './use-activity';

@@ -6,7 +6,7 @@ import { ApiError } from '@/shared/http';
 import { StatusApiContext, type AccountStatus, type StatusApi, type StatusInput } from './api';
 import { useSetStatus } from './queries';
 
-const saved: AccountStatus = { dndUntil: null, customStatus: null, timeZone: 'UTC', version: 2 };
+const saved: AccountStatus = { dndUntil: null, away: false, customStatus: null, timeZone: 'UTC', version: 2 };
 
 function wrapperFor(api: StatusApi) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
@@ -27,7 +27,12 @@ describe('useSetStatus', () => {
     const { result } = renderHook(() => useSetStatus(), { wrapper: wrapperFor(api) });
 
     await act(() =>
-      result.current.mutateAsync({ dndUntil: null, customStatus: null, timeZone: 'Mars/Olympus' }),
+      result.current.mutateAsync({
+        dndUntil: null,
+        away: false,
+        customStatus: null,
+        timeZone: 'Mars/Olympus',
+      }),
     );
 
     expect(put).toHaveBeenCalledTimes(2);
@@ -43,7 +48,12 @@ describe('useSetStatus', () => {
 
     await expect(
       act(() =>
-        result.current.mutateAsync({ dndUntil: null, customStatus: null, timeZone: 'Europe/Istanbul' }),
+        result.current.mutateAsync({
+          dndUntil: null,
+          away: false,
+          customStatus: null,
+          timeZone: 'Europe/Istanbul',
+        }),
       ),
     ).rejects.toBeInstanceOf(ApiError);
     expect(put).toHaveBeenCalledTimes(1);
