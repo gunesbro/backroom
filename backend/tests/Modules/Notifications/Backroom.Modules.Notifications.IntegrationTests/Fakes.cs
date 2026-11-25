@@ -108,6 +108,8 @@ internal sealed class RecordingPublisher : ILiveEventPublisher
 
     public Task PublishAsync(MessagePostedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
+    public Task PublishAsync(MessagePostedV2Payload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;

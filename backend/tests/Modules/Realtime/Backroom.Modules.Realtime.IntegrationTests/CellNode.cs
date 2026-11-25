@@ -118,6 +118,7 @@ internal sealed class CellNode : IAsyncDisposable
         builder.Services.AddOrganization();
         builder.Services.AddRealtime();
         builder.Services.AddRealtimeGateway();
+        builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Cells.ICellEpoch, FixedCellEpoch>();
         builder.Services.AddMessaging();
         builder.Services.AddPresence();
         builder.Services.AddPresenceTracking();

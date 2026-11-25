@@ -1,3 +1,4 @@
+using Backroom.Testing.ClamAv;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.SeaweedFs;
@@ -6,3 +7,4 @@ using Backroom.Testing.SeaweedFs;
 [assembly: AssemblyFixture(typeof(PostgresDatabase))]
 [assembly: AssemblyFixture(typeof(KeycloakRealm))]
 [assembly: AssemblyFixture(typeof(SeaweedFsServer))]
+[assembly: AssemblyFixture(typeof(ClamAvServer))]

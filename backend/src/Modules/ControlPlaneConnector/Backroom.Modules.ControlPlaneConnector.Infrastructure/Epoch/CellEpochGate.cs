@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Backroom.BuildingBlocks.Application.Cells;
 using Backroom.BuildingBlocks.Infrastructure.Fencing;
 
 namespace Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
@@ -13,7 +14,7 @@ namespace Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
 /// in the worker, by the integration-event consumers and the maintenance jobs.
 /// </summary>
 internal sealed partial class CellEpochGate(NpgsqlDataSource dataSource, string cellId, TimeProvider timeProvider, ILogger<CellEpochGate> logger)
-    : ICellWriteFence, IDisposable
+    : ICellWriteFence, ICellEpoch, IDisposable
 {
     /// <summary>How long an answer is kept; a confirmation cleared by the worker takes effect within this time.</summary>
     internal static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(2);

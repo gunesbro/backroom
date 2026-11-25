@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 using Npgsql;
+using Backroom.BuildingBlocks.Application.Cells;
 using Backroom.BuildingBlocks.Infrastructure.Fencing;
 
 namespace Backroom.Modules.ControlPlaneConnector.Infrastructure.Epoch;
@@ -41,6 +42,7 @@ public static class CellEpochFence
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILogger<CellEpochGate>>()));
         services.TryAddSingleton<ICellWriteFence>(provider => provider.GetRequiredService<CellEpochGate>());
+        services.TryAddSingleton<ICellEpoch>(provider => provider.GetRequiredService<CellEpochGate>());
         return services;
     }
 

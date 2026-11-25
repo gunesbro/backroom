@@ -112,6 +112,20 @@ internal sealed class S3FileStorage : IFileStorage, IDisposable
         return total;
     }
 
+    public async Task<T> ReadAsync<T>(string key, Func<Stream, Task<T>> consume, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(consume);
+        try
+        {
+            using var response = await _client.GetObjectAsync(new GetObjectRequest { BucketName = _bucket, Key = key }, cancellationToken);
+            return await consume(response.ResponseStream);
+        }
+        catch (AmazonS3Exception exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new FileNotFoundException("The stored object does not exist.", exception);
+        }
+    }
+
     public async Task DeleteAsync(string key, CancellationToken cancellationToken) =>
         await _client.DeleteObjectAsync(new DeleteObjectRequest { BucketName = _bucket, Key = key }, cancellationToken);
 

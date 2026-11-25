@@ -1,6 +1,7 @@
 using System.Net;
 using AwesomeAssertions;
 using Backroom.Modules.Permissions.Contracts;
+using Backroom.Testing.ClamAv;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.SeaweedFs;
@@ -9,8 +10,8 @@ namespace Backroom.Modules.Files.IntegrationTests;
 
 /// <summary>Upload start and completion (docs/contracts/phase-2.md, flow 6, steps 1 to 3) against real SeaweedFS.</summary>
 [Collection(CellCollection.Name)]
-public sealed class UploadTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage)
-    : FilesTestBase(database, keycloak, storage)
+public sealed class UploadTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage, ClamAvServer scanner)
+    : FilesTestBase(database, keycloak, storage, scanner)
 {
     [Fact]
     public async Task StartUpload_WhenValid_ReturnsAPresignedPutForAKeyWithoutTheNameAsync()
@@ -30,7 +31,7 @@ public sealed class UploadTests(PostgresDatabase database, KeycloakRealm keycloa
     }
 
     [Fact]
-    public async Task UploadAndComplete_WhenContentMatches_MarksTheFileReadyWithTheDetectedTypeAsync()
+    public async Task UploadAndComplete_WhenContentMatches_StartsTheScanWithTheDetectedTypeAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
         var channelId = await CreateChannelAsync(organizationId, Alice);
@@ -48,7 +49,9 @@ public sealed class UploadTests(PostgresDatabase database, KeycloakRealm keycloa
         file["size"]!.GetValue<long>().Should().Be(content.Length);
         file["contentType"]!.GetValue<string>().Should().Be("image/png");
         file["kind"]!.GetValue<string>().Should().Be("image");
-        file["status"]!.GetValue<string>().Should().Be("ready");
+        file["status"]!.GetValue<string>().Should().Be("scanning");
+        await RunScanJobAsync();
+        (await ScalarAsync("SELECT status FROM files.files WHERE id = $1", upload.FileId)).Should().Be("ready");
     }
 
     [Fact]

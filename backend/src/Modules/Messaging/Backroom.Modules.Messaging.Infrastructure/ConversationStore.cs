@@ -15,7 +15,7 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
 {
     // Two primary-key probes.
     private const string FindSql = """
-        SELECT c.kind, c.archived_at IS NOT NULL, c.last_seq,
+        SELECT c.kind, c.archived_at IS NOT NULL, c.change_seq,
             EXISTS (
                 SELECT 1 FROM messaging.conversation_members m
                 WHERE m.conversation_id = c.id AND m.account_id = $3 AND m.org_id = $1 AND m.left_at IS NULL)

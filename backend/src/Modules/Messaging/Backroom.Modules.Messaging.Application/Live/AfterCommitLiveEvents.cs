@@ -12,10 +12,13 @@ namespace Backroom.Modules.Messaging.Application.Live;
 internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publisher, ILogger<AfterCommitLiveEvents> logger)
 {
     private readonly List<MessagePostedPayload> _messages = [];
+    private readonly List<MessagePostedV2Payload> _messagesV2 = [];
     private readonly List<ChannelCreatedPayload> _channels = [];
     private readonly List<(Guid OrgId, Guid ConversationId, Guid AccountId)> _removals = [];
 
     public void Add(MessagePostedPayload payload) => _messages.Add(payload);
+
+    public void Add(MessagePostedV2Payload payload) => _messagesV2.Add(payload);
 
     public void Add(ChannelCreatedPayload payload) => _channels.Add(payload);
 
@@ -28,9 +31,11 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
     public async Task FlushAsync(CancellationToken cancellationToken)
     {
         var messages = _messages.ToArray();
+        var messagesV2 = _messagesV2.ToArray();
         var channels = _channels.ToArray();
         var removals = _removals.ToArray();
         _messages.Clear();
+        _messagesV2.Clear();
         _channels.Clear();
         _removals.Clear();
 
@@ -74,6 +79,20 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
 #pragma warning restore CA1031
             {
                 LogMessagePostedFailed(logger, exception.GetType().Name, message.OrgId, message.ChannelId, message.Message.Id);
+            }
+        }
+
+        foreach (var message in messagesV2)
+        {
+            try
+            {
+                await publisher.PublishAsync(message, cancellationToken);
+            }
+#pragma warning disable CA1031 // See above.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogMessagePostedFailed(logger, exception.GetType().Name, message.OrgId, message.ConversationId, message.Message.Id);
             }
         }
     }

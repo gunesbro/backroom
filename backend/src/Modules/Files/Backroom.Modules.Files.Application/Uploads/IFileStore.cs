@@ -9,6 +9,6 @@ internal interface IFileStore
 
     Task<FileRecord?> FindAsync(Guid organizationId, Guid fileId, CancellationToken cancellationToken);
 
-    /// <summary>Moves a pending upload to ready with the confirmed type; false if it was no longer pending.</summary>
-    Task<bool> MarkReadyAsync(Guid organizationId, Guid fileId, string detectedType, FileKind kind, DateTimeOffset readyAt, CancellationToken cancellationToken);
+    /// <summary>Moves a pending upload to scanning with the confirmed type (the malware scan decides ready or rejected); false if it was no longer pending.</summary>
+    Task<bool> MarkScanningAsync(Guid organizationId, Guid fileId, string detectedType, FileKind kind, CancellationToken cancellationToken);
 }

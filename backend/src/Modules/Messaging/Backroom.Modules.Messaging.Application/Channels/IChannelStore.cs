@@ -19,4 +19,11 @@ internal interface IChannelStore
     /// It also records <paramref name="sentAt"/> as the conversation's last message time.
     /// </summary>
     Task<long?> NextSequenceAsync(Guid organizationId, Guid channelId, DateTimeOffset sentAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Puts the conversation's newest message (<c>last_message_seq</c>, <c>last_message_at</c>) back to what the stored
+    /// messages say, after <see cref="NextSequenceAsync"/> announced a message that was then not stored (a lost race of
+    /// an idempotent repeat). The caller still holds the row lock; the change number taken stays unused (a gap).
+    /// </summary>
+    Task RestoreLastMessageAsync(Guid organizationId, Guid channelId, CancellationToken cancellationToken);
 }
