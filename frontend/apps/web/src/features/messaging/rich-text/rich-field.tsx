@@ -238,6 +238,9 @@ export function RichField({
     });
     editorRef.current = editor;
     editor.setRootElement(element);
+    // Lexical leaves making its root editable to the host (its React component sets the attribute); without it the
+    // field takes no focus and shows no caret.
+    element.setAttribute('contenteditable', editor.isEditable() ? 'true' : 'false');
     editor.update(
       () => {
         $writeBlocks([]);
@@ -245,6 +248,9 @@ export function RichField({
       { discrete: true },
     );
     const unregister = [
+      editor.registerEditableListener((editable) => {
+        element.setAttribute('contenteditable', editable ? 'true' : 'false');
+      }),
       registerRichText(editor),
       registerList(editor),
       // Undo is bounded: 100 steps.
