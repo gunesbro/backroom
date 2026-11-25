@@ -1,9 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { emojiData } from './emoji-data-plugin.ts';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), emojiData()],
   // Keeps Rust compiler output visible when the desktop app runs this dev server.
   clearScreen: false,
   resolve: {

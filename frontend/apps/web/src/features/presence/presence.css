@@ -44,8 +44,63 @@
   gap: var(--ph-space-10);
 }
 
+/* The emoji of the custom status: a button that opens the picker and, once one is chosen, a button that removes it. */
 .bp-emoji {
-  flex: 0 0 72px;
+  flex: none;
+}
+
+.bp-emoji__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-4);
+}
+
+.bp-emoji__pick,
+.bp-emoji__remove {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--ph-line);
+  background: var(--ph-panel);
+  color: var(--ph-ink);
+  cursor: pointer;
+}
+
+.bp-emoji__pick {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ph-radius-md);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.bp-emoji__none {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.bp-emoji__remove {
+  width: 24px;
+  height: 24px;
+  border-color: transparent;
+  border-radius: var(--ph-radius-full);
+  color: var(--ph-muted);
+}
+
+.bp-emoji__pick:hover,
+.bp-emoji__remove:hover {
+  background: var(--ph-hover);
+}
+
+.bp-emoji__pick:focus-visible,
+.bp-emoji__remove:focus-visible {
+  outline: 1px solid var(--ph-accent);
+  box-shadow: var(--ph-focus);
+}
+
+.bp-emoji__picker {
+  display: flex;
+  justify-content: center;
 }
 
 .bp-text {
@@ -55,7 +110,7 @@
 
 .bp-hints {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--ph-space-10);
   margin-top: calc(-1 * var(--ph-space-6));
 }
