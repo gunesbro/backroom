@@ -48,7 +48,7 @@ public static class FilesEndpoints
     {
         var result = await files.CompleteAsync(account.AccountId, fileId, cancellationToken);
         return result.ToHttpResult(file => TypedResults.Ok(new FileResponse(
-            file.Id, file.ConversationId, file.Name, file.Size, file.DetectedType ?? file.DeclaredType, FileKindNames.Of(file.Kind), "ready", file.CreatedAt)));
+            file.Id, file.ConversationId, file.Name, file.Size, file.DetectedType ?? file.DeclaredType, FileKindNames.Of(file.Kind), file.Status == Application.Uploads.FileStatus.Ready ? "ready" : "scanning", file.CreatedAt)));
     }
 
     private static async Task<IResult> DownloadAsync(Guid fileId, ICurrentAccount account, FileService files, CancellationToken cancellationToken)

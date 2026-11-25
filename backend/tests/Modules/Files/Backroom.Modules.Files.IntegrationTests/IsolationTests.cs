@@ -3,6 +3,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Backroom.Modules.Files.Application.Uploads;
+using Backroom.Testing.ClamAv;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 using Backroom.Testing.SeaweedFs;
@@ -12,8 +13,8 @@ namespace Backroom.Modules.Files.IntegrationTests;
 /// <summary>Organization isolation (docs/adr/0005): files of one organization are unreachable from another, by API and by row-level security.</summary>
 [Collection(CellCollection.Name)]
 [Trait("Category", "Privacy")]
-public sealed class IsolationTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage)
-    : FilesTestBase(database, keycloak, storage)
+public sealed class IsolationTests(PostgresDatabase database, KeycloakRealm keycloak, SeaweedFsServer storage, ClamAvServer scanner)
+    : FilesTestBase(database, keycloak, storage, scanner)
 {
     private readonly PostgresDatabase _database = database;
 

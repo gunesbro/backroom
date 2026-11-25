@@ -19,8 +19,8 @@ internal sealed class FileStore(DatabaseSession session) : IFileStore
         WHERE org_id = $1 AND id = $2
         """;
 
-    private const string MarkReadySql = """
-        UPDATE files.files SET status = 'ready', detected_type = $3, kind = $4, ready_at = $5
+    private const string MarkScanningSql = """
+        UPDATE files.files SET status = 'scanning', detected_type = $3, kind = $4
         WHERE org_id = $1 AND id = $2 AND status = 'pending'
         """;
 
@@ -66,14 +66,13 @@ internal sealed class FileStore(DatabaseSession session) : IFileStore
             reader.GetFieldValue<DateTimeOffset>(10));
     }
 
-    public async Task<bool> MarkReadyAsync(Guid organizationId, Guid fileId, string detectedType, FileKind kind, DateTimeOffset readyAt, CancellationToken cancellationToken)
+    public async Task<bool> MarkScanningAsync(Guid organizationId, Guid fileId, string detectedType, FileKind kind, CancellationToken cancellationToken)
     {
-        await using var command = new NpgsqlCommand(MarkReadySql, session.Connection, session.Transaction);
+        await using var command = new NpgsqlCommand(MarkScanningSql, session.Connection, session.Transaction);
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = fileId });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = detectedType });
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = FileKindNames.Of(kind) });
-        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = readyAt });
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 

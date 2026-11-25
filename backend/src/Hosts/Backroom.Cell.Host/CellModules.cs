@@ -70,6 +70,13 @@ internal static class CellModules
             // Cross-organization jobs run as the maintenance role (docs/adr/0010): invitation expiry and retention.
             builder.Services.AddOrganizationInvitationJobs();
             builder.Services.AddMaintenanceJobRunner().BindConfiguration(MaintenanceJobOptions.SectionName);
+            // Files: the malware scan of completed uploads (Phase 2 step 23), behind the same flag; the scanner and storage
+            // settings are checked at startup, so a worker with the flag on and no scanner does not start.
+            if (builder.Configuration.GetValue<bool>(FilesEndpoints.FilesFlag))
+            {
+                builder.Services.AddFileScanning().BindConfiguration(S3StorageOptions.SectionName);
+            }
+
             builder.Services.AddEmail().BindConfiguration(EmailOptions.SectionName);
             // member-removed → every app node removes the account's connections from the organization's groups.
             builder.Services.AddRealtimeMemberRemoval();

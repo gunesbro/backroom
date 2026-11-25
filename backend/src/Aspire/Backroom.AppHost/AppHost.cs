@@ -160,6 +160,21 @@ for (var i = 0; i < cells.Count; i++)
         .WaitFor(controlPlane)
         .WithHttpHealthCheck("/health");
 
+    // Files: the worker scans completed uploads (step 23) from the same bucket through clamd on localhost.
+    if (services.ObjectStorage is { } workerStorage && services.FileScanner is { } scanner)
+    {
+        cellWorker
+            .WithEnvironment("Features__Files", "true")
+            .WithEnvironment("Files__Storage__ServiceUrl", workerStorage.S3Endpoint)
+            .WithEnvironment("Files__Storage__Bucket", DevelopmentObjectStorage.BucketFor(cell))
+            .WithEnvironment("Files__Storage__AccessKeyId", workerStorage.AccessKeyId)
+            .WithEnvironment("Files__Storage__SecretAccessKey", workerStorage.SecretAccessKey)
+            .WithEnvironment("Files__Scanner__Host", "localhost")
+            .WithEnvironment("Files__Scanner__Port", DevelopmentServices.ClamAvPort.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .WaitFor(workerStorage.Container)
+            .WaitFor(scanner);
+    }
+
     foreach (var host in (IResourceBuilder<ProjectResource>[])[cellApp, cellWorker])
     {
         host.WithEnvironment("Organization__InvitationKeys__CurrentVersion", "1")

@@ -544,7 +544,7 @@ None at the moment.
 
 21. Files module: uploads, completion, signed downloads. _(human review)_
 22. Attachments in Messaging; file deletion and cleanup jobs. _(human review)_
-23. Malware scanning behind `IFileScanner` (ClamAV container in the AppHost, pinned image). _(human review)_
+23. Malware scanning behind `IFileScanner` (ClamAV container in the AppHost, pinned image). _(human review)_ Tracked gap: the `files.rejected` notice to the uploader needs a new payload and hub method in Realtime (account group); it follows with that change.
 24. File quota (reservation, completion, release, usage view) and hidden files in Files' read paths. _(human review)_
 25. Thumbnails in the worker; Files tab and Links tab; long text as `.txt`.
 26. Search module: `ISearchIndex`, owners' search sources (fold, GIN, permission in query); web search with typed filters. _(human review)_

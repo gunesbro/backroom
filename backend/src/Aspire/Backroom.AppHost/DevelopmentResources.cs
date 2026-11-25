@@ -11,4 +11,7 @@ internal sealed record DevelopmentResources(
 {
     /// <summary>Object storage; <see langword="null"/> in an isolated run, which leaves it out.</summary>
     public DevelopmentObjectStorage? ObjectStorage { get; init; }
+
+    /// <summary>The ClamAV container behind the file scanner; <see langword="null"/> in an isolated run.</summary>
+    public IResourceBuilder<ContainerResource>? FileScanner { get; init; }
 }
