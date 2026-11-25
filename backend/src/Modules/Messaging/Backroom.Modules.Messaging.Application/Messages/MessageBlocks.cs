@@ -30,6 +30,9 @@ internal static class MessageBlocks
     /// <summary>The most mention nodes in one message.</summary>
     public const int MaxMentions = 50;
 
+    /// <summary>The most distinct web addresses one message may link to (each is a row in <c>message_links</c>).</summary>
+    public const int MaxLinks = 50;
+
     /// <summary>The longest host name a link can have (DNS).</summary>
     public const int MaxHostLength = 253;
 
@@ -107,6 +110,11 @@ internal static class MessageBlocks
         if (IsBlankParagraph(blocks[0]) || IsBlankParagraph(blocks[^1]))
         {
             return MessageService.MessageInvalid.WithReason("paragraph.blank_edge");
+        }
+
+        if (parser.Links.Count > MaxLinks)
+        {
+            return MessageService.MessageInvalid.WithReason("links.limit");
         }
 
         if (parser.MentionCount > MaxMentions)
@@ -401,7 +409,7 @@ internal static class MessageBlocks
 
         public IReadOnlyList<Guid> Accounts => _accounts;
 
-        public IReadOnlyList<MessageLink> Links => _links;
+        public List<MessageLink> Links => _links;
 
         public BlockNode? Block(JsonElement element)
         {
@@ -705,7 +713,8 @@ internal static class MessageBlocks
 
                 rank = LinkRank;
                 href = value;
-                if (host is not null && (_linked ??= new HashSet<string>(StringComparer.Ordinal)).Add(value))
+                // One past the limit is enough to refuse the message, so neither collection grows beyond it.
+                if (host is not null && _links.Count <= MaxLinks && (_linked ??= new HashSet<string>(StringComparer.Ordinal)).Add(value))
                 {
                     _links.Add(new MessageLink(value, host));
                 }

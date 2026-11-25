@@ -255,6 +255,18 @@ public sealed class RichTextTests(PostgresDatabase database, KeycloakRealm keycl
         ShouldBeSameJson(LiveBlocks(Publisher.MessagesV2[1].Message.Blocks), """[{"type":"paragraph","children":[{"type":"text","text":"plain"}]}]""");
     }
 
+    [Fact]
+    public async Task Send_WithAGroupMention_IsRefusedBeforeAnyDataIsReadAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        const string Everyone = """[{"type":"paragraph","children":[{"type":"mention","special":"everyone"}]}]""";
+
+        // A conversation that does not exist: a refusal that came after the first read would be 404.
+        using var response = await SendBlocksAsync(organizationId, Guid.CreateVersion7(), Alice, Everyone);
+
+        await ShouldBeRefusedAsync(response, "messaging.mention_invalid", "group_mentions_unavailable");
+    }
+
     private static JsonNode? LiveBlocks(IReadOnlyList<object> blocks) =>
         JsonNode.Parse(MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(blocks, cancellationToken: CancellationToken), cancellationToken: CancellationToken));
 

@@ -271,6 +271,23 @@ public sealed class MessageBlocksTests
         MessageBlocks.ToJson(MessageBlocks.FromPlainText("hi").Blocks).Should().Be("""[{"type":"paragraph","children":[{"type":"text","text":"hi"}]}]""");
     }
 
+    [Fact]
+    public void Parse_WithMoreThanFiftyDistinctLinks_IsRefused()
+    {
+        static string Links(int count) => "[{\"type\":\"paragraph\",\"children\":[" + string.Join(',', Enumerable.Range(0, count).Select(index =>
+            $$"""{"type":"text","text":"a","marks":[{"type":"link","href":"https://example.test/{{index % (MessageBlocks.MaxLinks + 1)}}"}]}""")) + "]}]";
+
+        var (atTheLimit, parsed) = Parse(Links(MessageBlocks.MaxLinks));
+        var repeated = Parse("[{\"type\":\"paragraph\",\"children\":[" + string.Join(',', Enumerable.Range(0, 200).Select(index =>
+            $$"""{"type":"text","text":"{{index}}","marks":[{"type":"link","href":"https://example.test/{{index % 2}}"}]}""")) + "]}]");
+
+        atTheLimit.Should().BeNull();
+        parsed!.Links.Should().HaveCount(MessageBlocks.MaxLinks);
+        repeated.Error.Should().BeNull("the same address counts once");
+        Parse(Links(MessageBlocks.MaxLinks + 1)).Error!.Reason.Should().Be("links.limit");
+        Parse(Links(300)).Error!.Reason.Should().Be("links.limit");
+    }
+
     private static (Error? Error, ParsedBlocks? Blocks) Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
