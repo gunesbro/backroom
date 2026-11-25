@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../docs/contracts/test-data/picker-emoji.json';
 import { emojiImageSet } from '../apps/web/emoji-image-set.ts';
+import { loadEmojiImages } from '../apps/web/emoji-images-plugin.ts';
 import { flagsChecksum, shrinkFlag } from './emoji-flags.js';
 
 const vendored = new URL('../apps/web/emoji-images/noto/', import.meta.url);
@@ -39,12 +40,30 @@ describe('Emoji image set', () => {
     expect(images.get('1f1fa-1f1f2')).toBe(images.get('1f1fa-1f1f8'));
   });
 
+  it('SameImages_AreShippedOnce_AndTheOtherEmojiPointAtThem', () => {
+    const shipped = loadEmojiImages(emojiImageSet);
+    const aliases = Object.entries(shipped.aliases);
+
+    // The eight regions that show another region's flag, and emoji upstream draws alike.
+    expect(aliases.length).toBeGreaterThanOrEqual(8);
+    expect(shipped.images.size + aliases.length).toBe(images.size);
+    expect(new Set(shipped.images.values()).size).toBe(shipped.images.size);
+    for (const [key, target] of aliases) {
+      expect(shipped.images.has(key), key).toBe(false);
+      expect(shipped.images.get(target), key).toBe(images.get(key));
+    }
+    // Of two regions with one flag, the first in key order has the file.
+    expect(shipped.aliases['1f1fa-1f1f8']).toBe('1f1fa-1f1f2');
+    expect(shipped.folder).toMatch(/^assets\/emoji-[0-9a-f]{12}\/$/);
+  });
+
   it('Images_AreSvgThatLoadsNothingAndRunsNothing', () => {
     for (const [key, image] of images) {
       expect(image.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'), key).toBe(true);
-      expect(/<script|<foreignObject|<image|\son[a-z]+=|href="(?!#)|url\((?!#)/i.test(image), key).toBe(
-        false,
-      );
+      expect(
+        /<script|<foreignObject|<image|@import|\son[a-z]+=|href="(?!#)|url\((?!#)/i.test(image),
+        key,
+      ).toBe(false);
     }
   });
 

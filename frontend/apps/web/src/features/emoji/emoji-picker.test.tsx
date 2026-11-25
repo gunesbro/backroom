@@ -65,8 +65,12 @@ describe('EmojiPicker', () => {
     expect(image).toHaveAttribute('draggable', 'false');
     expect(image).toHaveAttribute('loading', 'lazy');
     expect(image).toHaveAttribute('decoding', 'async');
+    // The button names the emoji and shows the name: the image does not add a second tooltip.
+    expect(image).not.toHaveAttribute('title');
     // The tabs are images too.
-    expect(screen.getByRole('tab', { name: 'Flags' }).querySelector('img')).toHaveAttribute('alt', '🏁');
+    const tabImage = screen.getByRole('tab', { name: 'Flags' }).querySelector('img');
+    expect(tabImage).toHaveAttribute('alt', '🏁');
+    expect(tabImage).not.toHaveAttribute('title');
 
     // Flags are always offered: they do not depend on the emoji font of the system.
     fireEvent.click(screen.getByRole('tab', { name: 'Flags' }));

@@ -14,9 +14,10 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { roundSvgPaths } from './svg-path.ts';
 
 export interface EmojiImageSet {
-  /** Every image as SVG text, by image key. */
+  /** Every image as SVG text, by image key. Emoji that look the same may share a text: it is shipped once. */
   images: () => Map<string, string>;
   /** What the licenses ask us to ship with the images: one section of the third-party notices each. */
   notices: () => string[];
@@ -68,7 +69,8 @@ function images(): Map<string, string> {
     if (!icon) continue;
     result.set(
       keyOf(codePoints.split('-')),
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size}">${icon.body}</svg>`,
+      // One decimal on upstream's 128 unit canvas is far below a pixel at any size an emoji is shown.
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size}">${roundSvgPaths(icon.body, 1)}</svg>`,
     );
   }
   const flags = new URL('flags/', VENDORED);

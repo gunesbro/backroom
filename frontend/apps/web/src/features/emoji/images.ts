@@ -1,6 +1,6 @@
 // Where the image of an emoji is. The images are files of the app itself (emoji-images-plugin.ts); which image set
 // they come from is decided at build time (emoji-image-set.ts) and is not known here.
-import { emojiImageBase } from 'virtual:emoji-images';
+import { emojiImageAliases, emojiImageBase } from 'virtual:emoji-images';
 
 /**
  * The name of an emoji's image: its code points in lower-case hex joined by "-", without the emoji presentation
@@ -16,5 +16,7 @@ export function emojiImageKey(emoji: string): string {
 }
 
 export function emojiImageUrl(emoji: string): string {
-  return `${emojiImageBase}${emojiImageKey(emoji)}.svg`;
+  const key = emojiImageKey(emoji);
+  // A few emoji show the image of another one (a region with another region's flag).
+  return `${emojiImageBase}${(Object.hasOwn(emojiImageAliases, key) && emojiImageAliases[key]) || key}.svg`;
 }

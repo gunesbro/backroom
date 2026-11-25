@@ -15,8 +15,9 @@ const SEQUENCE = [
   String.raw`${ELEMENT}(?:\u200D${ELEMENT})*`,
 ].join('|');
 
-// A sequence that is followed by the text presentation selector is text.
-const EMOJI = new RegExp(String.raw`(?:${SEQUENCE})(?!\uFE0E)`, 'gu');
+// The longest sequence at each place; whether it is shown as an emoji is decided on the whole of it (`emojiMatches`).
+const EMOJI = new RegExp(SEQUENCE, 'gu');
+const TEXT_SELECTOR = 0xfe0e;
 const EMOJI_PRESENTATION = /^\p{Emoji_Presentation}$/u;
 
 /**
@@ -35,11 +36,23 @@ export interface EmojiMatch {
   readonly end: number;
 }
 
+/**
+ * The emoji of the text in order. A sequence that is followed by the text presentation selector is text as a whole:
+ * no part of it is an emoji either.
+ */
+function* emojiMatches(text: string): Generator<EmojiMatch> {
+  for (const match of text.matchAll(EMOJI)) {
+    const end = match.index + match[0].length;
+    if (isEmoji(match[0]) && text.charCodeAt(end) !== TEXT_SELECTOR) {
+      yield { emoji: match[0], start: match.index, end };
+    }
+  }
+}
+
 /** The first emoji of the text, with where it is. */
 export function firstEmoji(text: string): EmojiMatch | undefined {
-  for (const match of text.matchAll(EMOJI)) {
-    if (isEmoji(match[0])) return { emoji: match[0], start: match.index, end: match.index + match[0].length };
-  }
+  // Only the first one is looked for: the generator stops there.
+  for (const match of emojiMatches(text)) return match;
   return undefined;
 }
 
@@ -49,11 +62,10 @@ export type TextPart = string | { readonly emoji: string };
 export function splitEmoji(text: string): TextPart[] {
   const parts: TextPart[] = [];
   let at = 0;
-  for (const match of text.matchAll(EMOJI)) {
-    if (!isEmoji(match[0])) continue;
-    if (match.index > at) parts.push(text.slice(at, match.index));
-    parts.push({ emoji: match[0] });
-    at = match.index + match[0].length;
+  for (const { emoji, start, end } of emojiMatches(text)) {
+    if (start > at) parts.push(text.slice(at, start));
+    parts.push({ emoji });
+    at = end;
   }
   if (at < text.length) parts.push(text.slice(at));
   return parts;

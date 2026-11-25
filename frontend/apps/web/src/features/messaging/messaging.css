@@ -889,3 +889,10 @@
 .bm-rt-emoji::selection {
   color: transparent;
 }
+
+/* Forced colours would paint the characters in the text colour, over the image: keep them invisible there too. */
+@media (forced-colors: active) {
+  .bm-rt-emoji {
+    forced-color-adjust: none;
+  }
+}

@@ -30,8 +30,9 @@ function renderedText(holder: HTMLDivElement): string {
 }
 
 /**
- * Handles a `copy` (or `cut`) event: when the selection has emoji images, the clipboard gets their characters.
- * Selections without emoji images, and copies from a text field or the editor, are left to the browser.
+ * Handles a `copy` event: when the selection has emoji images, the clipboard gets their characters. Selections
+ * without emoji images are left to the browser. So is everything in a text field or the editor, copy and cut alike:
+ * there an emoji is its characters already (rich-text/emoji-node.ts), and only there can anything be cut.
  */
 export function copyEmojiAsText(event: ClipboardEvent): void {
   const selection = document.getSelection();

@@ -121,6 +121,19 @@ describe('Emoji in the editor', () => {
     expect(target.read(() => $getRoot().getTextContent())).toBe(text);
   });
 
+  it('Selection_ThatIsCopiedOrCut_IsPlainUnicodeText', () => {
+    const { editor: target } = editor();
+    write(target, `a 😀 ${FAMILY} b`);
+
+    // What the editor puts on the clipboard as text for a copy and a cut is the text of the selection.
+    update(target, () => {
+      $getRoot().select(0, $getRoot().getChildrenSize());
+    });
+    const copied = target.read(() => $getSelection()?.getTextContent());
+
+    expect(copied).toBe(`a 😀 ${FAMILY} b`);
+  });
+
   it('EditorState_AsJson_KeepsTheEmojiAsTextAndComesBackAsEmojiNodes', () => {
     const { editor: target } = editor();
     write(target, 'a 😀');

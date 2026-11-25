@@ -152,7 +152,7 @@ describe('AccountBar status menu', () => {
     const custom = { emoji: '🎯', text: 'Focusing', expiresAt: null };
     const api = fakeStatusApi({ ...empty, dndUntil: '2026-11-24T11:00:00Z', customStatus: custom });
     renderBar(api);
-    await screen.findByText('🎯 Focusing');
+    await screen.findByAltText('🎯');
     const away = within(await openMenu()).getByRole('menuitemradio', { name: /^Away/ });
     expect(away).not.toHaveAttribute('aria-disabled', 'true');
     expect(away).toHaveTextContent('Until you change it · automatic after 10 min idle');

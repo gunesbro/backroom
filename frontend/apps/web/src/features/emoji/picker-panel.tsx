@@ -76,7 +76,8 @@ const EmojiCell = memo(function EmojiCell({
           onPick(cell);
         }}
       >
-        <EmojiImage emoji={cell.emoji} label={cell.label} />
+        {/* The button carries the name and its tooltip. */}
+        <EmojiImage emoji={cell.emoji} tooltip={false} lazy />
       </button>
     </div>
   );
@@ -353,7 +354,7 @@ export function PickerPanel({
               selectTab(key);
             }}
           >
-            <EmojiImage emoji={TAB_ICONS[key]} label={t(key)} />
+            <EmojiImage emoji={TAB_ICONS[key]} tooltip={false} />
           </button>
         ))}
       </div>

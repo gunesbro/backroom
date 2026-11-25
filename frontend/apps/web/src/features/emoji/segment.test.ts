@@ -68,6 +68,11 @@ describe('Emoji segmentation', () => {
     // The text selector keeps even an emoji as text.
     expect(splitEmoji('⌚\uFE0E')).toEqual(['⌚\uFE0E']);
     expect(emojiIn('⌚')).toEqual(['⌚']);
+    // A joined sequence with the text selector is text as a whole, not an emoji made of its first part.
+    const family = '👨\u200D👩\u200D👧';
+    expect(splitEmoji(`${family}\uFE0E`)).toEqual([`${family}\uFE0E`]);
+    expect(splitEmoji(`🇹🇷\uFE0E`)).toEqual([`🇹🇷\uFE0E`]);
+    expect(emojiIn(`${family}\uFE0E😀`)).toEqual(['😀']);
   });
 
   it('FirstEmoji_SaysWhereItIs', () => {
