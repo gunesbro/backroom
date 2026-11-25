@@ -173,21 +173,54 @@ public sealed class ChannelManagementTests(PostgresDatabase database, KeycloakRe
         (await QuerySingleAsync("SELECT change_seq, last_message_seq, member_count FROM messaging.conversations WHERE id = $1", channelId)).Should().Equal(2L, 0L, 1);
     }
 
+    /// <summary>No change number is handed out without the cell's confirmed epoch ("Sequence numbers"): membership changes are refused before anything is written.</summary>
     [Fact]
-    public async Task Leave_WhileTheEpochIsUnconfirmed_StillLeavesWithoutALiveUpdateAsync()
+    public async Task MembershipChanges_WhileTheEpochIsUnconfirmed_AreUnavailableAndStoreNothingAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
-        await AddMemberAsync(organizationId, Bob, null);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var alice = await AccountAsync(Alice);
         var bob = await AccountAsync(Bob);
-        var channelId = await CreateChannelAsync(organizationId, Alice, "General");
-        (await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/join", Bob, null)).EnsureSuccessStatusCode();
+        var silent = await AddSilentMemberAsync(organizationId);
+        var publicId = await CreateChannelAsync(organizationId, Alice, "General");
+        var privateId = await CreatePrivateChannelAsync(organizationId, Alice, "Quiet", bob);
+        var before = await QuerySingleAsync(
+            "SELECT string_agg(id::text || change_seq || member_count || owner_account_id::text, ',' ORDER BY id) FROM messaging.conversations WHERE org_id = $1", organizationId);
+        var events = (await OutboxAsync(organizationId)).Count;
+        var memberships = Publisher.Memberships.Count;
         CellEpoch.Epoch = null;
 
-        using var left = await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/leave", Bob, null);
+        (HttpMethod Method, string Path, string User, object? Body)[] changes =
+        [
+            (HttpMethod.Post, $"conversations/{publicId}/join", Bob, null),
+            (HttpMethod.Post, $"conversations/{publicId}/leave", Alice, null),
+            (HttpMethod.Post, $"conversations/{privateId}/leave", Alice, null),
+            (HttpMethod.Post, $"conversations/{privateId}/members", Bob, new { accountIds = new[] { silent } }),
+            (HttpMethod.Delete, $"conversations/{privateId}/members/{bob}", Alice, null),
+            (HttpMethod.Delete, $"conversations/{privateId}/members/{bob}", Bob, null),
+            (HttpMethod.Put, $"conversations/{privateId}/owner", Alice, new { accountId = bob }),
+        ];
+        foreach (var (method, path, user, body) in changes)
+        {
+            using var response = await SendAsync(method, $"/api/v1/orgs/{organizationId}/{path}", user, body);
 
-        left.StatusCode.Should().Be(HttpStatusCode.NoContent, "leaving is never held back by the control plane link");
-        Publisher.Removals.Should().Equal([(organizationId, channelId, bob)]);
-        Publisher.Conversations.Should().ContainSingle("only the join, which had an epoch, was announced");
-        (await QuerySingleAsync("SELECT change_seq, member_count FROM messaging.conversations WHERE id = $1", channelId)).Should().Equal(2L, 1);
+            response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable, $"{method} {path}");
+            (await ErrorCodeAsync(response)).Should().Be("cell.epoch_unconfirmed");
+            response.Headers.RetryAfter.Should().NotBeNull();
+        }
+
+        // Someone who may not know of the conversation still learns nothing: not found comes first.
+        using var outsider = await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{Guid.CreateVersion7()}/leave", Bob, null);
+        outsider.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        (await QuerySingleAsync(
+            "SELECT string_agg(id::text || change_seq || member_count || owner_account_id::text, ',' ORDER BY id) FROM messaging.conversations WHERE org_id = $1", organizationId))
+            .Should().Equal(before);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.conversation_members WHERE org_id = $1 AND left_at IS NULL", organizationId)).Should().Equal(3L);
+        (await OutboxAsync(organizationId)).Should().HaveCount(events);
+        Publisher.Memberships.Should().HaveCount(memberships);
+        Publisher.Removals.Should().BeEmpty();
+        Publisher.Conversations.Should().BeEmpty();
+        alice.Should().NotBe(bob);
     }
 }

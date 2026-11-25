@@ -84,16 +84,23 @@ public sealed class SubscriptionTests(PostgresDatabase database, KeycloakRealm k
     }
 
     [Fact]
-    public async Task SubscribeConversation_WithAnArchivedChannel_IsRefusedAsNotFoundAsync()
+    public async Task SubscribeConversation_WithAnArchivedConversation_FollowsReadAccessAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Admin);
         var channelId = await CreateChannelAsync(NodeA, organizationId, Alice, "old");
-        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", channelId);
+        var secret = await CreatePrivateConversationAsync(organizationId, Alice);
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = ANY($1)", new[] { channelId, secret });
         var alice = await ConnectAsync(NodeA, Alice);
+        var bob = await ConnectAsync(NodeB, Bob);
 
-        var failure = await Assert.ThrowsAsync<HubException>(() => alice.SubscribeConversationAsync(organizationId, channelId));
+        // Archived conversations stay readable (so an unarchive reaches their readers); archiving opens nothing.
+        await alice.SubscribeConversationAsync(organizationId, channelId);
+        await alice.SubscribeConversationAsync(organizationId, secret);
+        await bob.SubscribeConversationAsync(organizationId, channelId);
+        var failure = await Assert.ThrowsAsync<HubException>(() => bob.SubscribeConversationAsync(organizationId, secret));
 
-        failure.Message.Should().EndWith(NotFound);
+        failure.Message.Should().EndWith(NotFound, "an Admin who is no member cannot join an archived private channel's group");
     }
 
     [Fact]

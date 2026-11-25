@@ -76,6 +76,7 @@ public sealed class UploadBrakeTests(PostgresDatabase database, KeycloakRealm ke
     {
         var (organizationId, channelId, alice) = await SetUpAsync();
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        await JoinChannelAsync(organizationId, channelId, Bob);
         var bob = await AccountAsync(Bob);
         await ExecuteAsync(
             "INSERT INTO files.upload_days (org_id, day, bytes) VALUES ($1, $2, $3)",

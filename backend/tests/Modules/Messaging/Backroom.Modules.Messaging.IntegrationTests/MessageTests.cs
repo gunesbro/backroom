@@ -205,7 +205,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
     }
 
     [Fact]
-    public async Task Send_ToAnUnknownOrArchivedChannel_IsNotFoundAsync()
+    public async Task Send_ToAnUnknownChannelIsNotFound_AndToAnArchivedOneIsRefusedAsReadOnlyAsync()
     {
         var (organizationId, channelId) = await ChannelAsync();
         var archived = await CreateChannelAsync(organizationId, Alice, "Old");
@@ -216,8 +216,11 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         unknown.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await ReadJsonAsync(unknown))["code"]!.GetValue<string>().Should().Be("messaging.conversation_not_found");
-        closed.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        closed.StatusCode.Should().Be(HttpStatusCode.Conflict, "an archived conversation is read-only");
+        (await ReadJsonAsync(closed))["code"]!.GetValue<string>().Should().Be("messaging.conversation_archived");
         (await QuerySingleAsync("SELECT count(*) FROM messaging.messages WHERE org_id = $1", organizationId))[0].Should().Be(0L);
+        using var history = await GetAsync(MessagesPath(organizationId, archived), Alice);
+        history.StatusCode.Should().Be(HttpStatusCode.OK, "and stays readable");
         channelId.Should().NotBeEmpty();
     }
 

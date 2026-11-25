@@ -10,11 +10,11 @@ namespace Backroom.Modules.Files.Application.Access;
 internal sealed class FileAccessCheck(IConversationReadAccess conversations, IMessageFileAccess messages)
 {
     /// <summary>
-    /// Whether the account may post in the conversation: for now its read access (an open public channel, or an open
-    /// conversation it is a member of); a separate post right from Messaging replaces this when one exists.
+    /// Whether the account may post in the conversation, as Messaging decides it: an open member of a conversation
+    /// that is not archived (an archived conversation is readable, so its files still download, but takes no upload).
     /// </summary>
     public Task<bool> CanPostAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
-        conversations.CanReadAsync(organizationId, conversationId, accountId, cancellationToken);
+        conversations.CanPostAsync(organizationId, conversationId, accountId, cancellationToken);
 
     /// <summary>
     /// A ready upload that no message carries yet: only its uploader, and only while they can still read its

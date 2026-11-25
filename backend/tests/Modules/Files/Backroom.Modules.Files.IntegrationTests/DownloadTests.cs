@@ -99,7 +99,16 @@ public sealed class DownloadTests(PostgresDatabase database, KeycloakRealm keycl
             allowed.StatusCode.Should().Be(HttpStatusCode.Redirect);
         }
 
+        // Archiving does not end read access: the file still downloads.
         await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", channelId);
+        using (var archived = await DownloadAsync(organizationId, fileId, Alice))
+        {
+            archived.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        }
+
+        // Read access to this conversation ends for everyone (the way a removal from a private conversation ends it).
+        await ExecuteAsync("UPDATE messaging.conversations SET kind = 'private_channel' WHERE id = $1", channelId);
+        await ExecuteAsync("UPDATE messaging.conversation_members SET left_at = now() WHERE conversation_id = $1", channelId);
         // The same, still valid access token: access is checked again, not remembered.
         using var refused = await DownloadAsync(organizationId, fileId, Alice);
 
@@ -114,6 +123,7 @@ public sealed class DownloadTests(PostgresDatabase database, KeycloakRealm keycl
         var organizationId = await ProvisionForAsync(Alice);
         var channelId = await CreateChannelAsync(organizationId, Alice);
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        await JoinChannelAsync(organizationId, channelId, Bob);
         var fileId = await UploadAsync(organizationId, channelId, Bob, TestFiles.Png());
         using (var allowed = await DownloadAsync(organizationId, fileId, Bob))
         {
@@ -133,6 +143,7 @@ public sealed class DownloadTests(PostgresDatabase database, KeycloakRealm keycl
         var organizationId = await ProvisionForAsync(Alice);
         var channelId = await CreateChannelAsync(organizationId, Alice);
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        await JoinChannelAsync(organizationId, channelId, Bob);
         var fileId = await UploadAsync(organizationId, channelId, Bob, TestFiles.Png());
 
         // Alice owns the organization; no role reads files that no message she can read carries.

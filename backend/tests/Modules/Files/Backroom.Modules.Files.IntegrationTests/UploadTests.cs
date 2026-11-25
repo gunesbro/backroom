@@ -212,6 +212,13 @@ public sealed class UploadTests(PostgresDatabase database, KeycloakRealm keycloa
         var organizationId = await ProvisionForAsync(Alice);
         var channelId = await CreateChannelAsync(organizationId, Alice);
         await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        await JoinChannelAsync(organizationId, channelId, Bob);
+
+
+        // Reading a public channel is not enough: without joining there is no right to post.
+        var reader = await CreateChannelAsync(organizationId, Alice, "unjoined");
+        using var unjoined = await StartUploadAsync(organizationId, Bob, new { conversationId = reader, name = "a.txt", size = 10, contentType = "text/plain" });
+        unjoined.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         using var response = await StartUploadAsync(organizationId, Bob, new { conversationId = channelId, name = "a.txt", size = 10, contentType = "text/plain" });
 

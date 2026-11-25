@@ -118,9 +118,11 @@ public sealed class PrivateChannelTests(PostgresDatabase database, KeycloakRealm
     /// conversation that does not exist from every route, and the channel is in none of their lists.
     /// </summary>
     [Theory]
-    [InlineData(SystemRoles.Owner)]
-    [InlineData(SystemRoles.Admin)]
-    public async Task PrivateChannel_ForOwnerAndAdminWithoutMembership_IsNotFoundOnEveryRouteAsync(string outsiderRole)
+    [InlineData(SystemRoles.Owner, false)]
+    [InlineData(SystemRoles.Admin, false)]
+    [InlineData(SystemRoles.Owner, true)]
+    [InlineData(SystemRoles.Admin, true)]
+    public async Task PrivateChannel_ForOwnerAndAdminWithoutMembership_IsNotFoundOnEveryRouteAsync(string outsiderRole, bool archived)
     {
         // Alice provisions the organization, so she holds the Owner role; Bob gets the role under test or creates.
         var organizationId = await ProvisionForAsync(Alice);
@@ -130,6 +132,13 @@ public sealed class PrivateChannelTests(PostgresDatabase database, KeycloakRealm
         var outsiderId = await AccountAsync(outsider);
         var channelId = await CreatePrivateChannelAsync(organizationId, creator, SecretName);
         await SendMessageAsync(organizationId, channelId, creator, "for members only");
+        if (archived)
+        {
+            // Archiving makes a conversation read-only for its members; it opens it to nobody else.
+            (await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/archive", creator, null)).EnsureSuccessStatusCode();
+        }
+
+        var updates = Publisher.Conversations.Count;
         var unknown = Guid.CreateVersion7();
         var before = await QuerySingleAsync("SELECT member_count, name, owner_account_id, archived_at IS NULL, change_seq FROM messaging.conversations WHERE id = $1", channelId);
 
@@ -176,8 +185,13 @@ public sealed class PrivateChannelTests(PostgresDatabase database, KeycloakRealm
         (await QuerySingleAsync("SELECT member_count, name, owner_account_id, archived_at IS NULL, change_seq FROM messaging.conversations WHERE id = $1", channelId))
             .Should().Equal(before, "nothing an outsider sends changes the channel");
         Publisher.Memberships.Should().OnlyContain(payload => payload.AccountId == creatorId);
-        Publisher.Conversations.Should().BeEmpty();
+        Publisher.Conversations.Should().HaveCount(updates);
         Publisher.Channels.Should().BeEmpty();
+
+        var canRead = true;
+        await InOrganizationAsync(organizationId, async services =>
+            canRead = await services.GetRequiredService<IConversationReadAccess>().CanReadAsync(organizationId, channelId, outsiderId, CancellationToken));
+        canRead.Should().BeFalse("files, live subscriptions and notifications ask this");
     }
 
     [Fact]
@@ -568,6 +582,15 @@ public sealed class PrivateChannelTests(PostgresDatabase database, KeycloakRealm
         (await ErrorCodeAsync(rename)).Should().Be("messaging.conversation_archived");
         (await ErrorCodeAsync(add)).Should().Be("messaging.conversation_archived");
         (await ReadJsonAsync(details))["archivedAt"].Should().NotBeNull();
+
+        // Readable by its members, and read-only.
+        using var history = await GetAsync($"{basePath}/messages", Bob);
+        using var memberList = await GetAsync($"{basePath}/members", Bob);
+        using var send = await PostAsync($"{basePath}/messages", Bob, new { clientMessageId = Guid.NewGuid(), text = "too late" });
+        history.StatusCode.Should().Be(HttpStatusCode.OK);
+        memberList.StatusCode.Should().Be(HttpStatusCode.OK);
+        send.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await ErrorCodeAsync(send)).Should().Be("messaging.conversation_archived");
 
         using var reopened = await SendAsync(HttpMethod.Post, $"{basePath}/unarchive", Alice, null);
         reopened.StatusCode.Should().Be(HttpStatusCode.NoContent);

@@ -147,11 +147,17 @@ public static class MessagingEndpoints
             extensions: new Dictionary<string, object?>(StringComparer.Ordinal) { [ErrorResults.CodeExtension] = MessageService.EpochUnconfirmed.Code });
     }
 
-    private static async Task<IResult> JoinAsync(Guid conversationId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
-        (await memberships.JoinAsync(account.AccountId, conversationId, cancellationToken)).ToHttpResult();
+    private static async Task<IResult> JoinAsync(
+        Guid conversationId, ICurrentAccount account, MembershipService memberships, HttpContext httpContext, CancellationToken cancellationToken) =>
+        ToHttpResult(await memberships.JoinAsync(account.AccountId, conversationId, cancellationToken), httpContext);
 
-    private static async Task<IResult> LeaveAsync(Guid conversationId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
-        (await memberships.LeaveAsync(account.AccountId, conversationId, cancellationToken)).ToHttpResult();
+    private static async Task<IResult> LeaveAsync(
+        Guid conversationId, ICurrentAccount account, MembershipService memberships, HttpContext httpContext, CancellationToken cancellationToken) =>
+        ToHttpResult(await memberships.LeaveAsync(account.AccountId, conversationId, cancellationToken), httpContext);
+
+    // Changes that take a change number answer 503 while the cell has no confirmed epoch.
+    private static IResult ToHttpResult(Result result, HttpContext httpContext) =>
+        result.Error == MessageService.EpochUnconfirmed ? EpochUnconfirmed(httpContext) : result.ToHttpResult();
 
     private static ChannelResponse ToResponse(ChannelEntry channel) => new(channel.Id, channel.Kind, channel.Name, channel.Description, channel.CreatedAt);
 
@@ -175,14 +181,14 @@ public static class MessagingEndpoints
         Guid conversationId, ICurrentAccount account, ConversationManagementService conversations, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await conversations.ArchiveAsync(account.AccountId, conversationId, cancellationToken);
-        return result.Error == MessageService.EpochUnconfirmed ? EpochUnconfirmed(httpContext) : result.ToHttpResult();
+        return ToHttpResult(result, httpContext);
     }
 
     private static async Task<IResult> UnarchiveAsync(
         Guid conversationId, ICurrentAccount account, ConversationManagementService conversations, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await conversations.UnarchiveAsync(account.AccountId, conversationId, cancellationToken);
-        return result.Error == MessageService.EpochUnconfirmed ? EpochUnconfirmed(httpContext) : result.ToHttpResult();
+        return ToHttpResult(result, httpContext);
     }
 
     private static async Task<IResult> ListMembersAsync(
@@ -194,16 +200,16 @@ public static class MessagingEndpoints
     }
 
     private static async Task<IResult> AddMembersAsync(
-        Guid conversationId, AddMembersRequest request, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
-        (await memberships.AddAsync(account.AccountId, conversationId, request.AccountIds, cancellationToken)).ToHttpResult();
+        Guid conversationId, AddMembersRequest request, ICurrentAccount account, MembershipService memberships, HttpContext httpContext, CancellationToken cancellationToken) =>
+        ToHttpResult(await memberships.AddAsync(account.AccountId, conversationId, request.AccountIds, cancellationToken), httpContext);
 
     private static async Task<IResult> RemoveMemberAsync(
-        Guid conversationId, Guid accountId, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
-        (await memberships.RemoveAsync(account.AccountId, conversationId, accountId, cancellationToken)).ToHttpResult();
+        Guid conversationId, Guid accountId, ICurrentAccount account, MembershipService memberships, HttpContext httpContext, CancellationToken cancellationToken) =>
+        ToHttpResult(await memberships.RemoveAsync(account.AccountId, conversationId, accountId, cancellationToken), httpContext);
 
     private static async Task<IResult> TransferOwnershipAsync(
-        Guid conversationId, TransferOwnershipRequest request, ICurrentAccount account, MembershipService memberships, CancellationToken cancellationToken) =>
-        (await memberships.TransferOwnershipAsync(account.AccountId, conversationId, request.AccountId, cancellationToken)).ToHttpResult();
+        Guid conversationId, TransferOwnershipRequest request, ICurrentAccount account, MembershipService memberships, HttpContext httpContext, CancellationToken cancellationToken) =>
+        ToHttpResult(await memberships.TransferOwnershipAsync(account.AccountId, conversationId, request.AccountId, cancellationToken), httpContext);
 
     private static ConversationDetailResponse ToResponse(ConversationDetails conversation) => new(
         conversation.Id, conversation.Kind, conversation.Name, conversation.Description, conversation.CreatedAt, conversation.ArchivedAt,

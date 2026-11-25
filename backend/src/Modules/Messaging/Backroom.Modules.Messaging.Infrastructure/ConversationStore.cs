@@ -25,12 +25,12 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         WHERE c.org_id = $1 AND c.id = $2
         """;
 
-    // The same rule as ConversationAccess.CanRead: open, not a thread, and a public channel or an open member.
+    // The same rule as ConversationAccess.CanRead: not a thread, and a public channel or an open member (archived or not).
     private const string FilterReadersSql = """
         SELECT a.id
         FROM unnest($3::uuid[]) AS a(id)
         JOIN messaging.conversations c ON c.org_id = $1 AND c.id = $2
-        WHERE c.archived_at IS NULL AND c.kind <> $4
+        WHERE c.kind <> $4
           AND (c.kind = $5 OR EXISTS (
               SELECT 1 FROM messaging.conversation_members m
               WHERE m.org_id = $1 AND m.conversation_id = c.id AND m.account_id = a.id AND m.left_at IS NULL))
@@ -39,7 +39,7 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
     private const string ReadableConversationsSql = """
         SELECT c.id
         FROM messaging.conversations c
-        WHERE c.org_id = $1 AND c.id = ANY($3) AND c.archived_at IS NULL AND c.kind <> $4
+        WHERE c.org_id = $1 AND c.id = ANY($3) AND c.kind <> $4
           AND (c.kind = $5 OR EXISTS (
               SELECT 1 FROM messaging.conversation_members m
               WHERE m.org_id = $1 AND m.conversation_id = c.id AND m.account_id = $2 AND m.left_at IS NULL))

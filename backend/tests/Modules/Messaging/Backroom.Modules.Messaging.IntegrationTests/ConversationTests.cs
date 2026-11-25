@@ -233,10 +233,18 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         var groupDm = await InsertConversationAsync(organizationId, ConversationKinds.GroupDm, null, Bob);
         var foreign = await CreateChannelAsync(otherOrganization, Bob, "Elsewhere");
 
-        (await CanReadAsync(organizationId, publicId, bob)).Should().BeTrue("every member reads a public channel without joining");
-        (await CanReadAsync(organizationId, archived, alice)).Should().BeFalse("archived conversations wait for the archive step");
         (await CanReadAsync(organizationId, privateId, bob)).Should().BeTrue();
         (await CanReadAsync(organizationId, privateId, alice)).Should().BeFalse("the Owner role without membership");
+        (await CanPostAsync(organizationId, privateId, bob)).Should().BeTrue();
+        (await CanReadAsync(organizationId, publicId, bob)).Should().BeTrue("every member reads a public channel without joining");
+        (await CanReadAsync(organizationId, archived, alice)).Should().BeTrue("archived conversations stay readable");
+        (await CanReadAsync(organizationId, archived, bob)).Should().BeTrue("a public channel stays readable for every member");
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", privateId);
+        (await CanReadAsync(organizationId, privateId, bob)).Should().BeTrue("a member still reads an archived private channel");
+        (await CanReadAsync(organizationId, privateId, alice)).Should().BeFalse("archiving opens a private channel to nobody");
+        (await CanPostAsync(organizationId, privateId, bob)).Should().BeFalse("archived conversations are read-only");
+        (await CanPostAsync(organizationId, publicId, alice)).Should().BeTrue();
+        (await CanPostAsync(organizationId, publicId, bob)).Should().BeFalse("posting needs a membership");
         (await CanReadAsync(organizationId, groupDm, bob)).Should().BeTrue();
         (await CanReadAsync(organizationId, groupDm, alice)).Should().BeFalse();
         (await CanReadAsync(organizationId, foreign, bob)).Should().BeFalse("row-level security hides other organizations");
@@ -414,6 +422,14 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         await InOrganizationAsync(organizationId, async services =>
             canRead = await services.GetRequiredService<IConversationReadAccess>().CanReadAsync(organizationId, conversationId, accountId, CancellationToken));
         return canRead;
+    }
+
+    private async Task<bool> CanPostAsync(Guid organizationId, Guid conversationId, Guid accountId)
+    {
+        var canPost = false;
+        await InOrganizationAsync(organizationId, async services =>
+            canPost = await services.GetRequiredService<IConversationReadAccess>().CanPostAsync(organizationId, conversationId, accountId, CancellationToken));
+        return canPost;
     }
 
     private async Task<bool> IsMemberAsync(Guid organizationId, Guid conversationId, Guid accountId)

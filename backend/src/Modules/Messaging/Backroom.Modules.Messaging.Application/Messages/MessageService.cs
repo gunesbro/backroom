@@ -81,6 +81,12 @@ internal sealed partial class MessageService(
             return ConversationNotFound;
         }
 
+        // Archived conversations are read-only.
+        if (access.Archived)
+        {
+            return MembershipService.ConversationArchived;
+        }
+
         if (!access.IsMember)
         {
             return NotMember;

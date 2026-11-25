@@ -83,3 +83,5 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 - `ILiveEventPublisher.PublishAsync(ConversationUpdatedPayload)` sends `ConversationUpdated` (`orgId, conversationId, name?, description?, archivedAt?, memberCount, changeSeq, epoch`) to the conversation's group only, so a private channel's name reaches its subscribed members and nobody else.
 - `ILiveEventPublisher.PublishAsync(MembershipChangedPayload)` sends `MembershipChanged` (`orgId, accountId, conversationId, change added|removed`) to that account's own group only. Messaging publishes both after its commit.
 - Test: `ConversationUpdatedAndMembershipChanged_ReachOnlyTheirGroupsOnBothNodesAsync` (an Admin who is no member gets neither).
+
+- Since Phase 2 step 7 an archived conversation is readable, so `SubscribeConversation` accepts it for whoever may read it (an archived private channel still only for its members); `realtime.not_found` no longer covers "archived".

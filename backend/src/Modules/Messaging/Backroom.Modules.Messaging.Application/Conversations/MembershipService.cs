@@ -6,6 +6,7 @@ using Backroom.BuildingBlocks.Application.Messaging;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Domain.Errors;
 using Backroom.Modules.Messaging.Application.Live;
+using Backroom.Modules.Messaging.Application.Messages;
 using Backroom.Modules.Messaging.Contracts;
 using Backroom.Modules.Realtime.Contracts;
 
@@ -99,10 +100,15 @@ internal sealed partial class MembershipService(
             return ConversationArchived;
         }
 
+        if (await EpochAsync(cancellationToken) is not { } epoch)
+        {
+            return MessageService.EpochUnconfirmed;
+        }
+
         var joined = await OpenAsync(organizationId, conversationId, accountId, MemberRoles.Member, conversation.ChangeSeq, accountId, cancellationToken);
         if (joined.IsSuccess)
         {
-            await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
+            await AnnounceChangeAsync(organizationId, conversationId, epoch, cancellationToken);
         }
 
         return joined;
@@ -128,6 +134,11 @@ internal sealed partial class MembershipService(
             return CannotLeaveDm;
         }
 
+        if (await EpochAsync(cancellationToken) is not { } epoch)
+        {
+            return MessageService.EpochUnconfirmed;
+        }
+
         var now = StoredTime.Now(timeProvider);
         if (!await CloseAsync(organizationId, conversationId, accountId, accountId, now, cancellationToken))
         {
@@ -140,7 +151,7 @@ internal sealed partial class MembershipService(
             await PassOwnershipAsync(organizationId, conversation, accountId, now, cancellationToken);
         }
 
-        await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
+        await AnnounceChangeAsync(organizationId, conversationId, epoch, cancellationToken);
 
         return Result.Success;
     }
@@ -178,6 +189,11 @@ internal sealed partial class MembershipService(
             return ConversationArchived;
         }
 
+        if (await EpochAsync(cancellationToken) is not { } epoch)
+        {
+            return MessageService.EpochUnconfirmed;
+        }
+
         var now = StoredTime.Now(timeProvider);
         if (await ConversationBrakes.CheckMemberAdditionsAsync(conversations, organizationId, accountId, added.Count, now, cancellationToken) is { } limited)
         {
@@ -193,7 +209,7 @@ internal sealed partial class MembershipService(
         var count = opened.GetValueOrThrow().Count;
         if (count > 0)
         {
-            await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
+            await AnnounceChangeAsync(organizationId, conversationId, epoch, cancellationToken);
         }
 
         LogAdded(logger, count, conversationId, organizationId, accountId);
@@ -233,11 +249,16 @@ internal sealed partial class MembershipService(
             return RemovalUnavailable;
         }
 
+        if (await EpochAsync(cancellationToken) is not { } epoch)
+        {
+            return MessageService.EpochUnconfirmed;
+        }
+
         var now = StoredTime.Now(timeProvider);
         if (await CloseAsync(organizationId, conversationId, removedAccountId, accountId, now, cancellationToken))
         {
             LogRemoved(logger, removedAccountId, conversationId, organizationId, accountId);
-            await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
+            await AnnounceChangeAsync(organizationId, conversationId, epoch, cancellationToken);
         }
 
         return Result.Success;
@@ -273,6 +294,11 @@ internal sealed partial class MembershipService(
             return Result.Success;
         }
 
+        if (await EpochAsync(cancellationToken) is not { } epoch)
+        {
+            return MessageService.EpochUnconfirmed;
+        }
+
         // Under the conversation row lock, so the membership cannot end before the ownership is written.
         if (await conversations.FindAsync(organizationId, conversationId, newOwner, cancellationToken) is not { IsMember: true })
         {
@@ -289,7 +315,7 @@ internal sealed partial class MembershipService(
                 ids.NewId(), organizationId, StoredTime.Now(timeProvider), conversationId, conversation.Kind, ConversationChanges.OwnerTransferred, accountId, conversation.MemberCount),
             cancellationToken);
         LogOwnerChanged(logger, conversationId, organizationId, newOwner);
-        await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
+        await AnnounceChangeAsync(organizationId, conversationId, epoch, cancellationToken);
         return Result.Success;
     }
 
@@ -429,21 +455,19 @@ internal sealed partial class MembershipService(
     /// <summary>
     /// The conversation changed for its readers (its member count or its owner): takes the next change number, so sync
     /// sees it, and tells the conversation's group with <c>ConversationUpdated</c> (docs/contracts/phase-2.md, "Live
-    /// events"). The live event carries the change number and so needs the cell's confirmed epoch; without one the
-    /// membership change still happens (a leave or a removal is never held back by the control plane link) and only
-    /// the live event is left out: clients run a full resync once the epoch is confirmed.
+    /// events"). A change number is never handed out without the cell's confirmed epoch ("Sequence numbers"): every
+    /// caller has refused with <c>cell.epoch_unconfirmed</c> before changing anything when there is none.
     /// </summary>
-    private async Task AnnounceChangeAsync(Guid organizationId, Guid conversationId, CancellationToken cancellationToken)
+    private async Task AnnounceChangeAsync(Guid organizationId, Guid conversationId, string epoch, CancellationToken cancellationToken)
     {
         var change = await conversations.TouchAsync(organizationId, conversationId, cancellationToken);
-        if (await cellEpoch.ConfirmedEpochAsync(cancellationToken) is { } epoch)
-        {
-            liveEvents.Add(new ConversationUpdatedPayload(
-                organizationId, conversationId, change.Name, change.Description,
-                change.ArchivedAt?.ToString("O", CultureInfo.InvariantCulture), change.MemberCount, change.ChangeSeq,
-                epoch.ToString(CultureInfo.InvariantCulture)));
-        }
+        liveEvents.Add(new ConversationUpdatedPayload(
+            organizationId, conversationId, change.Name, change.Description,
+            change.ArchivedAt?.ToString("O", CultureInfo.InvariantCulture), change.MemberCount, change.ChangeSeq, epoch));
     }
+
+    private async ValueTask<string?> EpochAsync(CancellationToken cancellationToken) =>
+        await cellEpoch.ConfirmedEpochAsync(cancellationToken) is { } epoch ? epoch.ToString(CultureInfo.InvariantCulture) : null;
 
     private Guid OrganizationId =>
         context.OrganizationId ?? throw new InvalidOperationException("The request has not entered an organization.");
