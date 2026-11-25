@@ -205,7 +205,30 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         WHERE c.org_id = $1 AND c.id = $2
         """;
 
-    private const string GetForUpdateSql = GetSql + " FOR UPDATE OF c";
+    // Locks the conversation row alone. The caller's membership is read by RoleSql afterwards, in a statement of its
+    // own: under READ COMMITTED a statement that waited for a row lock re-reads only the locked row, so a membership
+    // joined into this statement would be the one from before the wait (a role that was passed on or a membership
+    // that ended meanwhile).
+    private const string LockSql = """
+        SELECT c.kind, c.name, c.description, c.created_at, c.archived_at, c.change_seq, c.member_count, c.owner_account_id
+        FROM messaging.conversations c
+        WHERE c.org_id = $1 AND c.id = $2
+        FOR UPDATE
+        """;
+
+    private const string RoleSql = """
+        SELECT m.role
+        FROM messaging.conversation_members m
+        WHERE m.conversation_id = $2 AND m.account_id = $3 AND m.org_id = $1 AND m.left_at IS NULL
+        """;
+
+    // A membership change takes the next change number, so sync and ConversationUpdated see the new member count.
+    private const string TouchSql = """
+        UPDATE messaging.conversations c
+        SET change_seq = c.change_seq + 1
+        WHERE c.org_id = $1 AND c.id = $2
+        RETURNING c.change_seq, c.name, c.description, c.archived_at, c.member_count
+        """;
 
     // The accounts arrive sorted, so two batches take their row locks in the same order; rows that are already open are
     // left alone. The count follows what was really opened.
@@ -253,13 +276,22 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         LIMIT 1
         """;
 
-    // Two primary-key rows and the conversation. The assignment list does not start with the role column (see OpenSql).
+    // Two primary-key rows and the conversation. Only an open member becomes the owner: with no such membership
+    // nothing is written and the caller fails. "added_by = m.added_by" assigns the column to itself and changes
+    // nothing; it is there only so that the assignment list does not begin with the role column, which the
+    // org-context Semgrep rule would read as a database role switch (see OpenSql).
     private const string SetOwnerSql = """
-        WITH roles AS (
+        WITH target AS (
+            SELECT m.account_id FROM messaging.conversation_members m
+            WHERE m.conversation_id = $2 AND m.account_id = $4 AND m.org_id = $1 AND m.left_at IS NULL),
+        roles AS (
             UPDATE messaging.conversation_members m
             SET added_by = m.added_by, role = CASE WHEN m.account_id = $4 THEN 'owner' ELSE 'member' END
+            FROM target
             WHERE m.conversation_id = $2 AND m.org_id = $1 AND m.account_id IN ($3, $4))
-        UPDATE messaging.conversations SET owner_account_id = $4 WHERE org_id = $1 AND id = $2
+        UPDATE messaging.conversations c SET owner_account_id = target.account_id
+        FROM target
+        WHERE c.org_id = $1 AND c.id = $2
         """;
 
     // The name check looks at open public channels only, and only for a public channel ($7): a private channel is
@@ -312,27 +344,65 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
 
     public async Task<ConversationDetails?> GetAsync(Guid organizationId, Guid conversationId, Guid accountId, bool forUpdate, CancellationToken cancellationToken)
     {
-        await using var command = forUpdate
-            ? new NpgsqlCommand(GetForUpdateSql, session.Connection, session.Transaction)
-            : new NpgsqlCommand(GetSql, session.Connection, session.Transaction);
+        if (forUpdate)
+        {
+            return await LockAsync(organizationId, conversationId, accountId, cancellationToken);
+        }
+
+        await using var command = new NpgsqlCommand(GetSql, session.Connection, session.Transaction);
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = conversationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? new ConversationDetails(
-                conversationId,
-                reader.GetString(0),
-                reader.IsDBNull(1) ? null : reader.GetString(1),
-                reader.IsDBNull(2) ? null : reader.GetString(2),
-                reader.GetFieldValue<DateTimeOffset>(3),
-                reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTimeOffset>(4),
-                reader.GetInt64(5),
-                reader.GetInt32(6),
-                reader.IsDBNull(7) ? null : reader.GetGuid(7),
-                reader.IsDBNull(8) ? null : reader.GetString(8))
+            ? ReadDetails(reader, conversationId, reader.IsDBNull(8) ? null : reader.GetString(8))
             : null;
     }
+
+    public async Task<ConversationChange> TouchAsync(Guid organizationId, Guid conversationId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(TouchSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = conversationId });
+        return await ChangeAsync(command, cancellationToken)
+            ?? throw new InvalidOperationException("The conversation the caller locked could not be updated.");
+    }
+
+    // Two statements on purpose: see LockSql.
+    private async Task<ConversationDetails?> LockAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken)
+    {
+        ConversationDetails? conversation;
+        await using (var command = new NpgsqlCommand(LockSql, session.Connection, session.Transaction))
+        {
+            command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+            command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = conversationId });
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            conversation = await reader.ReadAsync(cancellationToken) ? ReadDetails(reader, conversationId, role: null) : null;
+        }
+
+        if (conversation is null)
+        {
+            return null;
+        }
+
+        await using var roleCommand = new NpgsqlCommand(RoleSql, session.Connection, session.Transaction);
+        roleCommand.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        roleCommand.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = conversationId });
+        roleCommand.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
+        return conversation with { Role = await roleCommand.ExecuteScalarAsync(cancellationToken) as string };
+    }
+
+    private static ConversationDetails ReadDetails(NpgsqlDataReader reader, Guid conversationId, string? role) => new(
+        conversationId,
+        reader.GetString(0),
+        reader.IsDBNull(1) ? null : reader.GetString(1),
+        reader.IsDBNull(2) ? null : reader.GetString(2),
+        reader.GetFieldValue<DateTimeOffset>(3),
+        reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTimeOffset>(4),
+        reader.GetInt64(5),
+        reader.GetInt32(6),
+        reader.IsDBNull(7) ? null : reader.GetGuid(7),
+        role);
 
     public async Task<IReadOnlyList<Guid>> OpenMembershipsAsync(
         Guid organizationId, Guid conversationId, IReadOnlyCollection<Guid> accountIds, DateTimeOffset joinedAt, long joinedSeq, Guid addedBy, CancellationToken cancellationToken)
@@ -388,14 +458,14 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         return await command.ExecuteScalarAsync(cancellationToken) is Guid accountId ? accountId : null;
     }
 
-    public async Task SetOwnerAsync(Guid organizationId, Guid conversationId, Guid? previousOwnerAccountId, Guid ownerAccountId, CancellationToken cancellationToken)
+    public async Task<bool> SetOwnerAsync(Guid organizationId, Guid conversationId, Guid? previousOwnerAccountId, Guid ownerAccountId, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(SetOwnerSql, session.Connection, session.Transaction);
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = conversationId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = previousOwnerAccountId ?? ownerAccountId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = ownerAccountId });
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
     public async Task<ConversationChange?> UpdateAsync(

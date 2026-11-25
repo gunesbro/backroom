@@ -75,6 +75,7 @@ public static class MessagingEndpoints
             .PublishLiveEventsAfterCommit()
             .InOrganization();
         endpoints.MapPut("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/owner", TransferOwnershipAsync)
+            .PublishLiveEventsAfterCommit()
             .InOrganization()
             .WithMetadata(new RequestSizeLimitAttribute(MaxManagementRequestBytes));
 

@@ -155,4 +155,39 @@ public sealed class ChannelManagementTests(PostgresDatabase database, KeycloakRe
             .Should().Equal("public_channel", 2, true);
         Publisher.Channels.Should().ContainSingle();
     }
+
+    [Fact]
+    public async Task JoinAndLeave_TakeAChangeNumberAndTellTheConversationTheMemberCountAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, null);
+        var channelId = await CreateChannelAsync(organizationId, Alice, "General");
+        var epoch = TestCellEpoch.Initial.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        (await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/join", Bob, null)).EnsureSuccessStatusCode();
+        (await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/leave", Bob, null)).EnsureSuccessStatusCode();
+
+        Publisher.Conversations.Should().Equal(
+            new ConversationUpdatedPayload(organizationId, channelId, "General", null, null, 2, 1, epoch),
+            new ConversationUpdatedPayload(organizationId, channelId, "General", null, null, 1, 2, epoch));
+        (await QuerySingleAsync("SELECT change_seq, last_message_seq, member_count FROM messaging.conversations WHERE id = $1", channelId)).Should().Equal(2L, 0L, 1);
+    }
+
+    [Fact]
+    public async Task Leave_WhileTheEpochIsUnconfirmed_StillLeavesWithoutALiveUpdateAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, null);
+        var bob = await AccountAsync(Bob);
+        var channelId = await CreateChannelAsync(organizationId, Alice, "General");
+        (await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/join", Bob, null)).EnsureSuccessStatusCode();
+        CellEpoch.Epoch = null;
+
+        using var left = await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/leave", Bob, null);
+
+        left.StatusCode.Should().Be(HttpStatusCode.NoContent, "leaving is never held back by the control plane link");
+        Publisher.Removals.Should().Equal([(organizationId, channelId, bob)]);
+        Publisher.Conversations.Should().ContainSingle("only the join, which had an epoch, was announced");
+        (await QuerySingleAsync("SELECT change_seq, member_count FROM messaging.conversations WHERE id = $1", channelId)).Should().Equal(2L, 1);
+    }
 }

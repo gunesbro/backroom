@@ -101,7 +101,7 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         rejoined.StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await QuerySingleAsync(
             "SELECT count(*), bool_and(left_at IS NULL), max(joined_seq) FROM messaging.conversation_members WHERE conversation_id = $1 AND account_id = $2",
-            channelId, bob)).Should().Equal(1L, true, 1L);
+            channelId, bob)).Should().Equal(1L, true, 3L); // The join, the leave and the message each took a change number.
         (await MemberCountAsync(channelId)).Should().Be(2);
     }
 

@@ -1,6 +1,7 @@
 using System.Net;
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Backroom.Modules.Messaging.Contracts;
 using Backroom.Modules.Permissions.Contracts;
 using Backroom.Modules.Realtime.Contracts;
@@ -483,6 +484,9 @@ public sealed class PrivateChannelTests(PostgresDatabase database, KeycloakRealm
         var changed = (await OutboxAsync(organizationId)).Should().ContainSingle(entry => entry.Type == ConversationChanged.EventType).Subject.Payload;
         changed["change"]!.GetValue<string>().Should().Be("owner_transferred");
         changed["actor_account_id"]!.GetValue<Guid>().Should().Be(alice);
+        // Clients learn of it: the change takes a change number and the conversation's group is told.
+        (await QuerySingleAsync("SELECT change_seq FROM messaging.conversations WHERE id = $1", channelId)).Should().Equal(1L);
+        Publisher.Conversations.Should().ContainSingle().Which.ChangeSeq.Should().Be(1);
 
         using var oldOwner = await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/archive", Alice, null);
         using var newOwner = await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/archive", Bob, null);
@@ -516,6 +520,7 @@ public sealed class PrivateChannelTests(PostgresDatabase database, KeycloakRealm
         changed["change"]!.GetValue<string>().Should().Be("owner_transferred");
         changed["actor_account_id"]!.GetValue<Guid>().Should().Be(alice);
         changed["member_count"]!.GetValue<int>().Should().Be(3);
+        Publisher.Conversations.Should().HaveCount(2, "Bob was added, then the owner left").And.Subject.Last().MemberCount.Should().Be(3);
         (await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}", Alice)).StatusCode.Should().Be(HttpStatusCode.NotFound, "the former owner is no member");
     }
 
@@ -602,5 +607,137 @@ public sealed class PrivateChannelTests(PostgresDatabase database, KeycloakRealm
         create.StatusCode.Should().Be((HttpStatusCode)429, "20 channels were created within the hour");
         (await ErrorCodeAsync(create)).Should().Be("messaging.rate_limited");
         (await QuerySingleAsync("SELECT count(*) FROM messaging.conversations WHERE org_id = $1 AND name = 'One too many'", organizationId)).Should().Equal(0L);
+    }
+
+    [Theory]
+    [InlineData("deactivated")]
+    [InlineData("removed")]
+    public async Task CreateAndAdd_WithSomeoneNoLongerActiveInTheOrganization_AreRefusedAsync(string status)
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        var gone = await AddSilentMemberAsync(organizationId);
+        await ExecuteAsync("UPDATE organization.members SET status = $3 WHERE org_id = $1 AND account_id = $2", organizationId, gone, status);
+        var channelId = await CreatePrivateChannelAsync(organizationId, Alice, SecretName);
+
+        using var create = await PostAsync(
+            $"/api/v1/orgs/{organizationId}/channels", Alice, new { name = "With them", @private = true, memberAccountIds = new[] { gone } });
+        using var createPublic = await PostAsync($"/api/v1/orgs/{organizationId}/channels", Alice, new { name = "With them", memberAccountIds = new[] { gone } });
+        using var add = await PostAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/members", Alice, new { accountIds = new[] { gone } });
+
+        foreach (var response in new[] { create, createPublic, add })
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (await ErrorCodeAsync(response)).Should().Be("messaging.member_not_in_organization");
+        }
+
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.conversation_members WHERE org_id = $1 AND account_id = $2", organizationId, gone)).Should().Equal(0L);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.conversations WHERE org_id = $1", organizationId)).Should().Equal(1L);
+    }
+
+    /// <summary>
+    /// The owner and the member who would succeed them leave at the same moment. Both requests wait for the
+    /// conversation row; the one that runs second must see what the first committed (it is the owner now), or the
+    /// channel would end up owned by someone who left.
+    /// </summary>
+    [Fact]
+    public async Task Leave_ByTheOwnerAndTheSuccessorAtOnce_HandsTheChannelToARemainingMemberAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var bob = await AccountAsync(Bob);
+        var remaining = await AddSilentMemberAsync(organizationId);
+        // Bob joined first, so he is the successor; the silent member joined later.
+        var channelId = await CreatePrivateChannelAsync(organizationId, Alice, SecretName, bob);
+        await ExecuteAsync("UPDATE messaging.conversation_members SET joined_at = joined_at - interval '1 hour' WHERE conversation_id = $1 AND account_id = $2", channelId, bob);
+        (await PostAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/members", Alice, new { accountIds = new[] { remaining } })).EnsureSuccessStatusCode();
+        var leave = $"/api/v1/orgs/{organizationId}/conversations/{channelId}/leave";
+
+        var statuses = await RaceAsync(channelId, () => SendAsync(HttpMethod.Post, leave, Alice, null), () => SendAsync(HttpMethod.Post, leave, Bob, null));
+
+        statuses.Should().AllBeEquivalentTo(HttpStatusCode.NoContent);
+        (await QuerySingleAsync("SELECT owner_account_id, member_count FROM messaging.conversations WHERE id = $1", channelId)).Should().Equal(remaining, 1);
+        await OwnerShouldBeACurrentMemberAsync(channelId);
+    }
+
+    /// <summary>The owner hands the channel to a member who is leaving at the same moment, in either order.</summary>
+    [Fact]
+    public async Task TransferOwnership_WhileTheNewOwnerLeaves_NeverLeavesTheChannelToSomeoneWhoLeftAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        var alice = await AccountAsync(Alice);
+        var bob = await AccountAsync(Bob);
+        var channelId = await CreatePrivateChannelAsync(organizationId, Alice, SecretName, bob);
+        var basePath = $"/api/v1/orgs/{organizationId}/conversations/{channelId}";
+
+        var statuses = await RaceAsync(
+            channelId,
+            () => SendAsync(HttpMethod.Put, $"{basePath}/owner", Alice, new { accountId = bob }),
+            () => SendAsync(HttpMethod.Post, $"{basePath}/leave", Bob, null));
+
+        // Transfer first: Bob leaves as the owner and it passes back. Leave first: the transfer is refused.
+        statuses[0].Should().BeOneOf(HttpStatusCode.NoContent, HttpStatusCode.Conflict);
+        statuses[1].Should().Be(HttpStatusCode.NoContent);
+        (await QuerySingleAsync("SELECT owner_account_id, member_count FROM messaging.conversations WHERE id = $1", channelId)).Should().Equal(alice, 1);
+        await OwnerShouldBeACurrentMemberAsync(channelId);
+    }
+
+    private async Task OwnerShouldBeACurrentMemberAsync(Guid channelId) =>
+        (await QuerySingleAsync(
+            """
+            SELECT
+                (SELECT count(*) FROM messaging.conversation_members m WHERE m.conversation_id = c.id AND m.role = 'owner' AND m.left_at IS NULL),
+                EXISTS (
+                    SELECT 1 FROM messaging.conversation_members m
+                    WHERE m.conversation_id = c.id AND m.account_id = c.owner_account_id AND m.role = 'owner' AND m.left_at IS NULL),
+                c.member_count = (SELECT count(*) FROM messaging.conversation_members m WHERE m.conversation_id = c.id AND m.left_at IS NULL)
+            FROM messaging.conversations c WHERE c.id = $1
+            """,
+            channelId)).Should().Equal(1L, true, true);
+
+    /// <summary>
+    /// Runs the requests so that all of them wait for the conversation's row lock at the same time: the test holds the
+    /// lock, starts them, waits until each is queued behind it and lets go. Each request's locking statement has then
+    /// started before the others committed, which is the case a stale read would get wrong.
+    /// </summary>
+    private async Task<HttpStatusCode[]> RaceAsync(Guid conversationId, params Func<Task<HttpResponseMessage>>[] requests)
+    {
+        Task<HttpResponseMessage>[] running;
+        await using (var holder = new NpgsqlConnection(Database.SuperuserConnectionString))
+        {
+            await holder.OpenAsync(CancellationToken);
+            await using var transaction = await holder.BeginTransactionAsync(CancellationToken);
+            await using (var take = new NpgsqlCommand("SELECT 1 FROM messaging.conversations WHERE id = $1 FOR UPDATE", holder, transaction))
+            {
+                take.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = conversationId });
+                await take.ExecuteScalarAsync(CancellationToken);
+            }
+
+            running = [.. requests.Select(request => Task.Run(request, CancellationToken))];
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            while (true)
+            {
+                // The first waiter waits for the holder's transaction, the others for the row itself.
+                var queued = (long)(await QuerySingleAsync("SELECT count(*) FROM pg_locks WHERE NOT granted AND locktype IN ('transactionid', 'tuple')"))[0]!;
+                if (queued >= requests.Length)
+                {
+                    break;
+                }
+
+                waited.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(30), "every request should reach the conversation row lock");
+                await Task.Delay(TimeSpan.FromMilliseconds(50), CancellationToken);
+            }
+
+            await transaction.CommitAsync(CancellationToken);
+        }
+
+        var responses = await Task.WhenAll(running);
+        var statuses = responses.Select(response => response.StatusCode).ToArray();
+        foreach (var response in responses)
+        {
+            response.Dispose();
+        }
+
+        return statuses;
     }
 }

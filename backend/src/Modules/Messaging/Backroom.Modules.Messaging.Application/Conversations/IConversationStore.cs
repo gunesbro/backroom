@@ -33,7 +33,8 @@ internal interface IConversationStore
     /// <summary>
     /// The conversation with the account's role in it, or <see langword="null"/> if the organization has none with
     /// that id. With <paramref name="forUpdate"/> the conversation row is locked until the unit of work ends: every
-    /// membership and management change starts with it, so those changes run one at a time per conversation.
+    /// membership and management change starts with it, so those changes run one at a time per conversation. The
+    /// role is then read after the lock is held, so it is the committed one, never the one from before a lock wait.
     /// </summary>
     Task<ConversationDetails?> GetAsync(Guid organizationId, Guid conversationId, Guid accountId, bool forUpdate, CancellationToken cancellationToken);
 
@@ -56,8 +57,10 @@ internal interface IConversationStore
     /// <summary>
     /// Makes <paramref name="ownerAccountId"/> the private channel's owner (its member row and the conversation's copy)
     /// and <paramref name="previousOwnerAccountId"/> a plain member. The caller holds the conversation row lock.
+    /// <see langword="false"/>, with nothing written, if the new owner holds no open membership: an owner is always a
+    /// current member.
     /// </summary>
-    Task SetOwnerAsync(Guid organizationId, Guid conversationId, Guid? previousOwnerAccountId, Guid ownerAccountId, CancellationToken cancellationToken);
+    Task<bool> SetOwnerAsync(Guid organizationId, Guid conversationId, Guid? previousOwnerAccountId, Guid ownerAccountId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Renames the channel (when <paramref name="name"/> is given) and sets its description (when
@@ -73,6 +76,12 @@ internal interface IConversationStore
     /// has taken meanwhile.
     /// </summary>
     Task<ConversationChange?> SetArchivedAsync(Guid organizationId, Guid conversationId, DateTimeOffset? archivedAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Takes the conversation's next change number after a membership or ownership change and returns the conversation
+    /// as it is now. The caller holds the conversation row lock.
+    /// </summary>
+    Task<ConversationChange> TouchAsync(Guid organizationId, Guid conversationId, CancellationToken cancellationToken);
 
     /// <summary>How many open private channels the organization has: a number and nothing else.</summary>
     Task<int> CountOpenPrivateChannelsAsync(Guid organizationId, CancellationToken cancellationToken);

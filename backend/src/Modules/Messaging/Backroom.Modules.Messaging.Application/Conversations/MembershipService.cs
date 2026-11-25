@@ -1,4 +1,6 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
+using Backroom.BuildingBlocks.Application.Cells;
 using Backroom.BuildingBlocks.Application.Identifiers;
 using Backroom.BuildingBlocks.Application.Messaging;
 using Backroom.BuildingBlocks.Application.Organizations;
@@ -21,6 +23,7 @@ internal sealed partial class MembershipService(
     IConversationStore conversations,
     IOrganizationMembershipCheck organizationMembers,
     MemberRemoval removal,
+    ICellEpoch cellEpoch,
     IOutbox outbox,
     AfterCommitLiveEvents liveEvents,
     IIdGenerator ids,
@@ -96,7 +99,13 @@ internal sealed partial class MembershipService(
             return ConversationArchived;
         }
 
-        return await OpenAsync(organizationId, conversationId, accountId, MemberRoles.Member, conversation.ChangeSeq, accountId, cancellationToken);
+        var joined = await OpenAsync(organizationId, conversationId, accountId, MemberRoles.Member, conversation.ChangeSeq, accountId, cancellationToken);
+        if (joined.IsSuccess)
+        {
+            await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
+        }
+
+        return joined;
     }
 
     /// <summary>
@@ -130,6 +139,8 @@ internal sealed partial class MembershipService(
         {
             await PassOwnershipAsync(organizationId, conversation, accountId, now, cancellationToken);
         }
+
+        await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
 
         return Result.Success;
     }
@@ -180,6 +191,11 @@ internal sealed partial class MembershipService(
         }
 
         var count = opened.GetValueOrThrow().Count;
+        if (count > 0)
+        {
+            await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
+        }
+
         LogAdded(logger, count, conversationId, organizationId, accountId);
         return Result.Success;
     }
@@ -221,6 +237,7 @@ internal sealed partial class MembershipService(
         if (await CloseAsync(organizationId, conversationId, removedAccountId, accountId, now, cancellationToken))
         {
             LogRemoved(logger, removedAccountId, conversationId, organizationId, accountId);
+            await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
         }
 
         return Result.Success;
@@ -262,12 +279,17 @@ internal sealed partial class MembershipService(
             return OwnerMustBeMember;
         }
 
-        await conversations.SetOwnerAsync(organizationId, conversationId, accountId, newOwner, cancellationToken);
+        if (!await conversations.SetOwnerAsync(organizationId, conversationId, accountId, newOwner, cancellationToken))
+        {
+            return OwnerMustBeMember;
+        }
+
         await outbox.AddAsync(
             new ConversationChanged(
                 ids.NewId(), organizationId, StoredTime.Now(timeProvider), conversationId, conversation.Kind, ConversationChanges.OwnerTransferred, accountId, conversation.MemberCount),
             cancellationToken);
         LogOwnerChanged(logger, conversationId, organizationId, newOwner);
+        await AnnounceChangeAsync(organizationId, conversationId, cancellationToken);
         return Result.Success;
     }
 
@@ -380,7 +402,13 @@ internal sealed partial class MembershipService(
         var remaining = conversation.MemberCount - 1;
         if (await conversations.EarliestMemberAsync(organizationId, conversation.Id, cancellationToken) is { } successor)
         {
-            await conversations.SetOwnerAsync(organizationId, conversation.Id, leftAccountId, successor, cancellationToken);
+            if (!await conversations.SetOwnerAsync(organizationId, conversation.Id, leftAccountId, successor, cancellationToken))
+            {
+                // The successor was read under the conversation row lock, so this cannot happen; never leave a channel
+                // owned by someone who is not in it.
+                throw new InvalidOperationException("The successor of a private channel's owner holds no open membership.");
+            }
+
             await outbox.AddAsync(
                 new ConversationChanged(ids.NewId(), organizationId, now, conversation.Id, conversation.Kind, ConversationChanges.OwnerTransferred, leftAccountId, remaining),
                 cancellationToken);
@@ -395,6 +423,25 @@ internal sealed partial class MembershipService(
             await outbox.AddAsync(
                 new ConversationChanged(ids.NewId(), organizationId, now, conversation.Id, conversation.Kind, ConversationChanges.Archived, leftAccountId, 0),
                 cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// The conversation changed for its readers (its member count or its owner): takes the next change number, so sync
+    /// sees it, and tells the conversation's group with <c>ConversationUpdated</c> (docs/contracts/phase-2.md, "Live
+    /// events"). The live event carries the change number and so needs the cell's confirmed epoch; without one the
+    /// membership change still happens (a leave or a removal is never held back by the control plane link) and only
+    /// the live event is left out: clients run a full resync once the epoch is confirmed.
+    /// </summary>
+    private async Task AnnounceChangeAsync(Guid organizationId, Guid conversationId, CancellationToken cancellationToken)
+    {
+        var change = await conversations.TouchAsync(organizationId, conversationId, cancellationToken);
+        if (await cellEpoch.ConfirmedEpochAsync(cancellationToken) is { } epoch)
+        {
+            liveEvents.Add(new ConversationUpdatedPayload(
+                organizationId, conversationId, change.Name, change.Description,
+                change.ArchivedAt?.ToString("O", CultureInfo.InvariantCulture), change.MemberCount, change.ChangeSeq,
+                epoch.ToString(CultureInfo.InvariantCulture)));
         }
     }
 
