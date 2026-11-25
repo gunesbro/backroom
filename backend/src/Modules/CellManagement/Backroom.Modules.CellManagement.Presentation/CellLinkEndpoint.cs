@@ -371,6 +371,7 @@ internal sealed partial class CellLinkEndpoint(
         CustomExpiresAt = status.CustomExpiresAt is { } end ? Timestamp.FromDateTimeOffset(end) : null,
         TimeZone = status.TimeZone ?? string.Empty,
         Version = (ulong)status.Version,
+        Away = status.Away,
     };
 
     // Waits for Hello until the timeout or the token's expiry, whichever comes first.

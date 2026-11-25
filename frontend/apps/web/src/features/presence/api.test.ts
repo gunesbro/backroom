@@ -51,11 +51,18 @@ describe('presence API', () => {
     server.use(
       http.put('https://cp.example.test/api/v1/me/status', async ({ request }) => {
         body = await request.json();
-        return HttpResponse.json({ dndUntil: null, customStatus: null, timeZone: 'UTC', version: 2 });
+        return HttpResponse.json({
+          dndUntil: null,
+          away: false,
+          customStatus: null,
+          timeZone: 'UTC',
+          version: 2,
+        });
       }),
     );
     const input = {
       dndUntil: null,
+      away: false,
       customStatus: { emoji: '🎯', text: null, expiresAt: null },
       timeZone: 'UTC',
     };

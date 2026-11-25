@@ -93,7 +93,7 @@ public static class IdentityEndpoints
         response.Headers.CacheControl = "no-store";
         var custom = request.CustomStatus;
         var result = await statuses.SetAsync(
-            account.AccountId, request.DndUntil, custom is not null, custom?.Emoji, custom?.Text, custom?.ExpiresAt, request.TimeZone, cancellationToken);
+            account.AccountId, request.DndUntil, request.Away, custom is not null, custom?.Emoji, custom?.Text, custom?.ExpiresAt, request.TimeZone, cancellationToken);
         return result.ToHttpResult(status => TypedResults.Ok(AccountStatusResponse.From(status)));
     }
 

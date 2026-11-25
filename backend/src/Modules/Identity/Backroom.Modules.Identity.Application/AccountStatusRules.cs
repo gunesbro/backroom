@@ -11,7 +11,9 @@ namespace Backroom.Modules.Identity.Application;
 /// or both, and an optional end in the future within <see cref="MaxCustomAhead"/>. The text is NFC and trimmed and has no control,
 /// line separator, private-use, unassigned or format characters except the joiners between two characters (no bidi overrides or
 /// invisible padding), like Directory's display names. The emoji is a single grapheme cluster made only of emoji code points. The
-/// time zone is an IANA id the runtime knows. Every failure is the same <see cref="IdentityErrors.StatusInvalid"/>.
+/// time zone is an IANA id the runtime knows. Every failure is the same <see cref="IdentityErrors.StatusInvalid"/>. Away chosen by
+/// hand has no end and gives way to do not disturb: a status with do not disturb is stored with away cleared, so away does not come
+/// back when do not disturb ends (owner decision of 2026-11-25).
 /// </summary>
 internal static class AccountStatusRules
 {
@@ -34,6 +36,7 @@ internal static class AccountStatusRules
     /// <summary>Validates and normalizes a status; <paramref name="hasCustomStatus"/> is false when the request carries none.</summary>
     public static Result<AccountStatusInput> Validate(
         DateTimeOffset? dndUntil,
+        bool away,
         bool hasCustomStatus,
         string? customEmoji,
         string? customText,
@@ -51,9 +54,10 @@ internal static class AccountStatusRules
             return IdentityErrors.StatusInvalid;
         }
 
+        away = away && dndUntil is null;
         if (!hasCustomStatus)
         {
-            return new AccountStatusInput(dndUntil, null, null, null, timeZone!);
+            return new AccountStatusInput(dndUntil, null, null, null, timeZone!, away);
         }
 
         string? emoji = null;
@@ -66,7 +70,7 @@ internal static class AccountStatusRules
             return IdentityErrors.StatusInvalid;
         }
 
-        return new AccountStatusInput(dndUntil, emoji, text, customExpiresAt, timeZone!);
+        return new AccountStatusInput(dndUntil, emoji, text, customExpiresAt, timeZone!, away);
     }
 
     /// <summary>The status as it stands at <paramref name="now"/>: expired parts are left out.</summary>

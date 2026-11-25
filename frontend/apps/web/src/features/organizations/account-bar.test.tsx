@@ -12,7 +12,13 @@ import { AccountBar } from './workspace-chrome';
 
 const NOW = new Date('2026-11-24T10:00:00Z');
 
-const empty: AccountStatus = { dndUntil: null, customStatus: null, timeZone: 'Europe/Istanbul', version: 1 };
+const empty: AccountStatus = {
+  dndUntil: null,
+  away: false,
+  customStatus: null,
+  timeZone: 'Europe/Istanbul',
+  version: 1,
+};
 
 function fakeStatusApi(initial: AccountStatus = empty) {
   let version = initial.version;
@@ -79,6 +85,7 @@ describe('AccountBar status menu', () => {
     });
     expect(lastPut(api)).toEqual({
       dndUntil: '2026-11-24T10:30:00.000Z',
+      away: false,
       customStatus: null,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
@@ -141,15 +148,59 @@ describe('AccountBar status menu', () => {
     });
   });
 
-  it('Away_IsAutomatic_AndCannotBeChosen', async () => {
-    const api = fakeStatusApi();
+  it('Away_CanBeChosen_AndTurnsDoNotDisturbOffWhileKeepingTheCustomStatus', async () => {
+    const custom = { emoji: '🎯', text: 'Focusing', expiresAt: null };
+    const api = fakeStatusApi({ ...empty, dndUntil: '2026-11-24T11:00:00Z', customStatus: custom });
     renderBar(api);
+    await screen.findByText('🎯 Focusing');
     const away = within(await openMenu()).getByRole('menuitemradio', { name: /^Away/ });
-    expect(away).toHaveAttribute('aria-disabled', 'true');
-    expect(away).toHaveTextContent('Automatic after 10 min of inactivity');
+    expect(away).not.toHaveAttribute('aria-disabled', 'true');
+    expect(away).toHaveTextContent('Until you change it · automatic after 10 min idle');
     fireEvent.click(away);
 
-    expect(api.put).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(lastPut(api)).toEqual({
+        dndUntil: null,
+        away: true,
+        customStatus: custom,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+    });
+    expect(within(await openMenu()).getByRole('menuitemradio', { name: /^Away/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('Online_WhileAwayWasChosen_ClearsIt', async () => {
+    const api = fakeStatusApi({ ...empty, away: true });
+    renderBar(api);
+    const menu = await openMenu();
+    await waitFor(() => {
+      expect(within(menu).getByRole('menuitemradio', { name: /^Away/ })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Online' }));
+
+    await waitFor(() => {
+      expect(lastPut(api)).toMatchObject({ dndUntil: null, away: false });
+    });
+  });
+
+  it('DoNotDisturb_WhileAwayWasChosen_ClearsAway', async () => {
+    const api = fakeStatusApi({ ...empty, away: true });
+    renderBar(api);
+    const menu = await openMenu();
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /^Do not disturb/ }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Do not disturb' })).getByRole('button', { name: 'Turn on' }),
+    );
+
+    await waitFor(() => {
+      expect(lastPut(api)).toMatchObject({ dndUntil: '2026-11-24T10:30:00.000Z', away: false });
+    });
   });
 
   it('ClearStatus_RemovesTheCustomStatusAndKeepsDoNotDisturb', async () => {
@@ -237,7 +288,7 @@ describe('AccountBar status menu', () => {
 
     expect(within(menu).getByRole('menuitemradio', { name: 'Çevrimiçi' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitemradio', { name: /^Boşta/ })).toHaveTextContent(
-      '10 dk hareketsizlikte otomatik',
+      'Sen değiştirene kadar · 10 dk hareketsizlikte otomatik',
     );
     expect(within(menu).getByRole('menuitemradio', { name: /^Rahatsız etme/ })).toHaveTextContent(
       '30 dk · 1 sa · yarına kadar · özel',

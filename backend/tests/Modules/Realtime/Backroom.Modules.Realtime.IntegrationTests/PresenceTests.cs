@@ -167,6 +167,96 @@ public sealed class PresenceTests(PostgresDatabase database, KeycloakRealm keycl
     }
 
     [Fact]
+    public async Task ManualAway_OfAnOnlinePerson_IsShownAsIdleUntilAStatusWithoutItArrivesAsync()
+    {
+        var (organizationId, alice, _) = await OrganizationOfTwoAsync();
+        var bob = await WatchingAsync(NodeB, Bob, organizationId, alice);
+        await ConnectAsync(NodeA, Alice);
+        (await bob.NextPresenceAsync()).State.Should().Be("online");
+        var sink = NodeA.Services.GetRequiredService<IAccountStatusSink>();
+
+        _time.Advance(TimeSpan.FromSeconds(5));
+        await sink.ApplyAsync(new AccountStatusCopy(alice, null, null, null, null, "UTC", 1) { Away = true }, CancellationToken);
+        await SweepAsync(NodeA);
+        await SweepAsync(NodeB);
+
+        // Others see the same "idle" as the automatic one, and nothing that mutes notifications (no do not disturb).
+        var away = await bob.NextPresenceAsync();
+        away.State.Should().Be("idle");
+        away.DndUntil.Should().BeNull();
+        away.CustomStatus.Should().BeNull();
+        (await GetPresenceStateAsync(organizationId, alice)).Should().Be("idle");
+
+        // Online (a status without away) brings the automatic state back.
+        _time.Advance(TimeSpan.FromSeconds(5));
+        await sink.ApplyAsync(new AccountStatusCopy(alice, null, null, null, null, "UTC", 2), CancellationToken);
+        await SweepAsync(NodeA);
+        await SweepAsync(NodeB);
+
+        (await bob.NextPresenceAsync()).State.Should().Be("online");
+        (await GetPresenceStateAsync(organizationId, alice)).Should().Be("online");
+    }
+
+    [Fact]
+    public async Task ManualAway_TogetherWithDoNotDisturb_GivesWayToDoNotDisturbAsync()
+    {
+        var (organizationId, alice, _) = await OrganizationOfTwoAsync();
+        var bob = await WatchingAsync(NodeB, Bob, organizationId, alice);
+        await ConnectAsync(NodeA, Alice);
+        (await bob.NextPresenceAsync()).State.Should().Be("online");
+        var now = _time.GetUtcNow();
+
+        // The control plane never sends both; a copy that carries both is read as do not disturb only.
+        _time.Advance(TimeSpan.FromSeconds(5));
+        await NodeA.Services.GetRequiredService<IAccountStatusSink>().ApplyAsync(
+            new AccountStatusCopy(alice, now.AddMinutes(30), null, null, null, "UTC", 1) { Away = true }, CancellationToken);
+        await SweepAsync(NodeA);
+        await SweepAsync(NodeB);
+
+        var change = await bob.NextPresenceAsync();
+        change.State.Should().Be("online");
+        change.DndUntil.Should().Be(PresenceRules.Iso(now.AddMinutes(30)));
+        (await GetPresenceStateAsync(organizationId, alice)).Should().Be("online");
+    }
+
+    [Fact]
+    public async Task ManualAway_OfAPersonWithoutAConnection_StaysOfflineAsync()
+    {
+        var (organizationId, alice, _) = await OrganizationOfTwoAsync();
+        await NodeA.Services.GetRequiredService<IAccountStatusSink>().ApplyAsync(
+            new AccountStatusCopy(alice, null, null, null, null, "UTC", 1) { Away = true }, CancellationToken);
+        await SweepAsync(NodeA);
+
+        (await GetPresenceStateAsync(organizationId, alice)).Should().Be("offline");
+    }
+
+    [Fact]
+    public async Task ManualAway_OfAnIdlePerson_StaysIdleWithoutAnotherEventAsync()
+    {
+        var (organizationId, alice, _) = await OrganizationOfTwoAsync();
+        var bob = await WatchingAsync(NodeB, Bob, organizationId, alice);
+        var aliceClient = await ConnectAsync(NodeA, Alice);
+        (await bob.NextPresenceAsync()).State.Should().Be("online");
+        _time.Advance(TimeSpan.FromSeconds(10));
+        await aliceClient.ReportActivityAsync("idle");
+        await SweepAsync(NodeA);
+        await SweepAsync(NodeB);
+        (await bob.NextPresenceAsync()).State.Should().Be("idle");
+
+        _time.Advance(TimeSpan.FromSeconds(10));
+        await NodeA.Services.GetRequiredService<IAccountStatusSink>().ApplyAsync(
+            new AccountStatusCopy(alice, null, null, null, null, "UTC", 1) { Away = true }, CancellationToken);
+        await SweepAsync(NodeA);
+        await SweepAsync(NodeB);
+
+        // The status version changed, so one event goes out; it says the same "idle" and nothing else.
+        var change = await bob.NextPresenceAsync();
+        change.State.Should().Be("idle");
+        change.DndUntil.Should().BeNull();
+        (await GetPresenceStateAsync(organizationId, alice)).Should().Be("idle");
+    }
+
+    [Fact]
     public async Task ApplyStatus_WithAnOlderOrTheSameVersion_ChangesNothingAsync()
     {
         var account = Guid.NewGuid();

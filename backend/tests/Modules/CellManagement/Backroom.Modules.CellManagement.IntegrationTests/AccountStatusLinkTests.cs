@@ -87,6 +87,61 @@ public sealed class AccountStatusLinkTests(PostgresDatabase database, KeycloakRe
     }
 
     [Fact]
+    public async Task AccountStatusChanged_WithAwayChosenByHand_ReachesTheCellsPresenceAsync()
+    {
+        await using var cell = await RegisterCellAsync();
+        var account = Guid.NewGuid();
+        await AddMembershipAsync(account, cell.CellId);
+        await using (var scope = _controlPlane.Services.CreateAsyncScope())
+        {
+            var result = await scope.ServiceProvider.GetRequiredService<AccountStatuses>().SetAsync(
+                account, dndUntil: null, away: true, hasCustomStatus: false, null, null, customExpiresAt: null, "Europe/Istanbul", CancellationToken);
+            result.IsSuccess.Should().BeTrue();
+        }
+
+        await StartAsync(cell);
+        try
+        {
+            await WaitUntilAsync(async () => await PendingMessagesAsync(cell.CellId) == 0);
+            var applied = cell.Statuses.Applied.Should().ContainSingle().Subject;
+            applied.AccountId.Should().Be(account);
+            applied.Away.Should().BeTrue();
+            applied.DndUntil.Should().BeNull();
+            applied.Version.Should().Be(1);
+        }
+        finally
+        {
+            await cell.Link.StopAsync(CancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task FullSync_CarriesAwayChosenByHandEvenWhenNothingElseIsInForceAsync()
+    {
+        await using var cell = await RegisterCellAsync();
+        var member = Guid.NewGuid();
+        await AddMembershipAsync(member, cell.CellId);
+
+        // A row without a message and with nothing but away: only the status sync can bring it, and it must not be skipped as empty.
+        await ExecuteAsync(
+            "INSERT INTO identity.account_status (account_id, away, version, updated_at) VALUES ($1, true, $2, now())", member, 3L);
+
+        await StartAsync(cell);
+        try
+        {
+            await WaitUntilAsync(() => Task.FromResult(!cell.Statuses.Applied.IsEmpty));
+            var applied = cell.Statuses.Applied.Should().ContainSingle().Subject;
+            applied.AccountId.Should().Be(member);
+            applied.Away.Should().BeTrue();
+            applied.Version.Should().Be(3);
+        }
+        finally
+        {
+            await cell.Link.StopAsync(CancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task FullSync_CarriesTheStatusesOfTheCellsMembersOnlyAsync()
     {
         await using var cell = await RegisterCellAsync();
@@ -188,7 +243,7 @@ public sealed class AccountStatusLinkTests(PostgresDatabase database, KeycloakRe
     {
         await using var scope = _controlPlane.Services.CreateAsyncScope();
         var result = await scope.ServiceProvider.GetRequiredService<AccountStatuses>().SetAsync(
-            account, dndUntil, hasCustomStatus: true, emoji, text, customExpiresAt: null, "Europe/Istanbul", CancellationToken);
+            account, dndUntil, away: false, hasCustomStatus: true, emoji, text, customExpiresAt: null, "Europe/Istanbul", CancellationToken);
         result.IsSuccess.Should().BeTrue();
     }
 

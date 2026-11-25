@@ -1,5 +1,5 @@
 import type { CustomStatus } from '@backroom/realtime';
-import type { AccountStatus, StatusInput } from './api';
+import type { AccountStatus, MemberPresence, StatusInput } from './api';
 
 /** The server's limits (contract, `PUT /api/v1/me/status`); checked here first so the person sees why at once. */
 export const MAX_STATUS_TEXT = 100;
@@ -74,15 +74,47 @@ export function endOfToday(now: Date): Date {
   return end;
 }
 
-/** The parts still in force; a past time counts as off (the server leaves them out too). */
+const inForce = (until: string | null | undefined, now: Date) =>
+  until && new Date(until) > now ? until : null;
+
+const customInForce = (custom: CustomStatus | null | undefined, now: Date) =>
+  custom && (custom.emoji || custom.text) && (!custom.expiresAt || new Date(custom.expiresAt) > now)
+    ? custom
+    : null;
+
+/**
+ * The parts still in force; a past time counts as off (the server leaves them out too). Away chosen by hand has no
+ * end and gives way to do not disturb.
+ */
 export function current(status: AccountStatus | undefined, now: Date) {
-  const dndUntil = status?.dndUntil && new Date(status.dndUntil) > now ? status.dndUntil : null;
-  const custom = status?.customStatus;
-  const customStatus =
-    custom && (custom.emoji || custom.text) && (!custom.expiresAt || new Date(custom.expiresAt) > now)
-      ? custom
-      : null;
-  return { dndUntil, customStatus };
+  const dndUntil = inForce(status?.dndUntil, now);
+  return {
+    dndUntil,
+    away: status?.away === true && dndUntil === null,
+    customStatus: customInForce(status?.customStatus, now),
+  };
+}
+
+/**
+ * Another person's presence as it stands at `now`: the server sends no event when do not disturb or a custom status
+ * ends, so an entry received earlier is read through this (with `useExpiryClock` drawing it again at the end).
+ */
+export function currentPresence(presence: MemberPresence, now: Date): MemberPresence {
+  const dndUntil = inForce(presence.dndUntil, now);
+  const customStatus = customInForce(presence.customStatus, now);
+  return dndUntil === presence.dndUntil && customStatus === presence.customStatus
+    ? presence
+    : { ...presence, dndUntil, customStatus };
+}
+
+/** The times at which the people's shown status changes by itself, for `useExpiryClock`. */
+export function presenceExpiries(people: readonly MemberPresence[]): string[] {
+  const times: string[] = [];
+  for (const person of people) {
+    if (person.dndUntil) times.push(person.dndUntil);
+    if (person.customStatus?.expiresAt) times.push(person.customStatus.expiresAt);
+  }
+  return times;
 }
 
 /** The zone sent when the browser has none or the server does not know the browser's. */
@@ -94,15 +126,21 @@ export function browserTimeZone(): string {
   return typeof zone === 'string' && zone.length > 0 ? zone : FALLBACK_TIME_ZONE;
 }
 
-/** A whole status from what is in force now and one change. */
+/**
+ * A whole status from what is in force now and one change. Away and do not disturb exclude each other: choosing away
+ * turns do not disturb off, and turning do not disturb on clears away for good (it does not come back at the end).
+ */
 export function nextStatus(
   status: AccountStatus | undefined,
   now: Date,
-  change: Partial<Pick<StatusInput, 'dndUntil' | 'customStatus'>>,
+  change: Partial<Pick<StatusInput, 'dndUntil' | 'away' | 'customStatus'>>,
 ): StatusInput {
   const kept = current(status, now);
+  const dndUntil =
+    change.away === true ? null : change.dndUntil === undefined ? kept.dndUntil : change.dndUntil;
   return {
-    dndUntil: change.dndUntil === undefined ? kept.dndUntil : change.dndUntil,
+    dndUntil,
+    away: dndUntil === null && (change.away ?? kept.away),
     customStatus: change.customStatus === undefined ? kept.customStatus : change.customStatus,
     timeZone: browserTimeZone(),
   };

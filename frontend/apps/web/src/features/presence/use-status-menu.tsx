@@ -1,15 +1,17 @@
 import { useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Alert, type MenuEntry } from '@backroom/ui';
 import { formatDuration, formatMessageTime } from '@backroom/i18n';
 import { useLocale, useTranslate } from '@/shared/locale';
 import { usePresenceEnabled } from './api';
 import { messages } from './messages';
-import { useMyStatus, useSetStatus } from './queries';
+import { MY_STATUS, useMyStatus, useSetStatus } from './queries';
 import { current, nextStatus } from './status';
 import { PresenceDot, type OwnPresence } from './presence-dot';
 import { CustomStatusDialog, DndDialog } from './status-dialogs';
 import { statusErrorText } from './status-error';
 import { useLocalActivity } from './use-activity';
+import { useExpiryClock } from './use-expiry-clock';
 
 export type StatusMenu = {
   /** The status part of the menu, before "Odama dön". */
@@ -27,8 +29,10 @@ type Open = 'dnd' | 'custom' | undefined;
 
 /**
  * The active status menu (docs/design: Thread, the `.pop` block): the custom status and a way to clear it,
- * "Çevrimiçi" (turns do not disturb off), "Boşta" (automatic; shown, cannot be chosen), "Rahatsız etme" and "Özel
- * durum ayarla…". Undefined while presence is off: the account menu then keeps its passive entries.
+ * "Çevrimiçi" (turns do not disturb and away off), "Boşta" (chosen by hand it stays until another choice; it is also
+ * shown while the person is idle), "Rahatsız etme" and "Özel durum ayarla…". Do not disturb and a custom status end
+ * by themselves: the menu is drawn again at that moment and the status is asked for again. Undefined while presence
+ * is off: the account menu then keeps its passive entries.
  */
 export function useStatusMenu(): StatusMenu | undefined {
   const enabled = usePresenceEnabled();
@@ -38,11 +42,15 @@ export function useStatusMenu(): StatusMenu | undefined {
   const setStatus = useSetStatus();
   const activity = useLocalActivity();
   const [open, setOpen] = useState<Open>(undefined);
+  const queryClient = useQueryClient();
+  const now = useExpiryClock('me', [status.data?.dndUntil, status.data?.customStatus?.expiresAt], () => {
+    void queryClient.invalidateQueries({ queryKey: MY_STATUS });
+  });
   if (!enabled) return undefined;
 
-  const now = new Date();
-  const { dndUntil, customStatus } = current(status.data, now);
-  const presence: OwnPresence = dndUntil ? 'dnd' : activity === 'idle' ? 'away' : 'online';
+  // Shown by precedence: do not disturb, away chosen by hand, automatic idle, online.
+  const { dndUntil, away, customStatus } = current(status.data, now);
+  const presence: OwnPresence = dndUntil ? 'dnd' : away || activity === 'idle' ? 'away' : 'online';
   const presenceLabel =
     presence === 'dnd' ? t('doNotDisturb') : presence === 'away' ? t('away') : t('online');
 
@@ -94,7 +102,7 @@ export function useStatusMenu(): StatusMenu | undefined {
       icon: <PresenceDot presence="online" />,
       checked: presence === 'online',
       onSelect: () => {
-        if (dndUntil) change({ dndUntil: null });
+        if (dndUntil || away) change({ dndUntil: null, away: false });
       },
     },
     {
@@ -104,7 +112,9 @@ export function useStatusMenu(): StatusMenu | undefined {
       detail: t('awayHint'),
       icon: <PresenceDot presence="away" />,
       checked: presence === 'away',
-      disabled: true,
+      onSelect: () => {
+        if (!away) change({ away: true });
+      },
     },
     {
       kind: 'item',

@@ -11,7 +11,7 @@ using Backroom.Modules.Identity.Contracts;
 namespace Backroom.Modules.Identity.Application;
 
 /// <summary>
-/// The account's own manual status (docs/contracts/phase-2.md, flow 9): do not disturb, a custom status and the time zone. In one
+/// The account's own manual status (docs/contracts/phase-2.md, flow 9): do not disturb, away, a custom status and the time zone. In one
 /// unit of work the status is replaced (its version grows by one) and an <c>AccountStatusChanged</c> carrying the whole status is queued
 /// for every cell where the account has a membership, so the cells hear of it if and only if it was stored, and an older message
 /// arriving late changes nothing there. Logs and traces carry the account id only, never the emoji, text or time zone.
@@ -48,6 +48,7 @@ internal sealed partial class AccountStatuses(
     public async Task<Result<AccountStatus>> SetAsync(
         Guid accountId,
         DateTimeOffset? dndUntil,
+        bool away,
         bool hasCustomStatus,
         string? customEmoji,
         string? customText,
@@ -57,7 +58,7 @@ internal sealed partial class AccountStatuses(
     {
         ArgumentOutOfRangeException.ThrowIfEqual(accountId, Guid.Empty);
         var now = timeProvider.GetUtcNow();
-        var validated = AccountStatusRules.Validate(dndUntil, hasCustomStatus, customEmoji, customText, customExpiresAt, timeZone, now);
+        var validated = AccountStatusRules.Validate(dndUntil, away, hasCustomStatus, customEmoji, customText, customExpiresAt, timeZone, now);
         if (!validated.IsSuccess)
         {
             return validated.Error;
@@ -104,6 +105,7 @@ internal sealed partial class AccountStatuses(
             CustomExpiresAt = status.CustomExpiresAt is { } end ? Timestamp.FromDateTimeOffset(end) : null,
             TimeZone = status.TimeZone ?? string.Empty,
             Version = (ulong)status.Version,
+            Away = status.Away,
         };
     }
 

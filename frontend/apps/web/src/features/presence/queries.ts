@@ -46,6 +46,7 @@ export function useSetStatus() {
       const previous = queryClient.getQueryData<AccountStatus>(MY_STATUS);
       queryClient.setQueryData<AccountStatus>(MY_STATUS, {
         dndUntil: input.dndUntil,
+        away: input.away,
         customStatus: input.customStatus,
         timeZone: input.timeZone,
         version: previous?.version ?? 0,
