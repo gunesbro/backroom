@@ -1,18 +1,10 @@
 import { useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type Ref } from 'react';
-import { $createCodeNode, $isCodeNode } from '@lexical/code';
 import { $createLinkNode, $isLinkNode, $toggleLink } from '@lexical/link';
-import {
-  $isListNode,
-  INSERT_ORDERED_LIST_COMMAND,
-  INSERT_UNORDERED_LIST_COMMAND,
-  REMOVE_LIST_COMMAND,
-  registerList,
-} from '@lexical/list';
+import { ListNode, registerList } from '@lexical/list';
 import { createEmptyHistoryState, registerHistory } from '@lexical/history';
 import {
   BOLD_ITALIC_STAR,
   BOLD_STAR,
-  CODE,
   INLINE_CODE,
   ITALIC_STAR,
   ORDERED_LIST,
@@ -21,18 +13,18 @@ import {
   UNORDERED_LIST,
   registerMarkdownShortcuts,
 } from '@lexical/markdown';
-import { $createQuoteNode, $isQuoteNode, registerRichText } from '@lexical/rich-text';
-import { $setBlocksType } from '@lexical/selection';
+import { registerRichText } from '@lexical/rich-text';
 import { $findMatchingParent } from '@lexical/utils';
 import {
-  $createParagraphNode,
   $createTextNode,
   $getSelection,
   $isRangeSelection,
   CLEAR_HISTORY_COMMAND,
   COMMAND_PRIORITY_HIGH,
   FORMAT_TEXT_COMMAND,
-  INSERT_PARAGRAPH_COMMAND,
+  KEY_ARROW_DOWN_COMMAND,
+  KEY_ARROW_UP_COMMAND,
+  KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
@@ -45,6 +37,17 @@ import { Icon, Toolbar, type IconName } from '@backroom/ui';
 import { useTranslate } from '@/shared/locale';
 import { messages } from '../messages';
 import { hrefFromInput, type Block } from './blocks';
+import {
+  $codeFenceFromText,
+  $flattenNestedList,
+  $insertLine,
+  $isPristine,
+  $leaveCodeBlock,
+  $toggleBlock,
+  $unformatAtLineStart,
+  blockKindOf,
+  type BlockKind,
+} from './editing';
 import { $emojiFromText, $textFromEmoji, EmojiNode } from './emoji-node';
 import { $readBlocks, $writeBlocks, EDITOR_NODES } from './lexical-blocks';
 
@@ -56,7 +59,6 @@ export type RichFieldHandle = {
   focus: () => void;
 };
 
-type BlockKind = 'paragraph' | 'bullet' | 'number' | 'quote' | 'code';
 type ActiveState = {
   bold: boolean;
   italic: boolean;
@@ -75,8 +77,10 @@ const INACTIVE: ActiveState = {
   block: 'paragraph',
 };
 
-// Markdown-like shortcuts the design implies: `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, "- " and "1. " for
-// lists, "> " for a quote and three backticks for a code block. Headings and links are not part of the schema.
+// Markdown-like shortcuts the design implies: `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, "- ", "* " and
+// "1. " for lists and "> " for a quote. Three backticks open and close a code block as they are typed
+// (`$codeFenceFromText`): the library's own shortcut waits for a space or Enter, and Enter sends. Headings and links
+// are not part of the schema.
 const SHORTCUTS = [
   BOLD_ITALIC_STAR,
   BOLD_STAR,
@@ -86,7 +90,6 @@ const SHORTCUTS = [
   UNORDERED_LIST,
   ORDERED_LIST,
   QUOTE,
-  CODE,
 ];
 
 const UNDO_DEPTH = 100;
@@ -102,6 +105,7 @@ const DISALLOWED_FORMATS: readonly TextFormatType[] = [
 ];
 
 const THEME = {
+  paragraph: 'bm-rt-line',
   text: {
     bold: 'bm-rt-bold',
     italic: 'bm-rt-italic',
@@ -111,23 +115,14 @@ const THEME = {
   quote: 'bm-quote',
   code: 'bm-code-block',
   link: 'bm-rt-link',
-  list: { ul: 'bm-list', ol: 'bm-list', listitem: 'bm-rt-item', nested: { listitem: 'bm-rt-item' } },
+  list: { ul: 'bm-rt-list', ol: 'bm-rt-list', listitem: 'bm-rt-item' },
 };
 
 function readActive(editor: LexicalEditor): ActiveState {
   return editor.read(() => {
     const selection = $getSelection();
     if (!$isRangeSelection(selection)) return INACTIVE;
-    const top = selection.anchor.getNode().getTopLevelElement();
-    const block: BlockKind = $isListNode(top)
-      ? top.getListType() === 'number'
-        ? 'number'
-        : 'bullet'
-      : $isQuoteNode(top)
-        ? 'quote'
-        : $isCodeNode(top)
-          ? 'code'
-          : 'paragraph';
+    const block = blockKindOf(selection.anchor.getNode().getTopLevelElement());
     return {
       bold: selection.hasFormat('bold'),
       italic: selection.hasFormat('italic'),
@@ -163,7 +158,9 @@ function currentHref(editor: LexicalEditor): string {
  * The Lexical editor of the composer with its formatting toolbar (docs/design: Main, Thread). It is the only place
  * that imports the editor, so it loads with the composer's own chunk. Content leaves it only as our blocks.
  *
- * - Enter sends, Shift+Enter makes a new line (a new item in a list); Tab is not captured, so keyboard users can leave.
+ * - Enter sends. Shift+Enter makes a new line: a paragraph, a list item, a quoted line or a line of a code block, and
+ *   on an empty one of those it leaves the block (rich-text/editing.ts). Tab is not captured, so keyboard users can
+ *   leave.
  * - The toolbar has one tab stop (arrow keys move inside), buttons show `aria-pressed`.
  */
 export function RichField({
@@ -265,6 +262,8 @@ export function RichField({
       // Emoji are drawn as images, however they got here: typed, pasted or picked.
       editor.registerNodeTransform(TextNode, $emojiFromText),
       editor.registerNodeTransform(EmojiNode, $textFromEmoji),
+      editor.registerNodeTransform(TextNode, $codeFenceFromText),
+      editor.registerNodeTransform(ListNode, $flattenNestedList),
       registerMarkdownShortcuts(editor, SHORTCUTS),
       editor.registerCommand(
         KEY_ENTER_COMMAND,
@@ -275,21 +274,36 @@ export function RichField({
             callbacks.current.onSubmit();
             return true;
           }
-          // Shift+Enter: a new item inside a list, a line break everywhere else (the default).
-          const inList = editor.read(() => {
-            const selection = $getSelection();
-            return (
-              $isRangeSelection(selection) && $isListNode(selection.anchor.getNode().getTopLevelElement())
-            );
-          });
-          if (!inList) return false;
           event.preventDefault();
-          return editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+          $insertLine();
+          return true;
         },
         COMMAND_PRIORITY_HIGH,
       ),
       // The editor must not trap the keyboard: Tab leaves it (the browser moves the focus), nothing is indented.
       editor.registerCommand(KEY_TAB_COMMAND, () => true, COMMAND_PRIORITY_HIGH),
+      editor.registerCommand(
+        KEY_BACKSPACE_COMMAND,
+        (event) => {
+          if (!$unformatAtLineStart()) return false;
+          event.preventDefault();
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+      ...([KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND] as const).map((command) =>
+        editor.registerCommand(
+          command,
+          (event) => {
+            if (event.shiftKey || !$leaveCodeBlock(command === KEY_ARROW_DOWN_COMMAND ? 'down' : 'up')) {
+              return false;
+            }
+            event.preventDefault();
+            return true;
+          },
+          COMMAND_PRIORITY_HIGH,
+        ),
+      ),
       editor.registerCommand(
         KEY_DOWN_COMMAND,
         (event) => {
@@ -314,7 +328,8 @@ export function RichField({
         setActive((current) => (sameActive(current, next) ? current : next));
         if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return; // only the selection moved
         const blocks = editorState.read($readBlocks);
-        setEmpty(blocks.length === 0);
+        // An empty quote, list or code block is no content yet, but the placeholder would sit beside its marker.
+        setEmpty(editorState.read($isPristine));
         callbacks.current.onChange({ blocks });
       }),
     ];
@@ -334,30 +349,10 @@ export function RichField({
   const format = (type: TextFormatType) => {
     run((editor) => editor.dispatchCommand(FORMAT_TEXT_COMMAND, type));
   };
-  const list = (kind: 'bullet' | 'number') => {
-    run((editor) =>
-      editor.dispatchCommand(
-        active.block === kind
-          ? REMOVE_LIST_COMMAND
-          : kind === 'bullet'
-            ? INSERT_UNORDERED_LIST_COMMAND
-            : INSERT_ORDERED_LIST_COMMAND,
-        undefined,
-      ),
-    );
-  };
-  const block = (kind: 'quote' | 'code') => {
+  const block = (kind: Exclude<BlockKind, 'paragraph'>) => {
     run((editor) => {
       editor.update(() => {
-        const selection = $getSelection();
-        if (!$isRangeSelection(selection)) return;
-        $setBlocksType(selection, () =>
-          active.block === kind
-            ? $createParagraphNode()
-            : kind === 'quote'
-              ? $createQuoteNode()
-              : $createCodeNode(),
-        );
+        $toggleBlock(kind);
       });
     });
   };
@@ -474,10 +469,10 @@ export function RichField({
           <span className="bm-format__sep" aria-hidden="true" />
           {button('link', t('link'), icon('link'), active.link, openLink, 'Ctrl+K')}
           {button('bulletedList', t('bulletedList'), icon('bulletList'), active.block === 'bullet', () => {
-            list('bullet');
+            block('bullet');
           })}
           {button('numberedList', t('numberedList'), icon('numberedList'), active.block === 'number', () => {
-            list('number');
+            block('number');
           })}
           {button('quote', t('quote'), icon('quote'), active.block === 'quote', () => {
             block('quote');

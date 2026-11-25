@@ -141,11 +141,11 @@ function renderBlock(block: ReceivedBlock, key: number, names: Names, large: boo
     case 'numbered_list': {
       const items = block.children.map((item, index) => <li key={index}>{runs(item.children, names)}</li>);
       return block.type === 'bulleted_list' ? (
-        <ul key={key} className="bm-text bm-list">
+        <ul key={key} className="bm-text bm-rt-list">
           {items}
         </ul>
       ) : (
-        <ol key={key} className="bm-text bm-list">
+        <ol key={key} className="bm-text bm-rt-list">
           {items}
         </ol>
       );
@@ -173,7 +173,7 @@ export function MessageBody({
   // From outside: a malformed payload must not crash the list.
   const text = typeof received === 'string' ? received : '';
   const parsed = parseBlocks(blocks);
-  const className = sending ? 'bm-body bm-body--sending' : 'bm-body';
+  const className = sending ? 'bm-blocks bm-blocks--sending' : 'bm-blocks';
   if (!parsed) {
     return (
       <p className={sending ? 'bm-text bm-text--sending' : 'bm-text'}>
