@@ -160,6 +160,13 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         return (await ReadJsonAsync(response))["id"]!.GetValue<Guid>();
     }
 
+    /// <summary>Joins the public channel: uploading needs the right to post, which is a membership.</summary>
+    protected async Task JoinChannelAsync(Guid organizationId, Guid channelId, string username)
+    {
+        using var response = await PostAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/join", username, null);
+        response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>Starts an upload; the answer is returned as it is.</summary>
     protected Task<HttpResponseMessage> StartUploadAsync(Guid organizationId, string username, object body) =>
         PostAsync($"/api/v1/orgs/{organizationId}/files/uploads", username, body);
@@ -369,6 +376,10 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
         }
 
         public Task PublishAsync(NotificationRequestedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task PublishAsync(ConversationUpdatedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task PublishAsync(MembershipChangedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task RemoveFromConversationAsync(Guid orgId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
             Task.CompletedTask;

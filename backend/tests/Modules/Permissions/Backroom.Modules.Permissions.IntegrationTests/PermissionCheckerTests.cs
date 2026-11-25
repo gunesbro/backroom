@@ -52,6 +52,12 @@ public sealed class PermissionCheckerTests(PostgresDatabase database) : IAsyncLi
     [InlineData(SystemRoles.Admin, SystemRoles.FilesRemoveOthersPublic, true)]
     [InlineData(SystemRoles.Member, SystemRoles.FilesUpload, true)]
     [InlineData(SystemRoles.Member, SystemRoles.FilesRemoveOthersPublic, false)]
+    [InlineData(SystemRoles.Owner, SystemRoles.ChannelsCreatePrivate, true)]
+    [InlineData(SystemRoles.Owner, SystemRoles.ChannelsManagePublic, true)]
+    [InlineData(SystemRoles.Admin, SystemRoles.ChannelsCreatePrivate, true)]
+    [InlineData(SystemRoles.Admin, SystemRoles.ChannelsManagePublic, true)]
+    [InlineData(SystemRoles.Member, SystemRoles.ChannelsCreatePrivate, true)]
+    [InlineData(SystemRoles.Member, SystemRoles.ChannelsManagePublic, false)]
     public async Task HasPermission_ForEachRole_FollowsTheContractTableAsync(string role, string permission, bool expected)
     {
         var (organizationId, accountId) = await OrganizationWithAccountAsync(role);
@@ -255,6 +261,47 @@ public sealed class PermissionCheckerTests(PostgresDatabase database) : IAsyncLi
         (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.FilesUpload, CancellationToken))).Should().BeTrue();
         (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.FilesRemoveOthersPublic, CancellationToken))).Should().BeFalse();
         (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(admin, SystemRoles.FilesRemoveOthersPublic, CancellationToken))).Should().BeTrue();
+    }
+
+    [Fact]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "The SQL is the migration's own constant text.")]
+    public async Task AddChannelPermissionsMigration_ForAnExistingOrganization_GrantsTheChannelKeysAsync()
+    {
+        // An organization from before Phase 2 step 7: its roles lack the new channel permissions.
+        var (organizationId, admin) = await OrganizationWithAccountAsync(SystemRoles.Admin);
+        var member = Guid.CreateVersion7();
+        await InOrganizationAsync(organizationId, async (provisioning, _) =>
+        {
+            await provisioning.AssignRoleAsync(organizationId, member, SystemRoles.Member, CancellationToken);
+            return true;
+        });
+        await using (var superuser = new NpgsqlConnection(database.SuperuserConnectionString))
+        {
+            await superuser.OpenAsync(CancellationToken);
+            await using var delete = new NpgsqlCommand(
+                "DELETE FROM permissions.role_permissions WHERE org_id = $1 AND permission IN ('channels.create-private', 'channels.manage-public')", superuser);
+            delete.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+            await delete.ExecuteNonQueryAsync(CancellationToken);
+        }
+
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.ChannelsCreatePrivate, CancellationToken))).Should().BeFalse();
+
+        // The migration's statement, as the migrator runs it, twice: it is idempotent.
+        await using (var migrator = new NpgsqlConnection(database.MigratorConnectionString))
+        {
+            await migrator.OpenAsync(CancellationToken);
+            for (var run = 0; run < 2; run++)
+            {
+                await using var transaction = await migrator.BeginTransactionAsync(CancellationToken);
+                await using var backfill = new NpgsqlCommand(OrganizationDataMigrationExtensions.OrganizationDataSqlText(PermissionsDbContext.Schema, Infrastructure.Migrations.AddChannelPermissions.Tables, Infrastructure.Migrations.AddChannelPermissions.InsertSql), migrator, transaction);
+                await backfill.ExecuteNonQueryAsync(CancellationToken);
+                await transaction.CommitAsync(CancellationToken);
+            }
+        }
+
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.ChannelsCreatePrivate, CancellationToken))).Should().BeTrue();
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.ChannelsManagePublic, CancellationToken))).Should().BeFalse();
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(admin, SystemRoles.ChannelsManagePublic, CancellationToken))).Should().BeTrue();
     }
 
     private async Task<(Guid OrganizationId, Guid AccountId)> OrganizationWithAccountAsync(string role)

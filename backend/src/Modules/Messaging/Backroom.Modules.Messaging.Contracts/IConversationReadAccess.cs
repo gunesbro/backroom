@@ -5,13 +5,20 @@ namespace Backroom.Modules.Messaging.Contracts;
 /// subscriptions; later notifications, files and search). Phase 2 step 1 (docs/contracts/phase-2.md, flow 1): an open
 /// (not archived) public channel of the organization, or any other open conversation the account is an open member
 /// of. Threads (read access of the parent) and archived conversations (read-only, still readable) arrive with their
-/// steps; until then they are refused. The caller has checked the organization membership. Every refusal looks the
+/// steps; until then they are refused. Since Phase 2 step 7 an archived conversation is readable by whoever could read it before (and read-only: see <see cref="CanPostAsync"/>); only threads are still refused. The caller has checked the organization membership. Every refusal looks the
 /// same, so callers answer "not found" whether the conversation is unknown, of another organization or unreadable.
 /// </summary>
 public interface IConversationReadAccess
 {
     /// <summary>Runs in the current unit of work, which row-level security limits to the entered organization.</summary>
     Task<bool> CanReadAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the account may post in the conversation: it may read it, holds an open membership and the conversation
+    /// is not archived (an archived conversation is readable and read-only). Callers that store content for a
+    /// conversation (uploads) ask this, not <see cref="CanReadAsync"/>. Same unit of work as above.
+    /// </summary>
+    Task<bool> CanPostAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Whether the account holds an open membership of the conversation (of any kind, archived or not), for callers that

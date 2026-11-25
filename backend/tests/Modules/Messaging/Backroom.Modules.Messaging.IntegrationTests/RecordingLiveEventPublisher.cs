@@ -10,6 +10,8 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
     private readonly List<MessagePostedV2Payload> _messagesV2 = [];
     private readonly List<ChannelCreatedPayload> _channels = [];
     private readonly List<(Guid OrgId, Guid ConversationId, Guid AccountId)> _removals = [];
+    private readonly List<ConversationUpdatedPayload> _conversations = [];
+    private readonly List<MembershipChangedPayload> _memberships = [];
 
     public bool Fail { get; set; }
 
@@ -73,6 +75,46 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
         lock (_lock)
         {
             _channels.Add(payload);
+        }
+    }
+
+    public IReadOnlyList<ConversationUpdatedPayload> Conversations
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _conversations];
+            }
+        }
+    }
+
+    public IReadOnlyList<MembershipChangedPayload> Memberships
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _memberships];
+            }
+        }
+    }
+
+    public async Task PublishAsync(ConversationUpdatedPayload payload, CancellationToken cancellationToken)
+    {
+        await BeforeAsync();
+        lock (_lock)
+        {
+            _conversations.Add(payload);
+        }
+    }
+
+    public async Task PublishAsync(MembershipChangedPayload payload, CancellationToken cancellationToken)
+    {
+        await BeforeAsync();
+        lock (_lock)
+        {
+            _memberships.Add(payload);
         }
     }
 

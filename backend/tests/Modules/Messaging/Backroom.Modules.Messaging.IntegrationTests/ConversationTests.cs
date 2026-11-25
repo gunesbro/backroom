@@ -101,7 +101,7 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         rejoined.StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await QuerySingleAsync(
             "SELECT count(*), bool_and(left_at IS NULL), max(joined_seq) FROM messaging.conversation_members WHERE conversation_id = $1 AND account_id = $2",
-            channelId, bob)).Should().Equal(1L, true, 1L);
+            channelId, bob)).Should().Equal(1L, true, 3L); // The join, the leave and the message each took a change number.
         (await MemberCountAsync(channelId)).Should().Be(2);
     }
 
@@ -233,10 +233,18 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         var groupDm = await InsertConversationAsync(organizationId, ConversationKinds.GroupDm, null, Bob);
         var foreign = await CreateChannelAsync(otherOrganization, Bob, "Elsewhere");
 
-        (await CanReadAsync(organizationId, publicId, bob)).Should().BeTrue("every member reads a public channel without joining");
-        (await CanReadAsync(organizationId, archived, alice)).Should().BeFalse("archived conversations wait for the archive step");
         (await CanReadAsync(organizationId, privateId, bob)).Should().BeTrue();
         (await CanReadAsync(organizationId, privateId, alice)).Should().BeFalse("the Owner role without membership");
+        (await CanPostAsync(organizationId, privateId, bob)).Should().BeTrue();
+        (await CanReadAsync(organizationId, publicId, bob)).Should().BeTrue("every member reads a public channel without joining");
+        (await CanReadAsync(organizationId, archived, alice)).Should().BeTrue("archived conversations stay readable");
+        (await CanReadAsync(organizationId, archived, bob)).Should().BeTrue("a public channel stays readable for every member");
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", privateId);
+        (await CanReadAsync(organizationId, privateId, bob)).Should().BeTrue("a member still reads an archived private channel");
+        (await CanReadAsync(organizationId, privateId, alice)).Should().BeFalse("archiving opens a private channel to nobody");
+        (await CanPostAsync(organizationId, privateId, bob)).Should().BeFalse("archived conversations are read-only");
+        (await CanPostAsync(organizationId, publicId, alice)).Should().BeTrue();
+        (await CanPostAsync(organizationId, publicId, bob)).Should().BeFalse("posting needs a membership");
         (await CanReadAsync(organizationId, groupDm, bob)).Should().BeTrue();
         (await CanReadAsync(organizationId, groupDm, alice)).Should().BeFalse();
         (await CanReadAsync(organizationId, foreign, bob)).Should().BeFalse("row-level security hides other organizations");
@@ -256,7 +264,7 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = (await ReadJsonAsync(response)).AsObject();
-        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "name", "createdAt"], "the answer is the same as for any new name");
+        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "kind", "name", "description", "createdAt"], "the answer is the same as for any new name");
         body["name"]!.GetValue<string>().Should().Be("SECRET PLANS");
         Publisher.Channels.Should().ContainSingle().Which.Channel.Name.Should().Be("SECRET PLANS");
         (await QuerySingleAsync("SELECT count(*) FROM messaging.conversations WHERE org_id = $1 AND name_key = 'secret plans'", organizationId))[0]
@@ -300,7 +308,8 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
             """
             WITH created AS (
                 INSERT INTO messaging.conversations (id, org_id, kind, name, name_key, created_by, created_at, member_count)
-                SELECT gen_random_uuid(), $1, 'private_channel', 'p', 'p', $2, now(), 1 FROM generate_series(1, 10000)
+                -- Older than the hour the brake on new channels counts.
+                SELECT gen_random_uuid(), $1, 'private_channel', 'p', 'p', $2, now() - interval '2 hours', 1 FROM generate_series(1, 10000)
                 RETURNING id)
             INSERT INTO messaging.conversation_members (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by)
             SELECT $1, id, $2, 'owner', now(), 0, $2 FROM created
@@ -413,6 +422,14 @@ public sealed class ConversationTests(PostgresDatabase database, KeycloakRealm k
         await InOrganizationAsync(organizationId, async services =>
             canRead = await services.GetRequiredService<IConversationReadAccess>().CanReadAsync(organizationId, conversationId, accountId, CancellationToken));
         return canRead;
+    }
+
+    private async Task<bool> CanPostAsync(Guid organizationId, Guid conversationId, Guid accountId)
+    {
+        var canPost = false;
+        await InOrganizationAsync(organizationId, async services =>
+            canPost = await services.GetRequiredService<IConversationReadAccess>().CanPostAsync(organizationId, conversationId, accountId, CancellationToken));
+        return canPost;
     }
 
     private async Task<bool> IsMemberAsync(Guid organizationId, Guid conversationId, Guid accountId)

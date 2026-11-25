@@ -21,6 +21,8 @@ internal sealed class HubClient : IAsyncDisposable
     private readonly Channel<ChannelCreatedPayload> _channels = Channel.CreateUnbounded<ChannelCreatedPayload>();
     private readonly Channel<SessionRevokedPayload> _revoked = Channel.CreateUnbounded<SessionRevokedPayload>();
     private readonly Channel<PresenceChangedPayload> _presence = Channel.CreateUnbounded<PresenceChangedPayload>();
+    private readonly Channel<ConversationUpdatedPayload> _conversations = Channel.CreateUnbounded<ConversationUpdatedPayload>();
+    private readonly Channel<MembershipChangedPayload> _memberships = Channel.CreateUnbounded<MembershipChangedPayload>();
     private readonly Channel<FileRejectedPayload> _fileRejected = Channel.CreateUnbounded<FileRejectedPayload>();
     private readonly Channel<string> _probes = Channel.CreateUnbounded<string>();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -33,6 +35,8 @@ internal sealed class HubClient : IAsyncDisposable
         connection.On<ChannelCreatedPayload>(LiveEventNames.ChannelCreated, payload => _channels.Writer.TryWrite(payload));
         connection.On<SessionRevokedPayload>(LiveEventNames.SessionRevoked, payload => _revoked.Writer.TryWrite(payload));
         connection.On<PresenceChangedPayload>(LiveEventNames.PresenceChanged, payload => _presence.Writer.TryWrite(payload));
+        connection.On<ConversationUpdatedPayload>(LiveEventNames.ConversationUpdated, payload => _conversations.Writer.TryWrite(payload));
+        connection.On<MembershipChangedPayload>(LiveEventNames.MembershipChanged, payload => _memberships.Writer.TryWrite(payload));
         connection.On<FileRejectedPayload>(LiveEventNames.FileRejected, payload => _fileRejected.Writer.TryWrite(payload));
         connection.On<string>(ProbeEvent, payload => _probes.Writer.TryWrite(payload));
         connection.Closed += _ =>
@@ -110,6 +114,14 @@ internal sealed class HubClient : IAsyncDisposable
     public bool HasUnreadMessage => _messages.Reader.TryPeek(out _);
 
     public bool HasUnreadChannel => _channels.Reader.TryPeek(out _);
+
+    public Task<ConversationUpdatedPayload> NextConversationUpdateAsync() => ReadAsync(_conversations.Reader);
+
+    public bool HasUnreadConversationUpdate => _conversations.Reader.TryPeek(out _);
+
+    public Task<MembershipChangedPayload> NextMembershipChangeAsync() => ReadAsync(_memberships.Reader);
+
+    public bool HasUnreadMembershipChange => _memberships.Reader.TryPeek(out _);
 
     public Task<FileRejectedPayload> NextFileRejectedAsync() => ReadAsync(_fileRejected.Reader);
 

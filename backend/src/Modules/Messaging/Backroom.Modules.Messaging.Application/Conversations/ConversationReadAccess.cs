@@ -9,6 +9,9 @@ internal sealed class ConversationReadAccess(IConversationStore conversations, I
     public async Task<bool> CanReadAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
         await conversations.FindAsync(organizationId, conversationId, accountId, cancellationToken) is { CanRead: true };
 
+    public async Task<bool> CanPostAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
+        await conversations.FindAsync(organizationId, conversationId, accountId, cancellationToken) is { CanPost: true };
+
     public async Task<bool> IsMemberAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
         await conversations.FindAsync(organizationId, conversationId, accountId, cancellationToken) is { IsMember: true };
 

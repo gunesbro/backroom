@@ -25,6 +25,9 @@ internal sealed class FakeConversationAccess : IConversationReadAccess
     public Task<bool> CanReadAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
         Task.FromResult(_allowed.Contains((conversationId, accountId)));
 
+    public Task<bool> CanPostAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
+        Task.FromResult(_allowed.Contains((conversationId, accountId)));
+
     public Task<IReadOnlyList<Guid>> FilterReadersAsync(Guid organizationId, Guid conversationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Guid>>([.. accountIds.Where(account => _allowed.Contains((conversationId, account)) && Members?.IsMember(account) != false)]);
 
@@ -113,6 +116,10 @@ internal sealed class RecordingPublisher : ILiveEventPublisher
     public Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task PublishAsync(ConversationUpdatedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task PublishAsync(MembershipChangedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task PublishAsync(FileRejectedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 

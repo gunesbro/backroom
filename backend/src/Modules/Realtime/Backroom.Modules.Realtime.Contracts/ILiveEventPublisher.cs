@@ -26,6 +26,12 @@ public interface ILiveEventPublisher
     /// </summary>
     Task PublishAsync(NotificationRequestedPayload payload, CancellationToken cancellationToken);
 
+    /// <summary>Sends <c>ConversationUpdated</c> to the conversation's group (its subscribed readers only).</summary>
+    Task PublishAsync(ConversationUpdatedPayload payload, CancellationToken cancellationToken);
+
+    /// <summary>Sends <c>MembershipChanged</c> to the account group of the payload's account and to nobody else.</summary>
+    Task PublishAsync(MembershipChangedPayload payload, CancellationToken cancellationToken);
+
     /// <summary>
     /// Sends <c>FileRejected</c> to the uploader's own account group in the payload's organization and to nobody else (ids and a
     /// reason code only; the group is joined only by connections whose token names the account).

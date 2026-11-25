@@ -14,5 +14,7 @@ public static class LiveEventNames
     public const string SessionRevoked = "SessionRevoked";
     public const string PresenceChanged = "PresenceChanged";
     public const string NotificationRequested = "NotificationRequested";
+    public const string ConversationUpdated = "ConversationUpdated";
+    public const string MembershipChanged = "MembershipChanged";
     public const string FileRejected = "FileRejected";
 }

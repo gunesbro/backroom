@@ -11,10 +11,16 @@ internal sealed record ConversationAccess(string Kind, bool Archived, long Chang
     public bool IsPublicChannel => string.Equals(Kind, ConversationKinds.PublicChannel, StringComparison.Ordinal);
 
     /// <summary>
-    /// Read access (docs/contracts/phase-2.md, flow 1): an open public channel, or an open conversation of another kind
-    /// the account is a member of. Threads and archived conversations wait for their steps (refused until then).
+    /// Read access (docs/contracts/phase-2.md, flow 1): a public channel, or a conversation of another kind the account
+    /// is a member of. An archived conversation stays readable (and read-only, see <see cref="CanPost"/>). Threads wait
+    /// for their step (refused until then).
     /// </summary>
-    public bool CanRead => !Archived
-        && !string.Equals(Kind, ConversationKinds.Thread, StringComparison.Ordinal)
+    public bool CanRead => !string.Equals(Kind, ConversationKinds.Thread, StringComparison.Ordinal)
         && (IsPublicChannel || IsMember);
+
+    /// <summary>
+    /// The right to post ("HTTP APIs": member; channels: joined, not archived): read access, an open membership and a
+    /// conversation that is not archived. Every write of content asks this, never <see cref="CanRead"/>.
+    /// </summary>
+    public bool CanPost => CanRead && IsMember && !Archived;
 }

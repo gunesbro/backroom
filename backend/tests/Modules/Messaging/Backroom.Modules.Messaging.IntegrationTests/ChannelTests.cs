@@ -24,7 +24,7 @@ public sealed class ChannelTests(PostgresDatabase database, KeycloakRealm keyclo
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = (await ReadJsonAsync(response)).AsObject();
-        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "name", "createdAt"]);
+        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "kind", "name", "description", "createdAt"]);
         body["name"]!.GetValue<string>().Should().Be("General", "the name is trimmed");
         var row = await QuerySingleAsync(
             "SELECT name, org_id, created_by, archived_at IS NULL FROM messaging.conversations WHERE id = $1", body["id"]!.GetValue<Guid>());

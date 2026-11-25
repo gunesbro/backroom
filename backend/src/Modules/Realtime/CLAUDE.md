@@ -81,3 +81,11 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 ## FileRejected (Phase 2 step 23)
 
 - `ILiveEventPublisher.PublishAsync(FileRejectedPayload)` sends `FileRejected` (`LiveEventNames.FileRejected`) to the uploader's account group only (`ValkeyLiveEventPublisher`); the payload is `orgId, accountId, fileId, reason` (`malware` or `scan_failed`), never a name or type. Files' scan job publishes it after the commit that rejected the file (the maintenance runner has no after-commit hook, so the job re-checks the file is `rejected` at the start of its next run and publishes from a background task). Test: `ConversationGroupTests.FileRejected_...` (both nodes reach the uploader, another member gets nothing).
+
+## ConversationUpdated and MembershipChanged (Phase 2 step 7)
+
+- `ILiveEventPublisher.PublishAsync(ConversationUpdatedPayload)` sends `ConversationUpdated` (`orgId, conversationId, name?, description?, archivedAt?, memberCount, changeSeq, epoch`) to the conversation's group only, so a private channel's name reaches its subscribed members and nobody else.
+- `ILiveEventPublisher.PublishAsync(MembershipChangedPayload)` sends `MembershipChanged` (`orgId, accountId, conversationId, change added|removed`) to that account's own group only. Messaging publishes both after its commit.
+- Test: `ConversationUpdatedAndMembershipChanged_ReachOnlyTheirGroupsOnBothNodesAsync` (an Admin who is no member gets neither).
+
+- Since Phase 2 step 7 an archived conversation is readable, so `SubscribeConversation` accepts it for whoever may read it (an archived private channel still only for its members); `realtime.not_found` no longer covers "archived".
