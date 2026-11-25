@@ -162,7 +162,7 @@ Groups are per conversation, so content only reaches people who may see it when 
 
 | Server → client  | Group        | Payload                                                                                    |
 | ---------------- | ------------ | ------------------------------------------------------------------------------------------ |
-| `MessagePosted`  | channel      | `orgId, channelId, message { id, seq, clientMessageId, authorAccountId, text, createdAt, blocks? }` (`blocks` is additive, step 6: the block schema as lists and maps, so a client that does not read `MessagePosted.v2` still shows formatting; clients that do not know it ignore it) |
+| `MessagePosted`  | channel      | `orgId, channelId, message { id, seq, clientMessageId, authorAccountId, text, createdAt, blocks? }` (`blocks` is additive, step 6, present only when the sender sent blocks: the block schema as lists and maps, so a client that does not read `MessagePosted.v2` still shows formatting; clients that do not know it ignore it) |
 | `ChannelCreated` | organization | `orgId, channel { id, name, createdAt }`                                                   |
 | `SessionRevoked` | connection   | `reason` (sent before the server closes the connection)                                    |
 

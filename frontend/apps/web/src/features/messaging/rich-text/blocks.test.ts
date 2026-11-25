@@ -211,3 +211,29 @@ describe('derivedMentionNames', () => {
     expect(derivedMentionNames(blocks ?? [], 'something else').size).toBe(0);
   });
 });
+
+describe('derivedMentionNames boundaries', () => {
+  it('DerivedMentionNames_WhenNextRunIsNotFoundOrMentionsAreAdjacent_GivesNoNameInsteadOfGuessing', () => {
+    const adjacent = parseBlocks([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'mention', accountId: 'a' },
+          { type: 'mention', accountId: 'b' },
+        ],
+      },
+    ]);
+    const missing = parseBlocks([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'mention', accountId: 'a' },
+          { type: 'text', text: ' says hello' },
+        ],
+      },
+    ]);
+
+    expect(derivedMentionNames(adjacent ?? [], '@Ann Bob').size).toBe(0);
+    expect(derivedMentionNames(missing ?? [], '@Ann says hi').size).toBe(0);
+  });
+});

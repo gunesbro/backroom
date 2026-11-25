@@ -18,7 +18,7 @@ type Names = {
 
 function mentionLabel(node: MentionNode, names: Names): string {
   const known = 'accountId' in node ? names.account(node.accountId) : undefined;
-  const label = known ?? names.derived.get(node) ?? ('special' in node ? node.special : '');
+  const label = known ?? names.derived.get(node) ?? ('special' in node ? node.special : '…');
   return `@${label}`;
 }
 
@@ -147,7 +147,7 @@ function renderBlock(block: ReceivedBlock, key: number, names: Names): ReactNode
  */
 export function MessageBody({
   blocks,
-  text,
+  text: received,
   sending,
   mentionName,
 }: {
@@ -157,6 +157,8 @@ export function MessageBody({
   /** The display name of a member the client knows, or undefined (the name in `text` is shown then). */
   mentionName?: (accountId: string) => string | undefined;
 }) {
+  // From outside: a malformed payload must not crash the list.
+  const text = typeof received === 'string' ? received : '';
   const parsed = parseBlocks(blocks);
   const className = sending ? 'bm-body bm-body--sending' : 'bm-body';
   if (!parsed) return <p className={sending ? 'bm-text bm-text--sending' : 'bm-text'}>{text}</p>;

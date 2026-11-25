@@ -142,6 +142,7 @@ internal sealed partial class MessageService(
         // goes into the derived text. A mention row is written only for those who can read the conversation, so a
         // person mentioned in a conversation they are not in gets nothing from it. Both reads run before the row lock.
         IReadOnlyList<Guid> mentionedReaders = [];
+        var sentBlocks = parsed is not null;
         if (parsed is null)
         {
             prepared = prepared ?? throw new InvalidOperationException("A send without blocks has a prepared text.");
@@ -215,7 +216,7 @@ internal sealed partial class MessageService(
         }
         else
         {
-            liveEvents.Add(new MessagePostedPayload(organizationId, conversationId, new LiveMessage(message.Id, seq, clientId, authorAccountId, prepared, now, MessageBlocks.ToLive(parsed.Blocks))));
+            liveEvents.Add(new MessagePostedPayload(organizationId, conversationId, new LiveMessage(message.Id, seq, clientId, authorAccountId, prepared, now, sentBlocks ? MessageBlocks.ToLive(parsed.Blocks) : null)));
         }
 
         LogPosted(logger, message.Id, conversationId, organizationId, authorAccountId);

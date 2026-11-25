@@ -257,23 +257,31 @@ export function parseBlocks(value: unknown): ReceivedBlock[] | null {
 /**
  * The names the server put into the derived `text` for the mentions of received blocks (`@` and the name it looked up),
  * for a mention whose person this client does not know. The text is walked in step with the blocks: each text run is
- * found again after the previous one, and a mention's name is what lies between its `@` and the next run. A name that
- * cannot be found (the text was normalized differently) is simply missing. Never throws.
+ * found again after the previous one, and a mention's name is what lies between its `@` and the next run or the end of its line.
+ * Without an exact boundary (two mentions side by side, a run that cannot be found) there is no name: a guess could
+ * swallow text of the next run. Never throws.
  */
 export function derivedMentionNames(
   blocks: readonly ReceivedBlock[],
   text: string,
 ): Map<MentionNode, string> {
-  const flat: ReceivedRun[] = [];
+  // Every inline node with whether it is the last of its block (the line ends after it).
+  const flat: { run: ReceivedRun; last: boolean }[] = [];
   for (const block of blocks) {
+    const runs: ReceivedRun[] = [];
     for (const child of block.children) {
-      if (child.type === 'list_item') flat.push(...child.children);
-      else flat.push(child);
+      if (child.type === 'list_item') {
+        const items = child.children;
+        for (const [index, run] of items.entries()) flat.push({ run, last: index === items.length - 1 });
+      } else {
+        runs.push(child);
+      }
     }
+    for (const [index, run] of runs.entries()) flat.push({ run, last: index === runs.length - 1 });
   }
   const names = new Map<MentionNode, string>();
   let cursor = 0;
-  for (const [index, run] of flat.entries()) {
+  for (const [index, { run, last }] of flat.entries()) {
     if (run.type === 'text') {
       const at = text.indexOf(run.text, cursor);
       if (at === -1) return names;
@@ -282,16 +290,18 @@ export function derivedMentionNames(
     }
     const at = text.indexOf('@', cursor);
     if (at === -1) return names;
-    const next = flat[index + 1];
+    cursor = at + 1;
     const lineEnd = text.indexOf('\u000A', at);
-    let end = lineEnd === -1 ? text.length : lineEnd;
-    if (next?.type === 'text') {
+    let end: number | undefined;
+    const next = flat[index + 1]?.run;
+    if (last) {
+      end = lineEnd === -1 ? text.length : lineEnd;
+    } else if (next?.type === 'text') {
+      // The name ends where the next run starts; if that cannot be found on this line the boundary is unknown.
       const anchor = text.indexOf(next.text, at + 1);
-      if (anchor !== -1 && anchor < end) end = anchor;
-    } else if (next?.type === 'mention') {
-      const anchor = text.indexOf('@', at + 1);
-      if (anchor !== -1 && anchor < end) end = anchor;
+      if (anchor !== -1 && (lineEnd === -1 || anchor < lineEnd)) end = anchor;
     }
+    if (end === undefined) continue;
     const name = text.slice(at + 1, end).trim();
     if (name.length > 0) names.set(run, name);
     cursor = end;

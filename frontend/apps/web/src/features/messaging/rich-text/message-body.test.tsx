@@ -120,12 +120,37 @@ describe('MessageBody rendering', () => {
     expect(container.textContent).toBe('@<b>x</b>');
   });
 
+  it('Render_WhenMentionHasNoKnownName_ShowsANeutralLabelNotTheNextRunsText', () => {
+    const blocks = [
+      {
+        type: 'paragraph',
+        children: [{ type: 'mention', accountId: 'a-4' }, { type: 'mention', accountId: 'a-5' }, run(' end')],
+      },
+    ];
+    const { container } = render(
+      <MessageBody text="@Ann Bob end" sending={false} blocks={blocks} mentionName={() => undefined} />,
+    );
+
+    expect([...container.querySelectorAll('[data-mention]')].map((chip) => chip.textContent)).toEqual([
+      '@\u2026',
+      '@\u2026',
+    ]);
+  });
+
+  it('Render_WhenTextIsNotAString_DoesNotCrash', () => {
+    const { container } = render(
+      <MessageBody text={undefined as unknown as string} sending={false} blocks={undefined} />,
+    );
+
+    expect(container.textContent).toBe('');
+  });
+
   it('Render_WhenMentionNodeHasNoNameAnywhere_ShowsAnAtSignAndKeepsTheText', () => {
     const blocks = [
       { type: 'paragraph', children: [run('hi '), { type: 'mention', accountId: 'a-1' }, run('there')] },
     ];
     const { container } = render(<MessageBody text="" sending={false} blocks={blocks} />);
 
-    expect(container.textContent).toBe('hi @there');
+    expect(container.textContent).toBe('hi @…there');
   });
 });

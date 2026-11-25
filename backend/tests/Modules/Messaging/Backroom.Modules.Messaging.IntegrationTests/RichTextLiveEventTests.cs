@@ -36,6 +36,6 @@ public sealed class RichTextLiveEventTests(PostgresDatabase database, KeycloakRe
         live.Text.Should().Be("hi there");
         var json = JsonNode.Parse(MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(live.Blocks!, cancellationToken: CancellationToken), cancellationToken: CancellationToken));
         JsonNode.DeepEquals(json, JsonNode.Parse(Blocks)).Should().BeTrue($"the live blocks were {json?.ToJsonString()}");
-        Publisher.Messages[1].Message.Blocks.Should().NotBeNull("a plain text send has one paragraph");
+        Publisher.Messages[1].Message.Blocks.Should().BeNull("a plain text send is only its derived paragraph, so the text is not sent twice");
     }
 }
