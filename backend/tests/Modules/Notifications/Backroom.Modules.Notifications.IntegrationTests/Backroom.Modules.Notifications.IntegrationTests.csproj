@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Notifications' decision order, bell and settings on real PostgreSQL (Docker) with row-level security; the other modules are fakes. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Notifications\Backroom.Modules.Notifications.Infrastructure\Backroom.Modules.Notifications.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Backroom.Testing\Backroom.Testing.csproj" />
+  </ItemGroup>
+
+</Project>

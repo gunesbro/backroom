@@ -73,3 +73,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 - Groups `cell:{cellId}:org:{orgId}:presence:{accountId}`, tracked per connection with their organization, so member removal drops them too. Limits: 600 groups per connection (conversations plus presence), receive size 16 KB (200 ids).
 - `PresenceChanged { orgId, accountId, state, dndUntil?, customStatus? }` (timestamps as ISO 8601 strings) through `ILiveEventPublisher` to the person's presence group.
 - The member-removed consumer also calls `IPresenceMemberships.ForgetAsync`, so the person's presence stops reaching that organization at once.
+
+## NotificationRequested (Phase 2 step 29)
+
+- `ILiveEventPublisher.PublishAsync(NotificationRequestedPayload)` sends `NotificationRequested` to the recipient's account group only (`ValkeyLiveEventPublisher`); the payload carries ids, the kind and a preview of at most 150 characters (null when hidden). Notifications publishes it; the web and desktop clients show it in later steps.

@@ -53,6 +53,12 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         LIMIT $3
         """;
 
+    private const string PreviewSql = """
+        SELECT id, conversation_id, text
+        FROM messaging.messages
+        WHERE id = ANY($1) AND deleted_at IS NULL
+        """;
+
     public async Task<bool> AddAsync(NewMessage message, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(AddSql, session.Connection, session.Transaction);
@@ -102,6 +108,21 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         }
 
         return messages;
+    }
+
+    public async Task<IReadOnlyList<MessagePreviewSource>> ListForPreviewAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(messageIds);
+        await using var command = new NpgsqlCommand(PreviewSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid[]> { TypedValue = [.. messageIds] });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var found = new List<MessagePreviewSource>(messageIds.Count);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            found.Add(new MessagePreviewSource(reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2)));
+        }
+
+        return found;
     }
 
     // A tombstone never carries content, whatever the row holds (the check constraint keeps it empty as well).

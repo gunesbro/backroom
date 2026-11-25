@@ -103,6 +103,8 @@ for (var i = 0; i < cells.Count; i++)
         // Invitations (flow 3) are behind a flag; on in development, as on the control plane.
         .WithEnvironment("Features__Invitations", "true")
         .WithEnvironment("Features__Presence", "true")
+        // Notifications (docs/contracts/phase-2.md, flow 8) are behind a flag; on in development.
+        .WithEnvironment("Features__Notifications", "true")
         .WithWebOrigins()
         .WithEnvironment("Authentication__Authority", authority)
         // Live events: the SignalR backplane and the member-removal channel (docs/contracts/phase-1.md, "Live events"),
@@ -137,6 +139,8 @@ for (var i = 0; i < cells.Count; i++)
     var cellWorker = builder.AddProject<Projects.Backroom_Cell_Host>($"cell-{cell.Id}-worker", launchProfileName: "worker" + cell.LaunchProfileSuffix)
         .WithEnvironment("Cell__Id", cell.Id)
         .WithEnvironment("Cell__Role", "worker")
+        // The worker decides notifications on messaging.activity-added.v1 (flag as on the app role).
+        .WithEnvironment("Features__Notifications", "true")
         .WithEnvironment("Authentication__Authority", authority)
         .WithEnvironment("ControlPlaneConnector__ControlPlaneUrl", controlPlane.GetEndpoint("https"))
         .WithEnvironment("ControlPlaneConnector__RegistrationKey", secrets.RegistrationKey)

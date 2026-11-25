@@ -1,6 +1,7 @@
 using Npgsql;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
 using Backroom.Modules.Messaging.Application.Conversations;
+using Backroom.Modules.Messaging.Contracts;
 
 namespace Backroom.Modules.Messaging.Infrastructure;
 
@@ -20,6 +21,26 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
                 WHERE m.conversation_id = c.id AND m.account_id = $3 AND m.org_id = $1 AND m.left_at IS NULL)
         FROM messaging.conversations c
         WHERE c.org_id = $1 AND c.id = $2
+        """;
+
+    // The same rule as ConversationAccess.CanRead: open, not a thread, and a public channel or an open member.
+    private const string FilterReadersSql = """
+        SELECT a.id
+        FROM unnest($3::uuid[]) AS a(id)
+        JOIN messaging.conversations c ON c.org_id = $1 AND c.id = $2
+        WHERE c.archived_at IS NULL AND c.kind <> $4
+          AND (c.kind = $5 OR EXISTS (
+              SELECT 1 FROM messaging.conversation_members m
+              WHERE m.org_id = $1 AND m.conversation_id = c.id AND m.account_id = a.id AND m.left_at IS NULL))
+        """;
+
+    private const string ReadableConversationsSql = """
+        SELECT c.id
+        FROM messaging.conversations c
+        WHERE c.org_id = $1 AND c.id = ANY($3) AND c.archived_at IS NULL AND c.kind <> $4
+          AND (c.kind = $5 OR EXISTS (
+              SELECT 1 FROM messaging.conversation_members m
+              WHERE m.org_id = $1 AND m.conversation_id = c.id AND m.account_id = $2 AND m.left_at IS NULL))
         """;
 
     // An index-only scan of conversation_members_account_idx that stops at the cap.
@@ -80,6 +101,44 @@ internal sealed class ConversationStore(DatabaseSession session) : IConversation
         return await reader.ReadAsync(cancellationToken)
             ? new ConversationAccess(reader.GetString(0), reader.GetBoolean(1), reader.GetInt64(2), reader.GetBoolean(3))
             : null;
+    }
+
+    public async Task<IReadOnlyList<Guid>> FilterReadersAsync(
+        Guid organizationId, Guid conversationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(FilterReadersSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = conversationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid[]> { TypedValue = [.. accountIds] });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ConversationKinds.Thread });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ConversationKinds.PublicChannel });
+        var readers = new List<Guid>(accountIds.Count);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            readers.Add(reader.GetGuid(0));
+        }
+
+        return readers;
+    }
+
+    public async Task<IReadOnlySet<Guid>> ReadableConversationsAsync(
+        Guid organizationId, Guid accountId, IReadOnlyCollection<Guid> conversationIds, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(ReadableConversationsSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
+        command.Parameters.Add(new NpgsqlParameter<Guid[]> { TypedValue = [.. conversationIds] });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ConversationKinds.Thread });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = ConversationKinds.PublicChannel });
+        var readable = new HashSet<Guid>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            readable.Add(reader.GetGuid(0));
+        }
+
+        return readable;
     }
 
     public async Task<int> CountOpenMembershipsAsync(Guid organizationId, Guid accountId, int cap, CancellationToken cancellationToken)

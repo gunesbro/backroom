@@ -8,6 +8,7 @@ using Backroom.Modules.Files.Infrastructure;
 using Backroom.Modules.Files.Infrastructure.Storage;
 using Backroom.Modules.Files.Presentation;
 using Backroom.Modules.Messaging.Infrastructure;
+using Backroom.Modules.Notifications.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure;
 using Backroom.Modules.Organization.Infrastructure.Invitations;
 using Backroom.Modules.Permissions.Infrastructure;
@@ -27,6 +28,7 @@ internal static class CellModules
             .AddOrganizationDatabase()
             .AddMessagingDatabase()
             .AddFilesDatabase()
+            .AddNotificationsDatabase()
             .AddPermissionsDatabase()
             .AddEmailDatabase()
             .AddRealtimeDatabase()
@@ -44,6 +46,14 @@ internal static class CellModules
         builder.Services.AddMessaging();
         // Presence in Valkey (no schema): the status copy the worker applies, the reader of the app's endpoint.
         builder.Services.AddPresence();
+        // Notifications (Phase 2 step 29) are behind a flag until the gate: the bell and the settings in the app role, the
+        // decision on messaging.activity-added.v1 in the worker.
+        var notifications = builder.Configuration.GetValue<bool>(NotificationsModule.Flag);
+        if (notifications)
+        {
+            builder.Services.AddNotifications();
+        }
+
         if (role == CellRole.App)
         {
             // Files (Phase 2 step 21) are behind a flag until the gate; only the app role signs uploads and downloads.
@@ -80,6 +90,10 @@ internal static class CellModules
             builder.Services.AddEmail().BindConfiguration(EmailOptions.SectionName);
             // member-removed → every app node removes the account's connections from the organization's groups.
             builder.Services.AddRealtimeMemberRemoval();
+            if (notifications)
+            {
+                builder.Services.AddNotificationConsumers();
+            }
 
             // The modules registered their event handlers and outbox schemas above. Consumers before the relay,
             // so their queues are declared before events are published.

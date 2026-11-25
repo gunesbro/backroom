@@ -21,6 +21,12 @@ public interface ILiveEventPublisher
     Task PublishAsync(PresenceChangedPayload payload, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Sends <c>NotificationRequested</c> to the recipient's own account group in the payload's organization and to nobody else
+    /// (only the hub adds connections to that group, and only those whose token names the account).
+    /// </summary>
+    Task PublishAsync(NotificationRequestedPayload payload, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Takes the account's connections out of the conversation's group on every node, after the commit that ended its
     /// membership. Best effort and bounded like a publish (it never throws): the durable path is Realtime's consumer of
     /// <c>messaging.conversation-member-removed.v1</c>, which repeats it; removing twice is harmless.

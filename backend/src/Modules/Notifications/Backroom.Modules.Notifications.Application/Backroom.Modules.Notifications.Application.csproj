@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Backroom.BuildingBlocks.Application\Backroom.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\..\Messaging\Backroom.Modules.Messaging.Contracts\Backroom.Modules.Messaging.Contracts.csproj" />
+    <ProjectReference Include="..\..\Presence\Backroom.Modules.Presence.Contracts\Backroom.Modules.Presence.Contracts.csproj" />
+    <ProjectReference Include="..\..\Realtime\Backroom.Modules.Realtime.Contracts\Backroom.Modules.Realtime.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Backroom.Modules.Notifications.Infrastructure" />
+    <InternalsVisibleTo Include="Backroom.Modules.Notifications.Presentation" />
+    <InternalsVisibleTo Include="Backroom.Modules.Notifications.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

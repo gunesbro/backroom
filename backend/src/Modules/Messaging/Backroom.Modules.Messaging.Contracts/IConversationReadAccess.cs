@@ -18,4 +18,22 @@ public interface IConversationReadAccess
     /// must tell a member from a reader of a public channel (Realtime's late removal). Same unit of work as above.
     /// </summary>
     Task<bool> IsMemberAsync(Guid organizationId, Guid conversationId, Guid accountId, CancellationToken cancellationToken);
+
+    /// <summary>The most accounts or conversations one batch call takes.</summary>
+    public const int MaxBatch = 500;
+
+    /// <summary>
+    /// The accounts among <paramref name="accountIds"/> (at most <see cref="MaxBatch"/>) that are active members of the entered
+    /// organization and may read the conversation, in two statements however many accounts there are. Organization members only, so a
+    /// removed member or anyone outside the organization (a guest) is never in the answer. Same unit of work as above.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> FilterReadersAsync(
+        Guid organizationId, Guid conversationId, IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The conversations among <paramref name="conversationIds"/> (at most <see cref="MaxBatch"/>) the account may read now, in one
+    /// statement. The caller has checked the organization membership. Same unit of work as above.
+    /// </summary>
+    Task<IReadOnlySet<Guid>> ReadableConversationsAsync(
+        Guid organizationId, Guid accountId, IReadOnlyCollection<Guid> conversationIds, CancellationToken cancellationToken);
 }

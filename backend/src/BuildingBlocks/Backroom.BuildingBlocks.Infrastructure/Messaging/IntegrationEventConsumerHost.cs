@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Backroom.BuildingBlocks.Application.Messaging;
 using Backroom.BuildingBlocks.Application.Organizations;
 using Backroom.BuildingBlocks.Infrastructure.Fencing;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
@@ -463,6 +464,12 @@ public sealed partial class IntegrationEventConsumerHost : BackgroundService
 
             await subscription.Handle(scope.ServiceProvider, received.Event, cancellationToken);
             await session.CommitAsync(cancellationToken);
+            // Committed: now the handler's after-commit work (live events). It never fails the delivery.
+            if (scope.ServiceProvider.GetService<AfterCommitActions>() is { } afterCommit)
+            {
+                await afterCommit.RunAsync(CancellationToken.None);
+            }
+
             return new Outcome(OutcomeKind.Ack);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
