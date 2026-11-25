@@ -285,6 +285,7 @@ Groups (all prefixed `cell:{cellId}:org:{orgId}:`): `conversation:{id}` (replace
 | `MembershipChanged`                                      | account                                                                | `orgId, conversationId, change` (`added` or `removed`)                                                                                                                                                                        |
 | `PreferencesChanged`, `SavedChanged`, `ScheduledChanged` | account                                                                | `orgId` and the changed ids (the client refetches)                                                                                                                                                                            |
 | `NotificationRequested`                                  | account                                                                | `orgId, notificationId, kind, conversationId, messageId, actorAccountId, preview?`                                                                                                                                            |
+| `FileRejected`                                           | account                                                                | `orgId, accountId, fileId, reason` (`malware`, or `scan_failed` when no scan answered or the object was gone; never the name)                                                                                                 |
 | `PresenceChanged`                                        | presence                                                               | `orgId, accountId, state (online, idle, offline), dndUntil?, customStatus?`                                                                                                                                                   |
 
 | Client → server (hub)                                                                            | Check                                                                                              |
@@ -549,7 +550,7 @@ None at the moment.
 
 21. Files module: uploads, completion, signed downloads. _(human review)_
 22. Attachments in Messaging; file deletion and cleanup jobs. _(human review)_
-23. Malware scanning behind `IFileScanner` (ClamAV container in the AppHost, pinned image). _(human review)_ Tracked gap: the `files.rejected` notice to the uploader needs a new payload and hub method in Realtime (account group); it follows with that change.
+23. Malware scanning behind `IFileScanner` (ClamAV container in the AppHost, pinned image). _(human review)_
 24. File quota (reservation, completion, release, usage view) and hidden files in Files' read paths. _(human review)_
 25. Thumbnails in the worker; Files tab and Links tab; long text as `.txt`.
 26. Search module: `ISearchIndex`, owners' search sources (fold, GIN, permission in query); web search with typed filters. _(human review)_

@@ -77,3 +77,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 ## NotificationRequested (Phase 2 step 29)
 
 - `ILiveEventPublisher.PublishAsync(NotificationRequestedPayload)` sends `NotificationRequested` to the recipient's account group only (`ValkeyLiveEventPublisher`); the payload carries ids, the kind and a preview of at most 150 characters (null when hidden). Notifications publishes it; the web and desktop clients show it in later steps.
+
+## FileRejected (Phase 2 step 23)
+
+- `ILiveEventPublisher.PublishAsync(FileRejectedPayload)` sends `FileRejected` (`LiveEventNames.FileRejected`) to the uploader's account group only (`ValkeyLiveEventPublisher`); the payload is `orgId, accountId, fileId, reason` (`malware` or `scan_failed`), never a name or type. Files' scan job publishes it after the commit that rejected the file (the maintenance runner has no after-commit hook, so the job re-checks the file is `rejected` at the start of its next run and publishes from a background task). Test: `ConversationGroupTests.FileRejected_...` (both nodes reach the uploader, another member gets nothing).
