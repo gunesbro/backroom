@@ -194,6 +194,24 @@ public sealed partial class InvitationTests(PostgresDatabase database, KeycloakR
     }
 
     [Fact]
+    public async Task Create_WithVariedSpellingsOfTheOrganizationId_SharesOneAttemptLimitAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Guid.CreateVersion7(), "kim@example.test", "active");
+        var token = await TokenAsync(Alice);
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            var spelling = attempt % 2 == 0 ? organizationId.ToString("D") : organizationId.ToString("N");
+            using var refused = await InviteWithTokenAsync(organizationId, token, "kim@example.test", null, spelling);
+            refused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        }
+
+        using var limited = await InviteWithTokenAsync(organizationId, token, "kim@example.test", null, organizationId.ToString("D").ToUpperInvariant());
+
+        await ShouldBeRateLimitedAsync(limited, TimeSpan.Zero, TimeSpan.FromDays(1));
+    }
+
+    [Fact]
     public async Task Create_AfterAHundredAttempts_IsRateLimitedEvenWhenTheyWereRefusedAsync()
     {
         var organizationId = await ProvisionForAsync(Alice);
@@ -603,9 +621,9 @@ public sealed partial class InvitationTests(PostgresDatabase database, KeycloakR
     private async Task<HttpResponseMessage> InviteAsync(Guid organizationId, string username, string? email, string? role = null) =>
         await InviteWithTokenAsync(organizationId, await TokenAsync(username), email, role);
 
-    private async Task<HttpResponseMessage> InviteWithTokenAsync(Guid organizationId, string? token, string? email, string? role)
+    private async Task<HttpResponseMessage> InviteWithTokenAsync(Guid organizationId, string? token, string? email, string? role, string? organizationSpelling = null)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri($"/api/v1/orgs/{organizationId}/invitations", UriKind.Relative));
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri($"/api/v1/orgs/{organizationSpelling ?? organizationId.ToString()}/invitations", UriKind.Relative));
         request.Content = JsonContent.Create(new { email, role });
         if (token is not null)
         {
