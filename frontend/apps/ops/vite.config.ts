@@ -1,9 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { trustedTypes, trustedTypesCsp } from '../../tooling/trusted-types.ts';
 
 export default defineConfig({
-  plugins: [react()],
+  // The operations console uses no HTML sink, so no Trusted Types policy is allowed (tooling/trusted-types.ts).
+  plugins: [react(), trustedTypes(trustedTypesCsp([]))],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

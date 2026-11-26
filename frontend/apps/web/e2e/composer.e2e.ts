@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 
@@ -87,7 +88,8 @@ test('Composer_WhenALongMessageIsTypedWithTheKeyboard_SendsItsBlocksAndDrawsThem
   });
   expect(scrolls).toBe(true);
   await expect(page.getByRole('region', { name: 'Code block' })).toHaveAttribute('tabindex', '0');
-  await page.addScriptTag({ path: createRequire(import.meta.url).resolve('axe-core/axe.min.js') });
+  // Evaluated, not added as a script element: the page enforces Trusted Types, and a script element's text is a sink.
+  await page.evaluate(readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8'));
   const violations = await page.evaluate(`
     axe
       .run('[aria-label="Sent messages"]', { runOnly: ['scrollable-region-focusable', 'aria-allowed-role'] })

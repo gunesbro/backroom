@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { TRUSTED_TYPES_CSP } from '../apps/web/trusted-types.ts';
 
 // JSON configs cannot carry comments, so this test keeps the spike CSP in step with the base CSP:
 // the spike may only add LiveKit origins to connect-src.
@@ -44,6 +45,16 @@ describe('desktop CSP', () => {
 
     for (const directive of ['frame-src', 'object-src', 'base-uri', 'form-action']) {
       expect(base.get(directive)).toEqual(["'none'"]);
+    }
+  });
+
+  it('base CSP requires the same Trusted Types as the web build', () => {
+    const base = readCsp('tauri.conf.json');
+
+    for (const [name, ...sources] of TRUSTED_TYPES_CSP.split(';').map((directive) =>
+      directive.trim().split(/\s+/),
+    )) {
+      expect(base.get(name ?? '')).toEqual(sources);
     }
   });
 
