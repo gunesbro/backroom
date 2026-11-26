@@ -111,7 +111,14 @@ const server = setupServer(
       next: null,
     });
   }),
-  http.get(`${BASE}/channels`, () => HttpResponse.json({ channels: [], next: null })),
+  http.get(`${BASE}/channels`, () =>
+    HttpResponse.json({
+      channels: conversations
+        .filter(({ kind }) => kind === 'public_channel')
+        .map(({ id, kind, name }) => ({ id, kind, name, createdAt: CREATED_AT })),
+      next: null,
+    }),
+  ),
   http.get(`${BASE}/me/permissions`, () =>
     HttpResponse.json({
       permissions: ['channels.create-private', 'channels.create-public'].concat(
@@ -172,6 +179,7 @@ const server = setupServer(
     sent.push({ method: 'POST', path: `/conversations/${String(params.id)}/${action}`, body });
     const conversation = find(params.id);
     if (!readable(conversation)) return notFound();
+    if (action === 'join') conversation.members.push({ accountId: OWN_ID, role: 'member' });
     if (action === 'archive') conversation.archivedAt = '2026-11-25T10:00:00Z';
     if (action === 'unarchive') conversation.archivedAt = null;
     if (action === 'leave') {
@@ -1060,5 +1068,73 @@ describe('Channel info', () => {
         'Channel owner',
       ),
     ).toBeVisible();
+  });
+});
+
+describe('Previewing a public channel', () => {
+  const lounge = (): Conversation => ({
+    id: 'c-lounge',
+    kind: 'public_channel',
+    name: 'lounge',
+    description: null,
+    archivedAt: null,
+    members: [{ accountId: VELI_ID, role: 'member' }],
+  });
+
+  async function openPreview() {
+    conversations.push(lounge());
+    renderWorkspace();
+    await screen.findByRole('button', { name: 'general' });
+    click('Browse channels');
+    const dialog = await screen.findByRole('dialog', { name: 'Browse channels' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Open lounge' }));
+    await screen.findByRole('heading', { level: 2, name: 'lounge' });
+  }
+
+  it('Open_NotJoinedPublicChannel_ShowsItWithoutAComposerOrASidebarEntryAndWithoutJoining', async () => {
+    await openPreview();
+
+    expect(await screen.findByText('You are viewing this channel.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Join channel' })).toBeVisible();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    const sidebar = screen.getByRole('navigation', { name: 'Acme' });
+    expect(within(sidebar).queryByRole('button', { name: 'lounge' })).not.toBeInTheDocument();
+    expect(sent.filter(({ path }) => path.endsWith('/join'))).toEqual([]);
+  });
+
+  it('Open_ThenSelectAnotherConversation_LeavesNothingBehind', async () => {
+    await openPreview();
+    await screen.findByText('You are viewing this channel.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'general' }));
+
+    await screen.findByRole('heading', { level: 2, name: 'general' });
+    expect(screen.queryByText('You are viewing this channel.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'lounge' })).not.toBeInTheDocument();
+    expect(sent.filter(({ path }) => path.endsWith('/join'))).toEqual([]);
+  });
+
+  it('JoinFromTheBar_AddsTheChannelToTheSidebarAndSwapsInTheComposer', async () => {
+    await openPreview();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Join channel' }));
+
+    expect(await screen.findByRole('button', { name: 'lounge' })).toBeVisible();
+    await waitFor(() => {
+      expect(screen.queryByText('You are viewing this channel.')).not.toBeInTheDocument();
+    });
+    expect(await screen.findByRole('textbox')).toBeVisible();
+    expect(sent.filter(({ path }) => path.endsWith('/join'))).toHaveLength(1);
+  });
+
+  it('Preview_InTurkish_UsesTheTurkishTexts', async () => {
+    conversations.push(lounge());
+    renderWorkspace('tr');
+    fireEvent.click(await screen.findByRole('button', { name: 'Kanallara göz at' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Kanallara göz at' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'lounge kanalını aç' }));
+
+    expect(await screen.findByText('Bu kanalı görüntülüyorsun.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Kanala katıl' })).toBeVisible();
   });
 });

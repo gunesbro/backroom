@@ -9,7 +9,7 @@ import { messages } from './messages';
 
 /**
  * The public channels of the organization (docs/contracts/phase-2.md, "HTTP APIs": <code>GET /channels</code>), with a
- * button to join those the person is not in. Joining adds the channel to the sidebar and opens it. A second view lists
+ * button to open (read without joining) and one to join those the person is not in. Joining adds the channel to the sidebar and opens it. A second view lists
  * the person's archived channels (<code>GET /conversations?archived=true</code>), which the sidebar leaves out: opening
  * one shows it read-only, and those allowed can unarchive it from its info.
  */
@@ -19,7 +19,7 @@ export function BrowseChannelsDialog({
   joinedIds,
   onClose,
   onJoined,
-  onOpenArchived,
+  onOpen,
 }: {
   api: MessagingApi;
   orgId: string;
@@ -27,7 +27,7 @@ export function BrowseChannelsDialog({
   joinedIds: readonly string[];
   onClose: () => void;
   onJoined: (channel: Channel) => void;
-  onOpenArchived: (channel: Channel) => void;
+  onOpen: (channel: Channel) => void;
 }) {
   const t = useTranslate(messages);
   const [archived, setArchived] = useState(false);
@@ -100,7 +100,7 @@ export function BrowseChannelsDialog({
                   <Button
                     aria-label={t('openChannel', { name: channel.name })}
                     onClick={() => {
-                      onOpenArchived(channel);
+                      onOpen(channel);
                     }}
                   >
                     {t('open')}
@@ -108,15 +108,25 @@ export function BrowseChannelsDialog({
                 ) : joined.has(channel.id) ? (
                   <span className="ph-muted">{t('joined')}</span>
                 ) : (
-                  <Button
-                    disabled={join.isPending}
-                    aria-label={t('joinChannel', { name: channel.name })}
-                    onClick={() => {
-                      join.mutate(channel);
-                    }}
-                  >
-                    {t('join')}
-                  </Button>
+                  <span className="bm-browse__actions">
+                    <Button
+                      aria-label={t('openChannel', { name: channel.name })}
+                      onClick={() => {
+                        onOpen(channel);
+                      }}
+                    >
+                      {t('open')}
+                    </Button>
+                    <Button
+                      disabled={join.isPending}
+                      aria-label={t('joinChannel', { name: channel.name })}
+                      onClick={() => {
+                        join.mutate(channel);
+                      }}
+                    >
+                      {t('join')}
+                    </Button>
+                  </span>
                 )}
               </li>
             ))}

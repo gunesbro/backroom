@@ -23,10 +23,12 @@ import { forgetConversation } from './live-cache';
 import { MessageList, type Row } from './message-list';
 import { rowKey } from './row-key';
 import { messages } from './messages';
+import { PreviewBar } from './preview-bar';
 import { NewMessageAnnouncer } from './new-message-announcer';
 import { usePendingMessages } from './pending-messages';
 import { BrowseChannelsDialog } from './browse-channels-dialog';
 import {
+  conversationKey,
   conversationsKey,
   MAX_MEMBER_PAGES,
   oldestFirst,
@@ -223,7 +225,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
             setChosen(channel);
             setBrowsing(false);
           }}
-          onOpenArchived={(channel) => {
+          onOpen={(channel) => {
             select(channel);
             setBrowsing(false);
           }}
@@ -312,6 +314,8 @@ function ChannelView({
   const name = info?.name ?? channel.name;
   const isPrivate = (info?.kind ?? channel.kind) === 'private_channel';
   const archived = info ? info.archivedAt !== null : false;
+  // A public channel read without having joined it: no composer, a bar to join instead.
+  const previewing = info !== undefined && info.role === null && info.kind === 'public_channel';
 
   const names = useMemo(
     () =>
@@ -506,6 +510,14 @@ function ChannelView({
       )}
       {archived ? (
         <p className="bm-archived">{t('archivedBanner')}</p>
+      ) : previewing ? (
+        <PreviewBar
+          join={() => api.joinConversation(orgId, channel.id)}
+          onJoined={() => {
+            void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
+            void queryClient.invalidateQueries({ queryKey: conversationKey(orgId, channel.id) });
+          }}
+        />
       ) : (
         <Composer
           channelName={name}

@@ -140,6 +140,8 @@ type Key =
   | 'archiveNote'
   | 'archived'
   | 'archivedBanner'
+  | 'previewNotice'
+  | 'joinPreviewed'
   | 'transferOwnership'
   | 'transferTo'
   | 'transferConfirm'
@@ -305,6 +307,8 @@ export const messages: Messages<Key> = {
     archiveNote: 'Messages stay readable, but nobody can send new ones until the channel is unarchived.',
     archived: 'Archived',
     archivedBanner: 'This channel is archived. You can read it, but nobody can send messages.',
+    previewNotice: 'You are viewing this channel.',
+    joinPreviewed: 'Join channel',
     transferOwnership: 'Make owner',
     transferTo: 'Make {name} the owner',
     transferConfirm: 'Make {name} the owner of this channel?',
@@ -468,6 +472,8 @@ export const messages: Messages<Key> = {
     archiveNote: 'Mesajlar okunabilir kalır; kanal arşivden çıkarılana kadar kimse yeni mesaj gönderemez.',
     archived: 'Arşivlendi',
     archivedBanner: 'Bu kanal arşivlendi. Okuyabilirsin, ama kimse mesaj gönderemez.',
+    previewNotice: 'Bu kanalı görüntülüyorsun.',
+    joinPreviewed: 'Kanala katıl',
     transferOwnership: 'Sahipliği devret',
     transferTo: 'Sahipliği {name} kişisine devret',
     transferConfirm: 'Kanalın sahipliğini {name} kişisine devretmek istiyor musun?',
