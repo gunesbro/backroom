@@ -35,15 +35,18 @@ describe('createRealtimeFactory', () => {
     const { factory, cellTokens, urls } = setup(false);
     const client = factory(cell(url));
 
+    const statuses: string[] = [];
+    client.onStatus((status) => statuses.push(status));
     client.start();
-    await vi.waitFor(() => {
-      expect(client.status()).not.toBe('stopped');
-    });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Flush pending promises: an attempt that started would have built the hub by now.
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(cellTokens).not.toHaveBeenCalled();
     expect(urls).toEqual([]);
-    expect(client.status()).not.toBe('connected');
+    // It never starts, so nothing says "connecting" for an address that can never connect.
+    expect(client.status()).toBe('stopped');
+    expect(statuses).toEqual([]);
     await client.stop();
   });
 
@@ -75,7 +78,9 @@ describe('createRealtimeFactory', () => {
     const refused = setup(false);
     const other = refused.factory(cell('http://localhost:5200'));
     other.start();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(other.status()).toBe('stopped');
     expect(refused.urls).toEqual([]);
     expect(refused.cellTokens).not.toHaveBeenCalled();
     await other.stop();
