@@ -133,6 +133,18 @@ $env:BACKROOM_REGISTER_URL_SCHEME = "1"; pnpm -C frontend desktop:dev
 
 This is a per-user setting that points the scheme at the development build and needs no administrator rights. Remove it on Windows with `reg delete "HKCU\Software\Classes\backroom" /f`. On Linux it needs `xdg-mime` and `update-desktop-database`; remove `~/.local/share/applications/backroom-desktop-handler.desktop` and the scheme's line in `~/.config/mimeapps.list`. On macOS the scheme works only in an installed package. Everything else in the desktop app works without it.
 
+### Desktop local check
+
+`desktop:dev` loads the web dev server, so the desktop CSP (Trusted Types included) does not apply there. To check the bundled web app under the desktop CSP, as in a release, against the AppHost on this machine:
+
+```powershell
+dotnet run --project backend/src/Aspire/Backroom.AppHost   # in another terminal; wait until it is running
+pnpm -C frontend desktop:local                             # builds the web app (mode desktop-local) and the shell
+frontend/apps/desktop/src-tauri/target/debug/backroom-desktop.exe
+```
+
+It is a debug build of the shell without installers (`tauri build --debug --no-bundle`), so it signs in to the local Keycloak and has developer tools (right click → Inspect). `tauri.local.conf.json` adds only the AppHost's control plane and cell origins to `connect-src`; `apps/web/.env.desktop-local` holds the web settings. To check Trusted Types: sign in, open a channel, paste formatted text (for example from a web page) into the composer twice, and look for errors in the developer tools console.
+
 ### Desktop packages
 
 Installers are built by the manually triggered **Desktop packages** workflow (GitHub → Actions → Desktop packages → Run workflow, or `gh workflow run desktop.yml -f windows=true -f linux=true -f macos=false`). It produces unsigned Windows (MSI, NSIS), Linux (deb, rpm, AppImage, built on Ubuntu 24.04) and, only when selected, macOS (DMG) packages as workflow artifacts kept for 14 days. macOS minutes count ten times against the free Actions quota.

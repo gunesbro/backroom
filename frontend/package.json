@@ -18,7 +18,8 @@
     "test:e2e": "pnpm --filter @backroom/web test:e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "desktop:dev": "pnpm --filter @backroom/desktop dev"
+    "desktop:dev": "pnpm --filter @backroom/desktop dev",
+    "desktop:local": "pnpm --filter @backroom/desktop build:local"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -2,8 +2,9 @@
 .env
 .env.*
 !.env.example
-# Build-time feature flags for development; no secrets.
+# Build-time feature flags and local addresses for development and the desktop local check; no secrets.
 !/frontend/apps/web/.env.development
+!/frontend/apps/web/.env.desktop-local
 *.pfx
 *.p12
 *.pem

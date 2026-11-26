@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Backroom Local Check",
+  "build": {
+    "beforeBuildCommand": "pnpm --filter @backroom/web build --mode desktop-local"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost http://localhost:5100 http://localhost:5200 ws://localhost:5200 http://localhost:5202 ws://localhost:5202; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types lexical 'allow-duplicates'"
+    }
+  }
+}

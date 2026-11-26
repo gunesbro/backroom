@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { cellOrigin, type Cell, type CellTokenSource } from '@/features/messaging';
+import { cellOrigin, LOOPBACK_HTTP_CELLS, type Cell, type CellTokenSource } from '@/features/messaging';
 import { requestJson, type AccessTokenSource } from '@/shared/http';
 
 export type Role = 'admin' | 'member';
@@ -31,7 +31,7 @@ export type InvitationsApiFactory = (cell: Cell) => InvitationsApi;
 export function createInvitationsApi(
   cellUrl: string,
   cellToken: AccessTokenSource,
-  { allowLoopbackHttp = import.meta.env.DEV }: { allowLoopbackHttp?: boolean } = {},
+  { allowLoopbackHttp = LOOPBACK_HTTP_CELLS }: { allowLoopbackHttp?: boolean } = {},
 ): InvitationsApi {
   const origin = cellOrigin(cellUrl, allowLoopbackHttp);
   // Every request asks for its token first, so a refused address never receives one.

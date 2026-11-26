@@ -2,7 +2,9 @@
 import { lazy } from 'react';
 
 export {
+  allowsLoopbackHttpCells,
   cellOrigin,
+  LOOPBACK_HTTP_CELLS,
   createMessagingApi,
   MessagingApiContext,
   useMessagingEnabled,

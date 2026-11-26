@@ -138,8 +138,18 @@ export class CellAddressError extends Error {
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
+ * Whether a build may send cell tokens over http to a loopback host: the development server, and the desktop local
+ * check (Vite mode desktop-local, a bundled build against the AppHost on the same machine). Never any other build.
+ */
+export function allowsLoopbackHttpCells(env: { DEV: boolean; MODE: string }): boolean {
+  return env.DEV || env.MODE === 'desktop-local';
+}
+
+export const LOOPBACK_HTTP_CELLS = allowsLoopbackHttpCells(import.meta.env);
+
+/**
  * The origin of a cell address the control plane sent, or undefined if a token must not go there: https only, and
- * http only for a loopback host in a development build. Only the origin is used, never a path or query.
+ * http only for a loopback host in a build that allows it. Only the origin is used, never a path or query.
  */
 export function cellOrigin(cellUrl: string, allowLoopbackHttp: boolean): string | undefined {
   let url: URL;
@@ -157,7 +167,7 @@ export function cellOrigin(cellUrl: string, allowLoopbackHttp: boolean): string 
 export function createMessagingApi(
   cellUrl: string,
   cellToken: AccessTokenSource,
-  { allowLoopbackHttp = import.meta.env.DEV }: { allowLoopbackHttp?: boolean } = {},
+  { allowLoopbackHttp = LOOPBACK_HTTP_CELLS }: { allowLoopbackHttp?: boolean } = {},
 ): MessagingApi {
   const origin = cellOrigin(cellUrl, allowLoopbackHttp);
   // Every request asks for its token first, so a refused address never receives one.
