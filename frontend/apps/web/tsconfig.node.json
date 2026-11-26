@@ -10,6 +10,7 @@
     "emoji-image-set.ts",
     "emoji-images-plugin.ts",
     "svg-path.ts",
+    "trusted-types.ts",
     "playwright.config.ts",
     "e2e"
   ]
