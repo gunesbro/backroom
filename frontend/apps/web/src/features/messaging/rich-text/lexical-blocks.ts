@@ -91,10 +91,16 @@ function sameMarkList(a: readonly Mark[], b: readonly Mark[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** The text runs of one block, with canonical marks; a line break is `\n` in the neighbouring run. */
-function runsOf(element: ElementNode): TextNode[] {
+/**
+ * The text runs of one block, with canonical marks; a line break is `\n` in the neighbouring run. Several elements
+ * are the lines of one block (quoted lines), with a line break between them.
+ */
+function runsOf(...elements: ElementNode[]): TextNode[] {
   const pieces: Piece[] = [];
-  collect(element, [], pieces);
+  for (const [index, element] of elements.entries()) {
+    if (index > 0) pieces.push('break');
+    collect(element, [], pieces);
+  }
   const runs: TextNode[] = [];
   const resolved = pieces.map((piece) =>
     piece === 'break' ? piece : { ...piece, marks: canonicalMarks(piece.marks) },
@@ -120,6 +126,18 @@ function runsOf(element: ElementNode): TextNode[] {
   return mergeRuns(runs);
 }
 
+/** The runs of each line of a block: the text is cut at its line breaks, marks stay with their characters. */
+function linesOf(runs: readonly TextNode[]): TextNode[][] {
+  const lines: TextNode[][] = [[]];
+  for (const run of runs) {
+    for (const [index, text] of run.text.split('\n').entries()) {
+      if (index > 0) lines.push([]);
+      if (text.length > 0) (lines[lines.length - 1] as TextNode[]).push({ ...run, text });
+    }
+  }
+  return lines;
+}
+
 function listItemsOf(list: ListNode, items: ListItem[]): void {
   for (const item of list.getChildren()) {
     if (!(item instanceof ListItemNode)) continue;
@@ -142,7 +160,9 @@ function isEmptyBlock(block: Block): boolean {
 /** Reads the blocks from the editor. Call inside `editorState.read` or `editor.read`. */
 export function $readBlocks(): Block[] {
   const blocks: Block[] = [];
-  for (const node of $getRoot().getChildren()) {
+  const nodes = $getRoot().getChildren();
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index];
     if ($isListNode(node)) {
       const items: ListItem[] = [];
       listItemsOf(node, items);
@@ -153,10 +173,20 @@ export function $readBlocks(): Block[] {
         });
       }
     } else if ($isCodeNode(node)) {
-      const children = mergeRuns([{ type: 'text', text: cleanText(node.getTextContent()) }]);
+      // Empty lines around the code are not content; the spaces of a line are.
+      const code = cleanText(node.getTextContent()).replace(/^\n+|\n+$/g, '');
+      const children = mergeRuns([{ type: 'text', text: code }]);
       if (children.length > 0) blocks.push({ type: 'code_block', children });
     } else if ($isQuoteNode(node)) {
-      const children = runsOf(node);
+      // The editor keeps every quoted line as its own node (rich-text/editing.ts); neighbours are one quote.
+      const lines = [node];
+      for (let next = nodes[index + 1]; $isQuoteNode(next); next = nodes[index + 1]) {
+        lines.push(next);
+        index += 1;
+      }
+      while (lines.length > 0 && lines[0]?.getTextContentSize() === 0) lines.shift();
+      while (lines.length > 0 && lines[lines.length - 1]?.getTextContentSize() === 0) lines.pop();
+      const children = runsOf(...lines);
       if (children.length > 0) blocks.push({ type: 'quote', children });
     } else if ($isElementNode(node)) {
       blocks.push({ type: 'paragraph', children: runsOf(node) });
@@ -203,9 +233,12 @@ export function $writeBlocks(blocks: readonly Block[]): void {
         break;
       }
       case 'quote': {
-        const quote = $createQuoteNode();
-        appendRuns(quote, block.children);
-        root.append(quote);
+        // One node per quoted line, as the editor makes them.
+        for (const line of linesOf(block.children)) {
+          const quote = $createQuoteNode();
+          appendRuns(quote, line);
+          root.append(quote);
+        }
         break;
       }
       case 'code_block': {

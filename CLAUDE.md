@@ -191,6 +191,7 @@ pnpm -C frontend format:check
 pnpm -C frontend lint
 pnpm -C frontend typecheck
 pnpm -C frontend test
+pnpm -C frontend test:e2e        # browser smoke tests (Playwright, Chromium, Vite dev server, no backend); not in CI yet
 pnpm -C frontend build          # web and ops; the desktop app is built by Tauri
 pnpm -C frontend check:bundle   # bundle budget, after build
 pnpm -C frontend desktop:dev    # desktop app with the web dev server (needs Rust and the C++ build tools; the URL scheme needs one registered start, see README)

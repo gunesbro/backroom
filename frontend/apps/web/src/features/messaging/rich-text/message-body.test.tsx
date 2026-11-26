@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react';
+import axe from 'axe-core';
 import { describe, expect, it } from 'vitest';
+import { LocaleProvider } from '@/shared/locale-provider';
 import { MessageBody } from './message-blocks';
 
 const run = (text: string, marks?: object[]) => ({ type: 'text', text, ...(marks ? { marks } : {}) });
@@ -152,5 +154,34 @@ describe('MessageBody rendering', () => {
     const { container } = render(<MessageBody text="" sending={false} blocks={blocks} />);
 
     expect(container.textContent).toBe('hi @…there');
+  });
+});
+
+describe('MessageBody code block', () => {
+  // The box scrolls sideways, so it must take the keyboard (WebKit does not focus scrollers by itself) and say what
+  // it is. The scrolling itself needs layout: apps/web/e2e runs axe's scrollable-region rule in a real browser.
+  it.each([
+    ['en', 'Code block'],
+    ['tr', 'Kod bloğu'],
+  ] as const)('Render_WhenACodeBlockAndTheLanguageIs%s_IsANamedFocusableRegion', async (locale, name) => {
+    const { container } = render(
+      <LocaleProvider locale={locale}>
+        <MessageBody
+          text="plain"
+          sending={false}
+          blocks={[{ type: 'code_block', children: [run('const a = 1;')] }]}
+        />
+      </LocaleProvider>,
+    );
+
+    const region = screen.getByRole('region', { name });
+    expect(region.tagName).toBe('PRE');
+    expect(region).toHaveAttribute('tabindex', '0');
+    region.focus();
+    expect(region).toHaveFocus();
+    const results = await axe.run(container, {
+      rules: { 'color-contrast': { enabled: false }, region: { enabled: false } },
+    });
+    expect(results.violations.map((violation) => `${violation.id}: ${violation.help}`)).toEqual([]);
   });
 });

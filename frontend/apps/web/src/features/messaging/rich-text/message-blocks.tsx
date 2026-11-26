@@ -1,6 +1,8 @@
 import type { MouseEvent, ReactNode } from 'react';
 import { isDesktopApp, tauriInvoke } from '@/features/auth';
 import { EmojiText, isEmojiOnly } from '@/features/emoji';
+import { useTranslate } from '@/shared/locale';
+import { messages } from '../messages';
 import {
   derivedMentionNames,
   parseBlocks,
@@ -117,7 +119,13 @@ function isLargeEmoji(blocks: readonly ReceivedBlock[]): boolean {
   );
 }
 
-function renderBlock(block: ReceivedBlock, key: number, names: Names, large: boolean): ReactNode {
+function renderBlock(
+  block: ReceivedBlock,
+  key: number,
+  names: Names,
+  large: boolean,
+  codeLabel: string,
+): ReactNode {
   switch (block.type) {
     case 'paragraph':
       return (
@@ -133,7 +141,8 @@ function renderBlock(block: ReceivedBlock, key: number, names: Names, large: boo
       );
     case 'code_block':
       return (
-        <pre key={key} className="bm-code-block">
+        // Long lines scroll sideways, so the box takes the keyboard (arrow keys scroll it) and has a name.
+        <pre key={key} className="bm-code-block" tabIndex={0} role="region" aria-label={codeLabel}>
           <code>{plainText(block.children)}</code>
         </pre>
       );
@@ -141,11 +150,11 @@ function renderBlock(block: ReceivedBlock, key: number, names: Names, large: boo
     case 'numbered_list': {
       const items = block.children.map((item, index) => <li key={index}>{runs(item.children, names)}</li>);
       return block.type === 'bulleted_list' ? (
-        <ul key={key} className="bm-text bm-list">
+        <ul key={key} className="bm-text bm-rt-list">
           {items}
         </ul>
       ) : (
-        <ol key={key} className="bm-text bm-list">
+        <ol key={key} className="bm-text bm-rt-list">
           {items}
         </ol>
       );
@@ -170,10 +179,11 @@ export function MessageBody({
   /** The display name of a member the client knows, or undefined (the name in `text` is shown then). */
   mentionName?: (accountId: string) => string | undefined;
 }) {
+  const t = useTranslate(messages);
   // From outside: a malformed payload must not crash the list.
   const text = typeof received === 'string' ? received : '';
   const parsed = parseBlocks(blocks);
-  const className = sending ? 'bm-body bm-body--sending' : 'bm-body';
+  const className = sending ? 'bm-blocks bm-blocks--sending' : 'bm-blocks';
   if (!parsed) {
     return (
       <p className={sending ? 'bm-text bm-text--sending' : 'bm-text'}>
@@ -186,5 +196,9 @@ export function MessageBody({
     account: mentionName ?? (() => undefined),
     derived: derivedMentionNames(parsed, text),
   };
-  return <div className={className}>{parsed.map((block, key) => renderBlock(block, key, names, large))}</div>;
+  return (
+    <div className={className}>
+      {parsed.map((block, key) => renderBlock(block, key, names, large, t('codeBlock')))}
+    </div>
+  );
 }

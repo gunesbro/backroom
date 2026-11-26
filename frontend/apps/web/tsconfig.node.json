@@ -9,6 +9,8 @@
     "emoji-data-plugin.ts",
     "emoji-image-set.ts",
     "emoji-images-plugin.ts",
-    "svg-path.ts"
+    "svg-path.ts",
+    "playwright.config.ts",
+    "e2e"
   ]
 }
