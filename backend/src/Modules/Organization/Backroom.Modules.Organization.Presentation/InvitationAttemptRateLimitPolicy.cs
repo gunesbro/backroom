@@ -39,15 +39,16 @@ internal sealed class InvitationAttemptRateLimitPolicy : IRateLimiterPolicy<stri
         // Authorization has run: the account is signed in. The route's organization is not checked yet, so an
         // outsider spends their own permits.
         var account = httpContext.User.FindFirst(KeycloakClaims.Subject)?.Value;
-        var organization = Convert.ToString(httpContext.Request.RouteValues["orgId"], CultureInfo.InvariantCulture);
-        if (string.IsNullOrEmpty(account) || string.IsNullOrEmpty(organization))
+        // The organization as a GUID, so every spelling of it shares one bucket; an unparsable one is answered 404 by the endpoint.
+        var organizationParsed = Guid.TryParse(Convert.ToString(httpContext.Request.RouteValues["orgId"], CultureInfo.InvariantCulture), out var organization);
+        if (string.IsNullOrEmpty(account) || !organizationParsed)
         {
             return RateLimitPartition.GetNoLimiter(string.Empty);
         }
 
         // A sliding window, so a full day's permits cannot be spent twice around the end of a fixed window.
         return RateLimitPartition.GetSlidingWindowLimiter(
-            string.Concat(account, "/", organization),
+            string.Concat(account, "/", organization.ToString("N")),
             static _ => new SlidingWindowRateLimiterOptions
             {
                 PermitLimit = PermitsPerDay,
