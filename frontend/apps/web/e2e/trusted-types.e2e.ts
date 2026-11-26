@@ -19,7 +19,7 @@ test('TrustedTypes_WhenAStringReachesAnHtmlSink_IsBlocked', async ({ page }) => 
   expect(outcome).toBe('blocked');
 });
 
-test('TrustedTypes_WhenHtmlIsPastedIntoTheComposer_KeepsItsFormatting', async ({ page }) => {
+test('TrustedTypes_WhenHtmlIsPastedIntoTheComposerTwice_KeepsItsFormattingBothTimes', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -29,26 +29,34 @@ test('TrustedTypes_WhenHtmlIsPastedIntoTheComposer_KeepsItsFormatting', async ({
   const field = page.getByRole('textbox', { name: 'Message #general' });
   await field.click();
 
-  // Only HTML on the clipboard, so the editor's own HTML import (and its policy) does the work.
-  await field.evaluate((element) => {
-    const data = new DataTransfer();
-    data.setData('text/html', '<p><b>bold</b> and plain</p>');
-    element.dispatchEvent(
-      new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
-    );
-  });
-  await expect(field.locator('strong, b')).toHaveText('bold');
-  await page.keyboard.press('Enter');
+  // The editor creates its policy again on every paste, so the second paste is the one that needs the duplicates.
+  for (const round of [1, 2]) {
+    // Only HTML on the clipboard, so the editor's own HTML import (and its policy) does the work.
+    await field.evaluate((element) => {
+      const data = new DataTransfer();
+      data.setData('text/html', '<p><b>bold</b> and plain</p>');
+      element.dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+      );
+    });
+    await expect(field.locator('strong, b'), `paste ${String(round)}`).toHaveText('bold');
+    await page.keyboard.press('Enter');
 
-  const message = page.getByRole('list', { name: 'Sent messages' }).getByRole('listitem').first();
-  expect(JSON.parse((await message.getAttribute('data-blocks')) ?? '[]')).toEqual([
-    {
-      type: 'paragraph',
-      children: [
-        { type: 'text', text: 'bold', marks: [{ type: 'bold' }] },
-        { type: 'text', text: ' and plain' },
+    const message = page
+      .getByRole('list', { name: 'Sent messages' })
+      .getByRole('listitem')
+      .nth(round - 1);
+    expect(JSON.parse((await message.getAttribute('data-blocks')) ?? '[]'), `paste ${String(round)}`).toEqual(
+      [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', text: 'bold', marks: [{ type: 'bold' }] },
+            { type: 'text', text: ' and plain' },
+          ],
+        },
       ],
-    },
-  ]);
+    );
+  }
   expect(errors).toEqual([]);
 });
