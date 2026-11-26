@@ -13,7 +13,7 @@ import {
   type LexicalCommand,
   type LexicalEditor,
 } from 'lexical';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { Composer } from './composer';
 import type { Block, TextNode } from './rich-text/blocks';
@@ -106,6 +106,12 @@ async function setup(initial: Block[] = []) {
   };
   return { ...view, onSend, input, caret, type, press, dispatch, blocks: () => editor.read($readBlocks) };
 }
+
+// The composer loads the editor lazily. Loading it once here keeps the cold module load out of the first test's wait,
+// which a busy machine could stretch past it.
+beforeAll(async () => {
+  await import('./rich-text/rich-field');
+});
 
 describe('Rich text composer lines', () => {
   it('Composer_WhenShiftEnterPressedInAParagraph_StartsANewParagraphAndDoesNotSend', async () => {
