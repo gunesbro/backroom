@@ -40,6 +40,18 @@ type SoonKey =
   | 'attachFile';
 
 /** The editor and Lexical load as their own chunk, only when the rich text flag is on. */
+/** Stands in for the rich text field while it loads: the toolbar row and the input at their final height, so the page does not move when the field arrives. */
+export function RichFieldPlaceholder() {
+  return (
+    <div className="bm-rt-loading" aria-busy="true">
+      <div className="bm-format" aria-hidden="true">
+        <span className="bm-format__reserve" />
+      </div>
+      <div className="bm-composer__input bm-rt__input" />
+    </div>
+  );
+}
+
 const RichField = lazy(() =>
   import('./rich-text/rich-field').then(({ RichField: field }) => ({ default: field })),
 );
@@ -135,7 +147,7 @@ export function Composer({
       }}
     >
       {rich ? (
-        <Suspense fallback={<div className="bm-composer__input bm-rt__input" aria-busy="true" />}>
+        <Suspense fallback={<RichFieldPlaceholder />}>
           <RichField
             ref={richRef}
             label={t('composerLabel', { name: channelName })}
