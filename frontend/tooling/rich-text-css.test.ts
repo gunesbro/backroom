@@ -16,6 +16,8 @@ const messageBlocks = read('../apps/web/src/features/messaging/rich-text/message
 /** The declarations of the rule with exactly this selector list. */
 function rule(sheet: string, selector: string): Record<string, string> {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/,\s*/g, ',\\s*');
+  // The selector is a literal of this test, escaped above, matched against our own style sheets: no untrusted input.
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const match = new RegExp(`(?:^|})\\s*(?:/\\*[^]*?\\*/\\s*)*${escaped}\\s*{([^}]*)}`, 'm').exec(sheet);
   if (!match) throw new Error(`no rule for ${selector}`);
   const declarations: Record<string, string> = {};
