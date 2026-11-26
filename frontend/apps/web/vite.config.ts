@@ -4,9 +4,16 @@ import { defineConfig } from 'vitest/config';
 import { emojiData } from './emoji-data-plugin.ts';
 import { emojiImageSet } from './emoji-image-set.ts';
 import { emojiImages } from './emoji-images-plugin.ts';
+import { trustedTypes } from '../../tooling/trusted-types.ts';
+import { TRUSTED_TYPES_CSP } from './trusted-types.ts';
 
 export default defineConfig({
-  plugins: [react(), emojiData(emojiImageSet.notices), emojiImages(emojiImageSet)],
+  plugins: [
+    react(),
+    emojiData(emojiImageSet.notices),
+    emojiImages(emojiImageSet),
+    trustedTypes(TRUSTED_TYPES_CSP),
+  ],
   // Keeps Rust compiler output visible when the desktop app runs this dev server.
   clearScreen: false,
   resolve: {

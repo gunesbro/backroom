@@ -119,6 +119,14 @@ describe('Rich text composer', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it('Composer_WhenWebKitConfirmsCompositionWithEnter_DoesNotSend', async () => {
+    const { onSend, input, write } = await setup();
+    write(paragraph('draft'));
+    // WebKit delivers compositionend first, so isComposing is false and only keyCode 229 marks the key.
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it('Composer_WhenOver4000Characters_DisablesSendAndShowsCount', async () => {
     const { onSend, input, write } = await setup();
     write(paragraph('a'.repeat(4001)));

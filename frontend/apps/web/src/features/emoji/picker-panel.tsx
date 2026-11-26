@@ -10,6 +10,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from 'react';
+import { isComposingKey } from '@/shared/keyboard';
 import { useTranslate } from '@/shared/locale';
 import { searchEmojis, type Emoji, type EmojiData, type EmojiGroupKey } from './data';
 import { EmojiImage } from './emoji-image';
@@ -204,6 +205,8 @@ export function PickerPanel({
   };
 
   const searchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // A key that confirms an input method's composition finishes the search text; it does not pick.
+    if (isComposingKey(event.nativeEvent)) return;
     if (event.key === 'Enter') {
       // Never submits a form the picker sits in.
       event.preventDefault();
