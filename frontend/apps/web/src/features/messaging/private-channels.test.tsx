@@ -42,6 +42,8 @@ type Sent = { method: string; path: string; body: unknown };
 let conversations: Conversation[] = [];
 let canManagePublic = false;
 let sent: Sent[] = [];
+/** How many times the sidebar's list (not the archived one) was asked for. */
+let listRequests = 0;
 let people: { accountId: string; displayName: string }[] = [];
 
 const general = (): Conversation => ({
@@ -102,6 +104,7 @@ const server = setupServer(
   ),
   http.get(`${BASE}/conversations`, ({ request }) => {
     const archived = new URL(request.url).searchParams.get('archived') === 'true';
+    if (!archived) listRequests += 1;
     return HttpResponse.json({
       items: conversations
         .filter(
@@ -243,6 +246,7 @@ beforeEach(() => {
   conversations = [general(), plans()];
   canManagePublic = false;
   sent = [];
+  listRequests = 0;
   people = [
     { accountId: VELI_ID, displayName: 'Veli Yılmaz' },
     { accountId: AYSE_ID, displayName: 'Ayşe Demir' },
@@ -421,9 +425,11 @@ describe('Create a private channel', () => {
       expect(icon).not.toHaveTextContent('#');
     };
     await expectLock();
+    // Creating invalidates the list: wait for the second request, then look again.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Private channel launch' })).toBeVisible();
+      expect(listRequests).toBeGreaterThanOrEqual(2);
     });
+    await expectLock();
     const created = conversations.find(({ name }) => name === 'launch');
     expect(created).toBeDefined();
     if (created) realtime.emit('ConversationUpdated', { ...updated(created), name: 'launch' });
