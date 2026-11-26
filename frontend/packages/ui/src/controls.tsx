@@ -4,11 +4,13 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
+  type SyntheticEvent,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -94,6 +96,7 @@ export function SoonButton({
         onBlur={hide}
         onKeyDown={(event) => {
           if (event.key === 'Escape' && position) {
+            event.preventDefault();
             event.stopPropagation();
             hide();
           }
@@ -374,12 +377,9 @@ export function MenuButton({
   );
 }
 
-const FOCUSABLE =
-  'button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
-
 /**
  * A modal dialog (docs/design: Dialogs): a title with a close button over the content. Focus moves to
- * `initialFocus` (or the dialog) when it opens, stays inside while it is open, and returns to what opened it; Escape
+ * `initialFocus` (or the dialog) when it opens, stays inside while it is open (the page behind is inert), and returns to what opened it; Escape
  * closes it. The content lays out its body and footer with the ph-dialog__body and ph-dialog__foot classes.
  */
 export function Dialog({
@@ -399,61 +399,55 @@ export function Dialog({
   wide?: boolean;
 }) {
   const titleId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => {
+  // The native modal makes the page inert and keeps focus inside; React owns the lifecycle, so the dialog opens on
+  // mount and is closed only by unmounting.
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
     const opener = document.activeElement;
-    (initialFocus?.current ?? dialogRef.current)?.focus();
+    if (dialog && !dialog.open) dialog.showModal();
+    (initialFocus?.current ?? dialog)?.focus();
     return () => {
+      if (dialog?.open) dialog.close();
       if (opener instanceof HTMLElement) opener.focus();
     };
     // Only when the dialog opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      onClose();
-      return;
-    }
+  const keyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
+    if (event.key !== 'Escape') return;
+    // preventDefault stops the browser's own cancel; an inner control that used Escape has already done the same.
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  };
 
-    if (event.key !== 'Tab') return;
-    const items = dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    const first = items?.[0];
-    const last = items?.[items.length - 1];
-    // The dialog itself has focus when nothing inside was chosen to start with; Shift+Tab must not leave it.
-    const atStart = document.activeElement === first || document.activeElement === dialogRef.current;
-    if (event.shiftKey && atStart) {
-      event.preventDefault();
-      last?.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first?.focus();
-    }
+  // A close request that is not a keydown, such as the back gesture.
+  const cancel = (event: SyntheticEvent<HTMLDialogElement>) => {
+    event.preventDefault();
+    onClose();
   };
 
   return (
-    <div className="ph-backdrop">
-      <div
-        ref={dialogRef}
-        className={classes('ph-dialog', wide && 'ph-dialog--wide')}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        onKeyDown={keyDown}
-      >
-        <div className="ph-dialog__head">
-          <h2 id={titleId} className="ph-dialog__title">
-            {title}
-          </h2>
-          <button type="button" className="ph-dialog__close" aria-label={closeLabel} onClick={onClose}>
-            <Icon name="close" size={18} />
-          </button>
-        </div>
-        {children}
+    <dialog
+      ref={dialogRef}
+      className={classes('ph-dialog', wide && 'ph-dialog--wide')}
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      onKeyDown={keyDown}
+      onCancel={cancel}
+    >
+      <div className="ph-dialog__head">
+        <h2 id={titleId} className="ph-dialog__title">
+          {title}
+        </h2>
+        <button type="button" className="ph-dialog__close" aria-label={closeLabel} onClick={onClose}>
+          <Icon name="close" size={18} />
+        </button>
       </div>
-    </div>
+      {children}
+    </dialog>
   );
 }

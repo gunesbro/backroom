@@ -781,23 +781,15 @@ body {
 }
 
 /* Dialogs (docs/design: Dialogs). */
-.ph-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--ph-space-16);
-  background: var(--ph-backdrop);
-}
-
 .ph-dialog {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
+  /* The browser's modal styles are reset: centred, 16 px from the viewport edges. */
+  margin: auto;
+  padding: 0;
+  border: 0;
+  width: calc(100% - 2 * var(--ph-space-16));
   max-width: 420px;
-  max-height: 100%;
+  max-height: calc(100% - 2 * var(--ph-space-16));
+  overscroll-behavior: contain;
   overflow: hidden;
   border-radius: var(--ph-radius-3xl);
   background: var(--ph-panel);
@@ -805,6 +797,17 @@ body {
   box-shadow: var(--ph-shadow-dialog);
   box-sizing: border-box;
   outline: none;
+}
+
+.ph-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.ph-dialog::backdrop {
+  background: var(--ph-backdrop);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .ph-dialog--wide {
