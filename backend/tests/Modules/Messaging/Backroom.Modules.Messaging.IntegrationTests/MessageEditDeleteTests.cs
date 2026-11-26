@@ -295,6 +295,103 @@ public sealed class MessageEditDeleteTests(PostgresDatabase database, KeycloakRe
         (await QuerySingleAsync("SELECT text FROM messaging.messages WHERE id = $1", messageId))[0].Should().Be(DBNull.Value);
     }
 
+    [Fact]
+    public async Task Edit_WithVariedSpellingsOfTheOrganizationId_SharesOneRateLimitBucketAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var sent = await SendMessageAsync(organizationId, channelId, Alice, "busy");
+        var messageId = sent["id"]!.GetValue<Guid>();
+
+        for (var edit = 0; edit < 30; edit++)
+        {
+            var spelling = edit % 2 == 0 ? organizationId.ToString("D") : organizationId.ToString("N");
+            using var accepted = await SendAsync(HttpMethod.Patch, $"/api/v1/orgs/{spelling}/messages/{messageId}", Alice, new { blocks = JsonNode.Parse(Paragraph($"edit {edit}")) });
+            accepted.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using var limited = await SendAsync(
+            HttpMethod.Patch, $"/api/v1/orgs/{organizationId.ToString("D").ToUpperInvariant()}/messages/{messageId}", Alice, new { blocks = JsonNode.Parse(Paragraph("one too many")) });
+
+        limited.StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "another spelling of the same organization is the same bucket");
+    }
+
+    [Fact]
+    public async Task Delete_ThirtyOneTimesAMinute_IsRateLimitedAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var ids = new List<Guid>();
+        for (var index = 0; index < 31; index++)
+        {
+            ids.Add((await SendMessageAsync(organizationId, channelId, Alice, $"message {index}"))["id"]!.GetValue<Guid>());
+        }
+
+        for (var index = 0; index < 30; index++)
+        {
+            using var accepted = await DeleteMessageAsync(organizationId, ids[index], Alice);
+            accepted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        using var limited = await DeleteMessageAsync(organizationId, ids[30], Alice);
+
+        limited.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await ErrorCodeAsync(limited)).Should().Be("messaging.rate_limited");
+        (await QuerySingleAsync("SELECT deleted_at IS NULL FROM messaging.messages WHERE id = $1", ids[30])).Should().Equal(true);
+    }
+
+    [Fact]
+    public async Task EditAndDelete_ByAnAuthorWhoLeftAPublicChannel_DeleteWorksEditDoesNotAsync()
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        var channelId = await CreateChannelAsync(organizationId, Alice, "General");
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        using (var join = await PostAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/join", Bob, new { }))
+        {
+            join.EnsureSuccessStatusCode();
+        }
+
+        var sent = await SendMessageAsync(organizationId, channelId, Bob, "before leaving");
+        using (var leave = await PostAsync($"/api/v1/orgs/{organizationId}/conversations/{channelId}/leave", Bob, new { }))
+        {
+            leave.EnsureSuccessStatusCode();
+        }
+
+        using var edit = await PatchAsync(organizationId, sent["id"]!.GetValue<Guid>(), Bob, Paragraph("after leaving"));
+        using var delete = await DeleteMessageAsync(organizationId, sent["id"]!.GetValue<Guid>(), Bob);
+
+        edit.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await ErrorCodeAsync(edit)).Should().Be("messaging.not_a_member");
+        delete.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task EditAndDelete_WhileTheEpochIsUnconfirmed_AnswerServiceUnavailableAndChangeNothingAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var sent = await SendMessageAsync(organizationId, channelId, Alice, "waiting");
+        var messageId = sent["id"]!.GetValue<Guid>();
+        CellEpoch.Epoch = null;
+
+        using var edit = await PatchAsync(organizationId, messageId, Alice, Paragraph("edited"));
+        using var delete = await DeleteMessageAsync(organizationId, messageId, Alice);
+
+        edit.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        delete.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        (await QuerySingleAsync("SELECT text, version_seq FROM messaging.messages WHERE id = $1", messageId)).Should().Equal("waiting", 1L);
+    }
+
+    [Fact]
+    public async Task Delete_ByAModeratorInAnArchivedPublicChannel_WorksAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Admin);
+        var sent = await SendMessageAsync(organizationId, channelId, Alice, "moderate me");
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", channelId);
+
+        using var response = await DeleteMessageAsync(organizationId, sent["id"]!.GetValue<Guid>(), Bob);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
     private Task<HttpResponseMessage> PatchAsync(Guid organizationId, Guid messageId, string username, string blocks) =>
         SendAsync(HttpMethod.Patch, $"/api/v1/orgs/{organizationId}/messages/{messageId}", username, new { blocks = JsonNode.Parse(blocks) });
 

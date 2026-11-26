@@ -307,6 +307,60 @@ public sealed class PermissionCheckerTests(PostgresDatabase database) : IAsyncLi
         (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(admin, SystemRoles.ChannelsManagePublic, CancellationToken))).Should().BeTrue();
     }
 
+    [Fact]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "The SQL is the migration's own constant text.")]
+    public async Task AddMessagePermissionsMigration_ForAnExistingOrganization_GrantsTheKeyToAdminOnlyAsync()
+    {
+        // An organization from before step 9: its roles lack messages.remove-others-public.
+        var (organizationId, admin) = await OrganizationWithAccountAsync(SystemRoles.Admin);
+        var member = Guid.CreateVersion7();
+        var owner = Guid.CreateVersion7();
+        await InOrganizationAsync(organizationId, async (provisioning, _) =>
+        {
+            await provisioning.AssignRoleAsync(organizationId, member, SystemRoles.Member, CancellationToken);
+            await provisioning.AssignRoleAsync(organizationId, owner, SystemRoles.Owner, CancellationToken);
+            return true;
+        });
+        var customRole = Guid.CreateVersion7();
+        await using (var superuser = new NpgsqlConnection(database.SuperuserConnectionString))
+        {
+            await superuser.OpenAsync(CancellationToken);
+            await using var delete = new NpgsqlCommand(
+                "DELETE FROM permissions.role_permissions WHERE org_id = $1 AND permission = 'messages.remove-others-public'", superuser);
+            delete.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+            await delete.ExecuteNonQueryAsync(CancellationToken);
+            await using var custom = new NpgsqlCommand(
+                "INSERT INTO permissions.roles (id, org_id, key, is_system) VALUES ($2, $1, 'moderators', false)", superuser);
+            custom.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+            custom.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = customRole });
+            await custom.ExecuteNonQueryAsync(CancellationToken);
+        }
+
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(admin, SystemRoles.MessagesRemoveOthersPublic, CancellationToken))).Should().BeFalse();
+
+        // The migration's statement, as the migrator runs it, twice: it is idempotent.
+        await using (var migrator = new NpgsqlConnection(database.MigratorConnectionString))
+        {
+            await migrator.OpenAsync(CancellationToken);
+            for (var run = 0; run < 2; run++)
+            {
+                await using var transaction = await migrator.BeginTransactionAsync(CancellationToken);
+                await using var backfill = new NpgsqlCommand(OrganizationDataMigrationExtensions.OrganizationDataSqlText(PermissionsDbContext.Schema, Infrastructure.Migrations.AddMessagePermissions.Tables, Infrastructure.Migrations.AddMessagePermissions.InsertSql), migrator, transaction);
+                await backfill.ExecuteNonQueryAsync(CancellationToken);
+                await transaction.CommitAsync(CancellationToken);
+            }
+        }
+
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(admin, SystemRoles.MessagesRemoveOthersPublic, CancellationToken))).Should().BeTrue();
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(owner, SystemRoles.MessagesRemoveOthersPublic, CancellationToken))).Should().BeTrue("the Owner has every permission");
+        (await InOrganizationAsync(organizationId, checker => checker.HasPermissionAsync(member, SystemRoles.MessagesRemoveOthersPublic, CancellationToken))).Should().BeFalse();
+        await using var check = new NpgsqlConnection(database.SuperuserConnectionString);
+        await check.OpenAsync(CancellationToken);
+        await using var count = new NpgsqlCommand("SELECT count(*) FROM permissions.role_permissions WHERE role_id = $1", check);
+        count.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = customRole });
+        (await count.ExecuteScalarAsync(CancellationToken)).Should().Be(0L, "custom roles are left alone");
+    }
+
     private async Task<(Guid OrganizationId, Guid AccountId)> OrganizationWithAccountAsync(string role)
     {
         var organizationId = Guid.CreateVersion7();

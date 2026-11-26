@@ -106,3 +106,4 @@ Contracts: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (f
 - Reads and the send answer carry `editedAt` (null for a message never edited and for tombstones).
 - New permission `messages.remove-others-public` (Owner, Admin) lives in Permissions (migration `AddMessagePermissions`).
 - Not done here: reply with quote (a later PR), the web UI, the Notifications consumer that must drop inbox items of a deleted message (`message-deleted.v1` is not consumed yet; previews already skip deleted messages), Files' consumer for attachments.
+- Delete details: moderators may delete in archived public channels too (moderation must work in archives). A non-member author can delete only while they can read the conversation (a public channel); after leaving a private channel or a DM they get `404`. Follow-up for the personal data erasure work (account deletion and export phase): an erasure path that does not depend on current membership.

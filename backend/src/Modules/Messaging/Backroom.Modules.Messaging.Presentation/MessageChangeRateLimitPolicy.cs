@@ -31,13 +31,14 @@ internal abstract class MessageChangeRateLimitPolicy : IRateLimiterPolicy<string
 
         // Authorization has run: the account is signed in.
         var account = httpContext.User.FindFirst(KeycloakClaims.Subject)?.Value;
-        if (string.IsNullOrEmpty(account))
+        // The organization as a GUID, so every spelling of it shares one bucket; an unparsable one is answered 404 by the endpoint.
+        if (string.IsNullOrEmpty(account) || !Guid.TryParse(httpContext.Request.RouteValues["orgId"]?.ToString(), out var organizationId))
         {
             return RateLimitPartition.GetNoLimiter(string.Empty);
         }
 
         return RateLimitPartition.GetSlidingWindowLimiter(
-            $"{Kind}:{httpContext.Request.RouteValues["orgId"]}:{account}",
+            $"{Kind}:{organizationId:N}:{account}",
             static _ => new SlidingWindowRateLimiterOptions
             {
                 PermitLimit = PermitsPerMinute,

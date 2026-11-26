@@ -128,9 +128,11 @@ internal sealed partial class MessageService
     }
 
     /// <summary>
-    /// Deletes the message, leaving its tombstone. The author may always do it (also in an archived conversation: erasing one's
-    /// own words is never blocked); a moderator needs <c>messages.remove-others-public</c> and a public channel. Deleting a
-    /// deleted message changes nothing.
+    /// Deletes the message, leaving its tombstone. The author may delete while they can read the conversation, also in an archived
+    /// one and without a membership (a public channel stays readable after leaving it); after leaving a private channel or a DM the
+    /// message is unreachable (404), which is a follow-up for personal data erasure. A moderator needs
+    /// <c>messages.remove-others-public</c> and a public channel, archived ones included (moderation must work in archives).
+    /// Deleting a deleted message changes nothing.
     /// </summary>
     public async Task<Result> DeleteAsync(Guid accountId, Guid messageId, CancellationToken cancellationToken)
     {
