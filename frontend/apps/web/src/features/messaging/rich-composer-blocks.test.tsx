@@ -120,6 +120,19 @@ describe('Rich text composer lines', () => {
     expect(input.querySelectorAll('p.bm-rt-line')).toHaveLength(2);
   });
 
+  it('Composer_WhenEnterConfirmsCompositionAfterCompositionEnd_NeitherSendsNorAddsALine', async () => {
+    const { onSend, caret, blocks, input } = await setup(paragraphs('hello'));
+    caret('hello', 2);
+
+    // WebKit delivers compositionend first, so isComposing is false and only keyCode 229 marks the key.
+    act(() => {
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+    });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(blocks()).toEqual(paragraphs('hello'));
+  });
+
   it.each<[string, Block[], string]>([
     ['list', [list('bulleted_list', 'one', 'two')], 'two'],
     ['quote', [{ type: 'quote', children: [text('said\nso')] }], 'so'],

@@ -37,6 +37,7 @@ import {
   type TextFormatType,
 } from 'lexical';
 import { Icon, Toolbar, type IconName } from '@backroom/ui';
+import { isComposingKey } from '@/shared/keyboard';
 import { useTranslate } from '@/shared/locale';
 import { messages } from '../messages';
 import { hrefFromInput, type Block } from './blocks';
@@ -284,7 +285,9 @@ export function RichField({
       editor.registerCommand(
         KEY_ENTER_COMMAND,
         (event) => {
-          if (event?.isComposing) return false;
+          // The input method owns a key that confirms its composition: swallow it, as the editor itself does on
+          // WebKit, so it neither sends nor reaches the default handler, which would add an empty line.
+          if (event && isComposingKey(event)) return true;
           // Only a real Enter key sends, and only where a keyboard is the main input: without a key event (a
           // virtual keyboard, an input method) and on touch devices Enter makes a line, and the button sends.
           if (event && !event.shiftKey && !touchFirst()) {
@@ -421,7 +424,7 @@ export function RichField({
     editorRef.current?.focus();
   };
   const linkKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+    if (event.key === 'Enter' && !isComposingKey(event.nativeEvent)) {
       // Never submit the composer from here.
       event.preventDefault();
       applyLink();

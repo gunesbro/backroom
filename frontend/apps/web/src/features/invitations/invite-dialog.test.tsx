@@ -251,6 +251,21 @@ describe('InviteDialog', () => {
     expect(posts()).toHaveLength(0);
   });
 
+  it('Type_KeysConfirmingComposition_DoNotAddTheAddress', () => {
+    serve();
+    renderDialog();
+    const field = screen.getByLabelText(/email addresses/i);
+    fireEvent.change(field, { target: { value: 'a@acme.com' } });
+
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    // WebKit: compositionend comes first, so only keyCode 229 marks the confirming key.
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 229 });
+    fireEvent.keyDown(field, { key: ' ', keyCode: 229 });
+
+    expect(screen.queryAllByRole('button', { name: /^Remove / })).toHaveLength(0);
+    expect(field).toHaveValue('a@acme.com');
+  });
+
   it('Paste_SeveralAddresses_AddsEachOnceAndDropsDuplicates', () => {
     serve();
     renderDialog();
