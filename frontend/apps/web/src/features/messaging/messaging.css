@@ -501,6 +501,12 @@
   box-shadow: var(--ph-focus);
 }
 
+/* Holds the toolbar's height while the rich text field loads (one button row). */
+.bm-format__reserve {
+  display: block;
+  height: 30px;
+}
+
 .bm-format {
   display: flex;
   align-items: center;
