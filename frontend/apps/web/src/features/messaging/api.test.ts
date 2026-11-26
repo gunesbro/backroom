@@ -57,6 +57,18 @@ describe('createMessagingApi', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('Request_WithoutTheOption_FollowsTheBuildsLoopbackRule', async () => {
+    // Tests run as a development build, where the shared rule allows loopback http.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(Response.json({ items: [], next: null }));
+    const api = createMessagingApi('http://localhost:5200', () => Promise.resolve('cell-token'));
+
+    await api.listConversations('org', undefined);
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('http://localhost:5200/api/v1/orgs/org/conversations?limit=50');
+  });
+
   it('Request_ToAnAllowedAddress_UsesOnlyItsOrigin', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')

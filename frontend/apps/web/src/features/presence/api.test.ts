@@ -37,6 +37,21 @@ describe('presence API', () => {
     expect(seen[0]?.authorization).toBe('Bearer cell-token');
   });
 
+  it('ListPresence_WithoutTheOption_FollowsTheBuildsLoopbackRule', async () => {
+    // Tests run as a development build, where the shared rule allows loopback http.
+    let seen = '';
+    server.use(
+      http.get(`http://localhost:5200/api/v1/orgs/${ORG}/presence`, ({ request }) => {
+        seen = request.url;
+        return HttpResponse.json({ presence: [] });
+      }),
+    );
+
+    await listPresence('http://localhost:5200', () => Promise.resolve('cell-token'), ORG, ['a']);
+
+    expect(new URL(seen).origin).toBe('http://localhost:5200');
+  });
+
   it('ListPresence_ToAnAddressThatIsNotAllowed_NeverAsksForAToken', async () => {
     const token = vi.fn(() => Promise.resolve('cell-token'));
 
