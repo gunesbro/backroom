@@ -19,7 +19,7 @@ import {
   forgetConversation,
   noteChannelCreated,
 } from './live-cache';
-import { browseChannelsKey, conversationsKey } from './queries';
+import { browseChannelsKey, conversationKey, conversationsKey } from './queries';
 import { RealtimeContext } from './realtime-context';
 import type { Cell, MessagingApi } from './api';
 
@@ -203,6 +203,8 @@ export function useLiveUpdates({
         if (eventOrg !== current.orgId) return;
         if (change === 'added') {
           void queryClient.invalidateQueries({ queryKey: conversationsKey(eventOrg) });
+          // A channel read without joining it has a cached detail without a role: read it again.
+          void queryClient.invalidateQueries({ queryKey: conversationKey(eventOrg, conversationId) });
           return;
         }
 

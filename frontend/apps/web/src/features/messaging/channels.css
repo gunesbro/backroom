@@ -264,3 +264,35 @@
     margin: 0 var(--ph-space-8) var(--ph-space-8);
   }
 }
+
+/* Where the composer would be for a public channel that is read without joining it. */
+.bm-preview {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ph-space-12);
+  margin: 0 var(--ph-space-20) var(--ph-space-16);
+  padding: var(--ph-space-12);
+  border: 1px solid var(--ph-line);
+  border-radius: var(--ph-radius-md);
+  background: var(--ph-subtle);
+  color: var(--ph-muted);
+  font-size: 13px;
+}
+
+.bm-preview__text {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .bm-preview {
+    margin: 0 var(--ph-space-8) var(--ph-space-8);
+  }
+}
+
+.bm-browse__actions {
+  display: flex;
+  gap: var(--ph-space-8);
+}

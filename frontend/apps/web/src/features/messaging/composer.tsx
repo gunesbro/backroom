@@ -1,6 +1,7 @@
 import {
   Suspense,
   lazy,
+  useEffect,
   useId,
   useRef,
   useState,
@@ -86,8 +87,11 @@ const FORMATS: readonly (readonly { key: SoonKey; icon?: IconName; text?: string
 export function Composer({
   channelName,
   onSend,
+  focusOnMount = false,
 }: {
   channelName: string;
+  /** Takes keyboard focus when it appears: it replaces the control that had it (the bar that offers to join). */
+  focusOnMount?: boolean;
   /** Gets the normalized text and, with the rich text editor, the blocks. */
   onSend: (text: string, blocks?: Block[]) => void;
 }) {
@@ -108,6 +112,12 @@ export function Composer({
   const tooManyLinks = links > MAX_LINKS;
   const over = remaining < 0 || tooLarge || tooManyLinks;
   const canSend = text.length > 0 && !over;
+
+  useEffect(() => {
+    if (!focusOnMount) return;
+    if (config.richTextEnabled) richRef.current?.focus();
+    else inputRef.current?.focus();
+  }, [focusOnMount]);
 
   const submit = () => {
     if (!canSend) return;
