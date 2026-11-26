@@ -53,7 +53,7 @@ public sealed class CellOrganizationProvisioningTests(PostgresDatabase database,
         (await PermissionsAsync(organization, "owner")).Should().BeEquivalentTo(SystemRoles.AllPermissions);
         (await PermissionsAsync(organization, "admin")).Should().BeEquivalentTo(
             ["channels.create-public", "members.invite-by-email", "members.choose-role-on-invite", "members.manage-invitations", "files.upload", "files.remove-others-public",
-             "channels.create-private", "channels.manage-public"]);
+             "channels.create-private", "channels.manage-public", "messages.remove-others-public"]);
         (await PermissionsAsync(organization, "member")).Should().BeEquivalentTo(["channels.create-public", "members.invite-by-email", "files.upload", "channels.create-private"]);
     }
 
