@@ -9,6 +9,7 @@ import {
   type SubmitEvent,
 } from 'react';
 import { Icon, SoonButton, Toolbar, type IconName } from '@backroom/ui';
+import { isComposingKey } from '@/shared/keyboard';
 import { useTranslate } from '@/shared/locale';
 import { config } from '@/config';
 import { messages } from './messages';
@@ -125,7 +126,7 @@ export function Composer({
 
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter that confirms an input method's composition is not a send.
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === 'Enter' && !event.shiftKey && !isComposingKey(event.nativeEvent)) {
       event.preventDefault();
       submit();
     }

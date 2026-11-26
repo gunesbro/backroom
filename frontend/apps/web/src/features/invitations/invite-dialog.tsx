@@ -2,6 +2,7 @@ import { useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Dialog } from '@backroom/ui';
 import { ApiError } from '@/shared/http';
+import { isComposingKey } from '@/shared/keyboard';
 import { useLocale, useTranslate } from '@/shared/locale';
 import { normalizeEmail } from './email-address';
 import { invitationsKey } from './invitation-queries';
@@ -150,6 +151,8 @@ export function InviteDialog({
   };
 
   const inputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // Keys that confirm an input method's composition belong to it; they never add an address.
+    if (isComposingKey(event.nativeEvent)) return;
     if (
       (event.key === 'Enter' || event.key === ',' || event.key === ';' || event.key === ' ') &&
       draft.trim()

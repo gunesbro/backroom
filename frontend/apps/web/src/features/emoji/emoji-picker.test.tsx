@@ -99,6 +99,19 @@ describe('EmojiPicker', () => {
     expect(onPick).toHaveBeenCalledTimes(1);
   });
 
+  it('Search_EnterConfirmingComposition_DoesNotPick', async () => {
+    const { onPick } = renderPicker();
+    await screen.findByRole('grid');
+    search('lol');
+
+    const searchBox = screen.getByRole('searchbox');
+    fireEvent.keyDown(searchBox, { key: 'Enter', isComposing: true });
+    // WebKit: compositionend comes first, so only keyCode 229 marks the confirming Enter.
+    fireEvent.keyDown(searchBox, { key: 'Enter', keyCode: 229 });
+
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   it('Search_WithNoMatch_SaysSoAndShowsNoGrid', async () => {
     renderPicker();
     await screen.findByRole('grid');
