@@ -216,6 +216,7 @@ export function PickerPanel({
       event.preventDefault();
       focusCell(current);
     } else if (event.key === 'Escape' && query !== '') {
+      event.preventDefault();
       event.stopPropagation();
       setQuery('');
       setActive(0);
@@ -291,6 +292,7 @@ export function PickerPanel({
 
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape' && onClose) {
+      event.preventDefault();
       event.stopPropagation();
       onClose();
     }

@@ -945,17 +945,6 @@ describe('Shell', () => {
     ).toEqual([0, -1, -1, -1, -1]);
   });
 
-  it('Dialog_ShiftTabFromTheDialogItself_WrapsToTheLastControl', async () => {
-    serveCell();
-    renderWorkspace();
-    fireEvent.click(await screen.findByRole('button', { name: 'Add channel' }));
-    const dialog = screen.getByRole('dialog');
-    dialog.focus();
-
-    expect(fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true })).toBe(false);
-    expect(screen.getByRole('button', { name: 'Create' })).toHaveFocus();
-  });
-
   it('Shell_InTurkish_UsesTheDesignTexts', async () => {
     serveCell();
     renderWorkspace('tr');

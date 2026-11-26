@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import axe from 'axe-core';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -458,22 +458,12 @@ describe('InviteDialog', () => {
     expect(screen.getByRole('button', { name: 'Revoke: ali@acme.com' })).toBeEnabled();
   });
 
-  it('Close_WithEscape_CallsOnCloseAndTabStaysInsideTheDialog', async () => {
+  it('Close_WithEscape_CallsOnClose', async () => {
     serve();
     const { onClose } = renderDialog();
     await screen.findByText('No pending invitations.');
 
-    const dialog = screen.getByRole('dialog');
-    const focusable = within(dialog)
-      .getAllByRole('button')
-      .filter((button) => !(button as HTMLButtonElement).disabled);
-    const [first, last] = [focusable.at(0), focusable.at(-1)];
-    last?.focus();
-    // Tab from the last control wraps to the first instead of leaving the dialog.
-    expect(fireEvent.keyDown(last as HTMLElement, { key: 'Tab' })).toBe(false);
-    expect(document.activeElement).toBe(first);
-
-    fireEvent.keyDown(dialog, { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
   });
 

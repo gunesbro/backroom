@@ -459,6 +459,7 @@ const MessageRow = memo(function MessageRow({
         setTapped(false);
         // From inside the action bar back to the row; Escape elsewhere is left alone.
         if ((event.target as HTMLElement).closest('.bm-actions')) {
+          event.preventDefault();
           event.stopPropagation();
           rowRef.current?.focus({ preventScroll: true });
         }
