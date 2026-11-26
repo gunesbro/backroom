@@ -12,6 +12,8 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
     private readonly List<(Guid OrgId, Guid ConversationId, Guid AccountId)> _removals = [];
     private readonly List<ConversationUpdatedPayload> _conversations = [];
     private readonly List<MembershipChangedPayload> _memberships = [];
+    private readonly List<MessageEditedPayload> _edited = [];
+    private readonly List<MessageDeletedPayload> _deleted = [];
 
     public bool Fail { get; set; }
 
@@ -115,6 +117,46 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
         lock (_lock)
         {
             _memberships.Add(payload);
+        }
+    }
+
+    public IReadOnlyList<MessageEditedPayload> Edited
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _edited];
+            }
+        }
+    }
+
+    public IReadOnlyList<MessageDeletedPayload> Deleted
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _deleted];
+            }
+        }
+    }
+
+    public async Task PublishAsync(MessageEditedPayload payload, CancellationToken cancellationToken)
+    {
+        await BeforeAsync();
+        lock (_lock)
+        {
+            _edited.Add(payload);
+        }
+    }
+
+    public async Task PublishAsync(MessageDeletedPayload payload, CancellationToken cancellationToken)
+    {
+        await BeforeAsync();
+        lock (_lock)
+        {
+            _deleted.Add(payload);
         }
     }
 

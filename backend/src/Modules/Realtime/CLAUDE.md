@@ -89,3 +89,7 @@ Contract: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) ("I
 - Test: `ConversationUpdatedAndMembershipChanged_ReachOnlyTheirGroupsOnBothNodesAsync` (an Admin who is no member gets neither).
 
 - Since Phase 2 step 7 an archived conversation is readable, so `SubscribeConversation` accepts it for whoever may read it (an archived private channel still only for its members); `realtime.not_found` no longer covers "archived".
+
+## MessageEdited and MessageDeleted (Phase 2 step 9)
+
+- `ILiveEventPublisher.PublishAsync(MessageEditedPayload)` and `PublishAsync(MessageDeletedPayload)` send `MessageEdited` (`orgId, conversationId, messageId, versionSeq, changeSeq, blocks, text, editedAt, epoch`) and `MessageDeleted` (`orgId, conversationId, messageId, versionSeq, changeSeq, epoch`) to the conversation's group, like `MessagePosted.v2`. The delete carries no content, author or client message id.
