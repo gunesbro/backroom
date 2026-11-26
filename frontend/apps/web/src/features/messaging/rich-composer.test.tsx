@@ -8,7 +8,7 @@ import {
   $selectAll,
   type LexicalEditor,
 } from 'lexical';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { Composer, RichFieldPlaceholder } from './composer';
 import type { Block } from './rich-text/blocks';
@@ -47,6 +47,12 @@ async function setup() {
   const blocks = () => editor.read($readBlocks);
   return { ...view, onSend, input, editor, write, blocks };
 }
+
+// The composer loads the editor lazily. Loading it once here keeps the cold module load out of the first test's wait,
+// which a busy machine could stretch past it.
+beforeAll(async () => {
+  await import('./rich-text/rich-field');
+});
 
 describe('Rich text composer', () => {
   it('Composer_WhenEmpty_DisablesSendAndExposesTextboxAndToolbar', async () => {

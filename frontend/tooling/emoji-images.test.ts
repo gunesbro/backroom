@@ -41,7 +41,8 @@ describe('Emoji image set', () => {
   });
 
   it('SameImages_AreShippedOnce_AndTheOtherEmojiPointAtThem', () => {
-    const shipped = loadEmojiImages(emojiImageSet);
+    // The set read once above: reading and parsing every image again took seconds and timed out under a full run.
+    const shipped = loadEmojiImages({ ...emojiImageSet, images: () => images });
     const aliases = Object.entries(shipped.aliases);
 
     // The eight regions that show another region's flag, and emoji upstream draws alike.

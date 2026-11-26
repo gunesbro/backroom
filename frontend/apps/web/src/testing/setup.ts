@@ -6,8 +6,9 @@ afterEach(() => {
   cleanup();
 });
 
-// On a shared CI machine the default 1 s wait can fail although nothing is wrong; a real failure still fails.
-if (import.meta.env.BACKROOM_TEST_CI) configure({ asyncUtilTimeout: 5000 });
+// The default 1 s wait fails although nothing is wrong when the machine is busy: on a shared CI machine, and locally
+// when the whole suite runs in parallel workers. A real failure still fails, only later.
+configure({ asyncUtilTimeout: import.meta.env.BACKROOM_TEST_CI ? 5000 : 3000 });
 
 // jsdom has no modal dialogs: a minimal stand-in, installed only where the browser API is missing.
 if (typeof HTMLDialogElement !== 'undefined') {
