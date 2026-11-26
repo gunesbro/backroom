@@ -9,9 +9,10 @@ import { messages } from './messages';
 
 /**
  * The public channels of the organization (docs/contracts/phase-2.md, "HTTP APIs": <code>GET /channels</code>), with a
- * button to open (read without joining) and one to join those the person is not in. Joining adds the channel to the sidebar and opens it. A second view lists
- * the person's archived channels (<code>GET /conversations?archived=true</code>), which the sidebar leaves out: opening
- * one shows it read-only, and those allowed can unarchive it from its info.
+ * button to open those the person is not in (read without joining) and one to join them. Joining adds the channel to
+ * the sidebar and opens it. A second view lists the person's archived channels
+ * (<code>GET /conversations?archived=true</code>), which the sidebar leaves out: opening one shows it read-only, and
+ * those allowed can unarchive it from its info.
  */
 export function BrowseChannelsDialog({
   api,

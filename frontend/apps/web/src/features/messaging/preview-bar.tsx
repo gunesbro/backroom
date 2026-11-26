@@ -23,7 +23,7 @@ export function PreviewBar({ join, onJoined }: { join: () => Promise<void>; onJo
       >
         {t('joinPreviewed')}
       </Button>
-      {mutation.isError && <Alert>{t('generic')}</Alert>}
+      {mutation.isError && <Alert announce>{t('generic')}</Alert>}
     </div>
   );
 }

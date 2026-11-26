@@ -197,6 +197,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
               api={api}
               orgId={orgId}
               channel={selected}
+              joined={channelIds.includes(selected.id)}
               pending={pending}
               otherNames={otherNames}
               infoOpen={infoFor === selected.id}
@@ -221,6 +222,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
           }}
           onJoined={(channel) => {
             void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
+            void queryClient.invalidateQueries({ queryKey: conversationKey(orgId, channel.id) });
             clearActivity(channel.id);
             setChosen(channel);
             setBrowsing(false);
@@ -282,6 +284,7 @@ function ChannelView({
   api,
   orgId,
   channel,
+  joined,
   pending,
   otherNames,
   infoOpen,
@@ -292,6 +295,8 @@ function ChannelView({
   api: MessagingApi;
   orgId: string;
   channel: Channel;
+  /** The channel is in the person's own list (the sidebar). */
+  joined: boolean;
   pending: ReturnType<typeof usePendingMessages>;
   /** Names of the other channels the person can see. */
   otherNames: readonly string[];
@@ -315,7 +320,11 @@ function ChannelView({
   const isPrivate = (info?.kind ?? channel.kind) === 'private_channel';
   const archived = info ? info.archivedAt !== null : false;
   // A public channel read without having joined it: no composer, a bar to join instead.
-  const previewing = info !== undefined && info.role === null && info.kind === 'public_channel';
+  const previewing = !joined && info !== undefined && info.role === null && info.kind === 'public_channel';
+  // Until the detail says whether the person has joined, a channel outside the list shows neither composer nor bar.
+  const stateKnown = joined || info !== undefined;
+  // Set when the person joins from the bar: the composer that replaces it takes the keyboard focus.
+  const [joinedFromBar, setJoinedFromBar] = useState(false);
 
   const names = useMemo(
     () =>
@@ -514,18 +523,20 @@ function ChannelView({
         <PreviewBar
           join={() => api.joinConversation(orgId, channel.id)}
           onJoined={() => {
+            setJoinedFromBar(true);
             void queryClient.invalidateQueries({ queryKey: conversationsKey(orgId) });
             void queryClient.invalidateQueries({ queryKey: conversationKey(orgId, channel.id) });
           }}
         />
-      ) : (
+      ) : stateKnown ? (
         <Composer
+          focusOnMount={joinedFromBar}
           channelName={name}
           onSend={(text, blocks) => {
             pending.send(channel.id, text, blocks);
           }}
         />
-      )}
+      ) : null}
       {infoOpen && (
         <Suspense fallback={null}>
           <ChannelInfoDialog

@@ -1094,7 +1094,7 @@ describe('Previewing a public channel', () => {
   it('Open_NotJoinedPublicChannel_ShowsItWithoutAComposerOrASidebarEntryAndWithoutJoining', async () => {
     await openPreview();
 
-    expect(await screen.findByText('You are viewing this channel.')).toBeVisible();
+    expect(await screen.findByText('Join this channel to send messages.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Join channel' })).toBeVisible();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     const sidebar = screen.getByRole('navigation', { name: 'Acme' });
@@ -1104,12 +1104,12 @@ describe('Previewing a public channel', () => {
 
   it('Open_ThenSelectAnotherConversation_LeavesNothingBehind', async () => {
     await openPreview();
-    await screen.findByText('You are viewing this channel.');
+    await screen.findByText('Join this channel to send messages.');
 
     fireEvent.click(screen.getByRole('button', { name: 'general' }));
 
     await screen.findByRole('heading', { level: 2, name: 'general' });
-    expect(screen.queryByText('You are viewing this channel.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Join this channel to send messages.')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'lounge' })).not.toBeInTheDocument();
     expect(sent.filter(({ path }) => path.endsWith('/join'))).toEqual([]);
   });
@@ -1121,10 +1121,46 @@ describe('Previewing a public channel', () => {
 
     expect(await screen.findByRole('button', { name: 'lounge' })).toBeVisible();
     await waitFor(() => {
-      expect(screen.queryByText('You are viewing this channel.')).not.toBeInTheDocument();
+      expect(screen.queryByText('Join this channel to send messages.')).not.toBeInTheDocument();
     });
     expect(await screen.findByRole('textbox')).toBeVisible();
     expect(sent.filter(({ path }) => path.endsWith('/join'))).toHaveLength(1);
+  });
+
+  it('JoinFromTheBar_MovesFocusToTheComposer', async () => {
+    await openPreview();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Join channel' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveFocus();
+    });
+  });
+
+  it('JoinFromTheBrowseDialog_WhileViewing_SwapsTheBarForTheComposer', async () => {
+    await openPreview();
+    await screen.findByText('Join this channel to send messages.');
+
+    click('Browse channels');
+    const dialog = await screen.findByRole('dialog', { name: 'Browse channels' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Join lounge' }));
+
+    expect(await screen.findByRole('textbox')).toBeVisible();
+    expect(screen.queryByText('Join this channel to send messages.')).not.toBeInTheDocument();
+  });
+
+  it('Open_WhileTheDetailLoads_ShowsNeitherTheComposerNorTheBar', async () => {
+    conversations.push(lounge());
+    server.use(http.get(`${BASE}/conversations/c-lounge`, () => new Promise<never>(() => undefined)));
+    renderWorkspace();
+    await screen.findByRole('button', { name: 'general' });
+    click('Browse channels');
+    const dialog = await screen.findByRole('dialog', { name: 'Browse channels' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Open lounge' }));
+    await screen.findByRole('heading', { level: 2, name: 'lounge' });
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Join channel' })).not.toBeInTheDocument();
   });
 
   it('Preview_InTurkish_UsesTheTurkishTexts', async () => {
@@ -1134,7 +1170,7 @@ describe('Previewing a public channel', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Kanallara göz at' });
     fireEvent.click(await within(dialog).findByRole('button', { name: 'lounge kanalını aç' }));
 
-    expect(await screen.findByText('Bu kanalı görüntülüyorsun.')).toBeVisible();
+    expect(await screen.findByText('Mesaj göndermek için kanala katıl.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Kanala katıl' })).toBeVisible();
   });
 });
