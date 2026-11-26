@@ -40,6 +40,7 @@ public static class MessagingModule
         services.TryAddSingleton(provider => new MessageSync(bool.TryParse(provider.GetRequiredService<IConfiguration>()[MessageSync.Flag], out var enabled) && enabled));
         services.TryAddSingleton(provider => new MemberRemoval(bool.TryParse(provider.GetRequiredService<IConfiguration>()[MemberRemoval.Flag], out var enabled) && enabled));
         services.TryAddSingleton(provider => new RichText(bool.TryParse(provider.GetRequiredService<IConfiguration>()[RichText.Flag], out var enabled) && enabled));
+        services.TryAddSingleton(provider => new MessageEdit(bool.TryParse(provider.GetRequiredService<IConfiguration>()[MessageEdit.Flag], out var enabled) && enabled));
         services.TryAddScoped<IChannelStore, ChannelStore>();
         services.TryAddScoped<IConversationStore, ConversationStore>();
         services.TryAddScoped<IConversationReadAccess, ConversationReadAccess>();

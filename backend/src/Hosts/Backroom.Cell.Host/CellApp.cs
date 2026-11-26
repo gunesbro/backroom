@@ -39,6 +39,7 @@ internal static class CellApp
         // UseRateLimiter needs its services in every role; only the app role maps endpoints that use them.
         builder.Services.AddOrganizationEndpoints();
         builder.Services.AddPresenceEndpoints();
+        builder.Services.AddMessagingEndpoints();
         if (role == CellRole.App)
         {
             // Writes wait for the cell's confirmed epoch (docs/adr/0011, "Cell epoch"); the worker confirms it over the link.

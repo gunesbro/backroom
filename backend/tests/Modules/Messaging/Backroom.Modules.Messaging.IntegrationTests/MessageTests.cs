@@ -28,7 +28,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var body = (await ReadJsonAsync(response)).AsObject();
-        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "blocks", "createdAt", "deletedAt", "epoch"]);
+        body.Select(property => property.Key).Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "blocks", "createdAt", "deletedAt", "editedAt", "epoch"]);
         const string Stored = "<b>Hi</b> & \"bye\" 'x'\nnext";
         body["text"]!.GetValue<string>().Should().Be(Stored);
         body["clientMessageId"]!.GetValue<Guid>().Should().Be(clientMessageId);
@@ -393,7 +393,7 @@ public sealed class MessageTests(PostgresDatabase database, KeycloakRealm keyclo
         Ids(body).Should().Equal(Enumerable.Reverse(ids));
         body["next"].Should().BeNull();
         body["items"]![0]!.AsObject().Select(property => property.Key)
-            .Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "blocks", "createdAt", "deletedAt"]);
+            .Should().BeEquivalentTo(["id", "seq", "versionSeq", "clientMessageId", "authorAccountId", "text", "blocks", "createdAt", "deletedAt", "editedAt"]);
     }
 
     [Fact]

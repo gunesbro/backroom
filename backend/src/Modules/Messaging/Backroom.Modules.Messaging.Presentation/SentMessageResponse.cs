@@ -13,4 +13,5 @@ public sealed record SentMessageResponse(
     [property: JsonConverter(typeof(RawJsonConverter))] string? Blocks,
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeletedAt,
+    DateTimeOffset? EditedAt,
     string Epoch);

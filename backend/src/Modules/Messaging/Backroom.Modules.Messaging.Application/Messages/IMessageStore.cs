@@ -29,4 +29,25 @@ internal interface IMessageStore
 
     /// <summary>The live (not deleted) messages among <paramref name="messageIds"/> with their conversation and text; unknown ones are left out.</summary>
     Task<IReadOnlyList<MessagePreviewSource>> ListForPreviewAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken);
+
+    /// <summary>The message's conversation, author and whether it is deleted, or <see langword="null"/> if the organization has no message with that id.</summary>
+    Task<MessageHead?> FindHeadAsync(Guid messageId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Rewrites the content of a message that is not deleted: text, blocks, <c>version_seq</c> and <c>edited_at</c>. Returns the
+    /// message as stored, or <see langword="null"/> if it is deleted. The caller holds the conversation row lock.
+    /// </summary>
+    Task<MessageEntry?> EditAsync(Guid messageId, long versionSeq, string text, string blocks, DateTimeOffset editedAt, CancellationToken cancellationToken);
+
+    /// <summary>Removes the message's mention rows and returns the accounts they named.</summary>
+    Task<IReadOnlyList<Guid>> DeleteMentionsAsync(Guid messageId, CancellationToken cancellationToken);
+
+    /// <summary>Removes the message's link rows.</summary>
+    Task DeleteLinksAsync(Guid messageId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Turns the message into its tombstone in one statement: content erased (<c>text</c>, <c>blocks</c>, <c>edited_at</c>), its mention and link rows
+    /// deleted, <c>deleted_at</c> and <c>version_seq</c> set. <see langword="false"/> if it was already deleted. The caller holds the conversation row lock.
+    /// </summary>
+    Task<bool> DeleteAsync(Guid messageId, long versionSeq, DateTimeOffset deletedAt, CancellationToken cancellationToken);
 }

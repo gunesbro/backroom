@@ -58,6 +58,9 @@ public sealed class PermissionCheckerTests(PostgresDatabase database) : IAsyncLi
     [InlineData(SystemRoles.Admin, SystemRoles.ChannelsManagePublic, true)]
     [InlineData(SystemRoles.Member, SystemRoles.ChannelsCreatePrivate, true)]
     [InlineData(SystemRoles.Member, SystemRoles.ChannelsManagePublic, false)]
+    [InlineData(SystemRoles.Owner, SystemRoles.MessagesRemoveOthersPublic, true)]
+    [InlineData(SystemRoles.Admin, SystemRoles.MessagesRemoveOthersPublic, true)]
+    [InlineData(SystemRoles.Member, SystemRoles.MessagesRemoveOthersPublic, false)]
     public async Task HasPermission_ForEachRole_FollowsTheContractTableAsync(string role, string permission, bool expected)
     {
         var (organizationId, accountId) = await OrganizationWithAccountAsync(role);

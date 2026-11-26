@@ -54,6 +54,20 @@ internal sealed partial class ValkeyLiveEventPublisher : ILiveEventPublisher, ID
             LiveEventNames.MessagePostedV2, GroupNames.Conversation(_options.CellId, payload.OrgId, payload.ConversationId), payload, payload.OrgId, cancellationToken);
     }
 
+    public Task PublishAsync(MessageEditedPayload payload, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return PublishAsync(
+            LiveEventNames.MessageEdited, GroupNames.Conversation(_options.CellId, payload.OrgId, payload.ConversationId), payload, payload.OrgId, cancellationToken);
+    }
+
+    public Task PublishAsync(MessageDeletedPayload payload, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return PublishAsync(
+            LiveEventNames.MessageDeleted, GroupNames.Conversation(_options.CellId, payload.OrgId, payload.ConversationId), payload, payload.OrgId, cancellationToken);
+    }
+
     public Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(payload);

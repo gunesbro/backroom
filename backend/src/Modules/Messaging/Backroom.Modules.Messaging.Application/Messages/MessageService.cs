@@ -40,6 +40,8 @@ internal sealed partial class MessageService(
     ICellEpoch cellEpoch,
     MessageSync sync,
     RichText richText,
+    MessageEdit messageEdit,
+    IOrganizationPermissionCheck permissions,
     IMemberNames memberNames,
     TimeProvider timeProvider,
     ILogger<MessageService> logger)
@@ -150,24 +152,14 @@ internal sealed partial class MessageService(
         }
         else
         {
-            IReadOnlyDictionary<Guid, string> names = s_noNames;
-            if (parsed.MentionedAccountIds.Count > 0)
+            var (refusal, derivedText, readers) = await ResolveContentAsync(organizationId, conversationId, parsed, cancellationToken);
+            if (refusal is not null)
             {
-                names = await memberNames.FindActiveAsync(parsed.MentionedAccountIds, cancellationToken);
-                if (names.Count != parsed.MentionedAccountIds.Count)
-                {
-                    return MessageBlocks.MentionInvalid;
-                }
-
-                mentionedReaders = await conversations.FilterReadersAsync(organizationId, conversationId, parsed.MentionedAccountIds, cancellationToken);
+                return refusal;
             }
 
-            // Trimmed and normalized once, as a whole; the 4,000 characters are counted on the result.
-            var derived = MessageBlocks.DeriveText(parsed, names);
-            if (!MessageText.TryPrepare(derived, out prepared))
-            {
-                return MessageInvalid.WithReason(string.IsNullOrWhiteSpace(derived) ? "text.empty" : "text.length");
-            }
+            prepared = derivedText;
+            mentionedReaders = readers;
         }
 
         var now = StoredTime.Now(timeProvider);

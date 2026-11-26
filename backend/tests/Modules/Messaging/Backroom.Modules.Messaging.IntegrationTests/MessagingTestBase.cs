@@ -60,6 +60,9 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
     /// <summary><c>Features:RichText</c> for the cell of this test class.</summary>
     protected virtual bool RichTextEnabled => false;
 
+    /// <summary><c>Features:MessageEdit</c> for the cell of this test class.</summary>
+    protected virtual bool MessageEditEnabled => false;
+
     protected PostgresDatabase Database => database;
 
     protected IServiceProvider Services => _cell.Services;
@@ -85,14 +88,17 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         builder.Configuration["Features:MessageSync"] = MessageSyncEnabled ? "true" : "false";
         builder.Configuration["Features:ConversationMemberRemoval"] = MemberRemovalEnabled ? "true" : "false";
         builder.Configuration["Features:RichText"] = RichTextEnabled ? "true" : "false";
+        builder.Configuration["Features:MessageEdit"] = MessageEditEnabled ? "true" : "false";
         builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Identifiers.IIdGenerator>(IdScript);
         builder.Services.AddMessaging();
+        builder.Services.AddMessagingEndpoints();
         // Development would throw on a bad query string before the filters; production answers through them.
         builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 
         _cell = builder.Build();
         _cell.UseAuthentication();
         _cell.UseAuthorization();
+        _cell.UseRateLimiter();
         _cell.MapMessagingEndpoints();
         await _cell.StartAsync(CancellationToken);
         _client = _cell.GetTestClient();

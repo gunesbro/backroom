@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,6 +44,16 @@ public static class MessagingEndpoints
             .PublishLiveEventsAfterCommit()
             .InOrganization()
             .WithMetadata(new RequestSizeLimitAttribute(MaxSendMessageRequestBytes));
+        // Edit and delete: a limit per account and organization (30 a minute each), checked before the request is read.
+        endpoints.MapPatch("/api/v1/orgs/{orgId:guid}/messages/{messageId:guid}", EditMessageAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization()
+            .RequireRateLimiting(MessageEditRateLimitPolicy.Name)
+            .WithMetadata(new RequestSizeLimitAttribute(MaxSendMessageRequestBytes));
+        endpoints.MapDelete("/api/v1/orgs/{orgId:guid}/messages/{messageId:guid}", DeleteMessageAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization()
+            .RequireRateLimiting(MessageDeleteRateLimitPolicy.Name);
         endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/join", JoinAsync)
             .PublishLiveEventsAfterCommit()
             .InOrganization();
@@ -80,6 +91,30 @@ public static class MessagingEndpoints
             .WithMetadata(new RequestSizeLimitAttribute(MaxManagementRequestBytes));
 
         return endpoints;
+    }
+
+    /// <summary>The rate limits of edit and delete; the host also calls <c>UseRateLimiter</c>.</summary>
+    public static IServiceCollection AddMessagingEndpoints(this IServiceCollection services) =>
+        services.AddRateLimiter(options =>
+        {
+            options.AddPolicy<string, MessageEditRateLimitPolicy>(MessageEditRateLimitPolicy.Name);
+            options.AddPolicy<string, MessageDeleteRateLimitPolicy>(MessageDeleteRateLimitPolicy.Name);
+        });
+
+    private static async Task<IResult> EditMessageAsync(
+        Guid messageId, EditMessageRequest request, ICurrentAccount account, MessageService messages, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var result = await messages.EditAsync(account.AccountId, messageId, request.Blocks, cancellationToken);
+        return IsEpochUnconfirmed(result)
+            ? EpochUnconfirmed(httpContext)
+            : result.ToHttpResult(edited => TypedResults.Ok(ToResponse(edited.Message, edited.Epoch)));
+    }
+
+    private static async Task<IResult> DeleteMessageAsync(
+        Guid messageId, ICurrentAccount account, MessageService messages, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var result = await messages.DeleteAsync(account.AccountId, messageId, cancellationToken);
+        return result.Error == MessageService.EpochUnconfirmed ? EpochUnconfirmed(httpContext) : result.ToHttpResult();
     }
 
     private static async Task<IResult> ListChannelsAsync(Guid? after, int? limit, ChannelService channels, CancellationToken cancellationToken)
@@ -217,10 +252,10 @@ public static class MessagingEndpoints
 
     // A tombstone answers with its numbers and times only (docs/adr/0011): no author, no client id, no content.
     private static MessageResponse ToResponse(MessageEntry message) => message.DeletedAt is null
-        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null)
-        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt);
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt)
+        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt, null);
 
     private static SentMessageResponse ToResponse(MessageEntry message, string epoch) => message.DeletedAt is null
-        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, epoch)
-        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt, epoch);
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt, epoch)
+        : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt, null, epoch);
 }

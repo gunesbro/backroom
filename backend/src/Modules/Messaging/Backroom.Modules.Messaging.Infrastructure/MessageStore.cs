@@ -9,7 +9,7 @@ namespace Backroom.Modules.Messaging.Infrastructure;
 /// <summary>Messages; row-level security limits every statement to the entered organization.</summary>
 internal sealed class MessageStore(DatabaseSession session) : IMessageStore
 {
-    private const string Columns = "id, seq, version_seq, client_message_id, author_account_id, text, created_at, deleted_at, blocks";
+    private const string Columns = "id, seq, version_seq, client_message_id, author_account_id, text, created_at, deleted_at, blocks, edited_at";
 
     // A new message's latest change is its creation: version_seq starts as seq. The blocks come back as the database holds them
     // (jsonb keeps no key order or spacing), so the answer to a send is the same as every later read.
@@ -66,6 +66,30 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         INSERT INTO messaging.message_links (org_id, conversation_id, message_id, position, url, host, created_at)
         SELECT $1, $2, $3, link.position, link.url, link.host, $6
         FROM unnest($4::text[], $5::text[]) WITH ORDINALITY AS link(url, host, position)
+        """;
+
+    private const string HeadSql = "SELECT conversation_id, author_account_id, deleted_at IS NOT NULL FROM messaging.messages WHERE id = $1";
+
+    // The content and the version change together; a deleted message is never edited (the check constraint would refuse it too).
+    private const string EditSql = $"""
+        UPDATE messaging.messages
+        SET text = $2, blocks = $3, version_seq = $4, edited_at = $5
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING {Columns}
+        """;
+
+    private const string DeleteMentionsSql = "DELETE FROM messaging.message_mentions WHERE message_id = $1 RETURNING account_id";
+
+    private const string DeleteLinksSql = "DELETE FROM messaging.message_links WHERE message_id = $1";
+
+    // One statement: the tombstone and the erasure of everything derived from the content. The data-modifying CTEs run
+    // whether or not the update finds a live row; an already deleted message has no rows in them anyway.
+    private const string DeleteSql = """
+        WITH erased_mentions AS (DELETE FROM messaging.message_mentions WHERE message_id = $1),
+             erased_links AS (DELETE FROM messaging.message_links WHERE message_id = $1)
+        UPDATE messaging.messages
+        SET text = NULL, blocks = NULL, edited_at = NULL, version_seq = $2, deleted_at = $3
+        WHERE id = $1 AND deleted_at IS NULL
         """;
 
     private const string PreviewSql = """
@@ -157,6 +181,58 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         return messages;
     }
 
+    public async Task<MessageHead?> FindHeadAsync(Guid messageId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(HeadSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new MessageHead(messageId, reader.GetGuid(0), reader.GetGuid(1), reader.GetBoolean(2))
+            : null;
+    }
+
+    public async Task<MessageEntry?> EditAsync(Guid messageId, long versionSeq, string text, string blocks, DateTimeOffset editedAt, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(EditSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = text });
+        command.Parameters.Add(new NpgsqlParameter<string> { NpgsqlDbType = NpgsqlDbType.Jsonb, TypedValue = blocks });
+        command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = versionSeq });
+        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = editedAt });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
+    }
+
+    public async Task<IReadOnlyList<Guid>> DeleteMentionsAsync(Guid messageId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(DeleteMentionsSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var accounts = new List<Guid>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            accounts.Add(reader.GetGuid(0));
+        }
+
+        return accounts;
+    }
+
+    public async Task DeleteLinksAsync(Guid messageId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(DeleteLinksSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<bool> DeleteAsync(Guid messageId, long versionSeq, DateTimeOffset deletedAt, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(DeleteSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = versionSeq });
+        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = deletedAt });
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
     public async Task<IReadOnlyList<MessagePreviewSource>> ListForPreviewAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(messageIds);
@@ -185,6 +261,7 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
             deletedAt is null && !reader.IsDBNull(5) ? reader.GetString(5) : null,
             deletedAt is null && !reader.IsDBNull(8) ? reader.GetString(8) : null,
             reader.GetFieldValue<DateTimeOffset>(6),
-            deletedAt);
+            deletedAt,
+            deletedAt is null && !reader.IsDBNull(9) ? reader.GetFieldValue<DateTimeOffset>(9) : null);
     }
 }

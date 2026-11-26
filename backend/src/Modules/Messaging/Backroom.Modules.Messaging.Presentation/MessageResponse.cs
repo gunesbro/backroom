@@ -17,4 +17,5 @@ public sealed record MessageResponse(
     string? Text,
     [property: JsonConverter(typeof(RawJsonConverter))] string? Blocks,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? DeletedAt);
+    DateTimeOffset? DeletedAt,
+    DateTimeOffset? EditedAt = null);
