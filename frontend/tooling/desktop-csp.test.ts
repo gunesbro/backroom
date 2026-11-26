@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { TRUSTED_TYPES_CSP } from '../apps/web/trusted-types.ts';
 
-// JSON configs cannot carry comments, so this test keeps the spike CSP in step with the base CSP:
-// the spike may only add LiveKit origins to connect-src.
+// JSON configs cannot carry comments, so this test keeps the spike and local-check CSPs in step with the base CSP:
+// the spike may only add LiveKit origins to connect-src, the local check only the AppHost's control plane and cells.
 
 interface TauriConfig {
   app: { security: { csp: string } };
@@ -15,6 +15,15 @@ const LIVEKIT_ORIGINS = [
   'http://localhost:7880',
   'wss://*.livekit.cloud',
   'https://*.livekit.cloud',
+];
+
+/** The AppHost's fixed ports: the control plane (http) and the two cells' app hosts, with their live connections. */
+const APPHOST_ORIGINS = [
+  'http://localhost:5100',
+  'http://localhost:5200',
+  'ws://localhost:5200',
+  'http://localhost:5202',
+  'ws://localhost:5202',
 ];
 
 function readCsp(file: string): Map<string, string[]> {
@@ -38,6 +47,16 @@ describe('desktop CSP', () => {
     expected.set('connect-src', [...(base.get('connect-src') ?? []), ...LIVEKIT_ORIGINS]);
 
     expect(Object.fromEntries(spike)).toEqual(Object.fromEntries(expected));
+  });
+
+  it('local-check CSP equals the base CSP plus the AppHost origins in connect-src', () => {
+    const base = readCsp('tauri.conf.json');
+    const local = readCsp('tauri.local.conf.json');
+
+    const expected = new Map(base);
+    expected.set('connect-src', [...(base.get('connect-src') ?? []), ...APPHOST_ORIGINS]);
+
+    expect(Object.fromEntries(local)).toEqual(Object.fromEntries(expected));
   });
 
   it('base CSP blocks frames, plugins, base and form targets', () => {
