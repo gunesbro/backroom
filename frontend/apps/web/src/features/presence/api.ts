@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { CustomStatus, PresenceState } from '@backroom/realtime';
-import { cellOrigin } from '@/features/messaging';
+import { cellOrigin, LOOPBACK_HTTP_CELLS } from '@/features/messaging';
 import { requestJson, type AccessTokenSource } from '@/shared/http';
 
 /** The person's own status in the control plane (docs/contracts/phase-2.md, flow 9); expired parts come back null. */
@@ -54,7 +54,7 @@ export async function listPresence(
   accountIds: readonly string[],
   {
     signal,
-    allowLoopbackHttp = import.meta.env.DEV,
+    allowLoopbackHttp = LOOPBACK_HTTP_CELLS,
   }: { signal?: AbortSignal; allowLoopbackHttp?: boolean } = {},
 ): Promise<MemberPresence[]> {
   const ids = [...new Set(accountIds)].slice(0, MAX_PRESENCE_IDS);

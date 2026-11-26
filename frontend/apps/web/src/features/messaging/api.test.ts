@@ -1,8 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CellAddressError, cellOrigin, createMessagingApi } from './api';
+import { allowsLoopbackHttpCells, CellAddressError, cellOrigin, createMessagingApi } from './api';
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('allowsLoopbackHttpCells', () => {
+  it.each<[string, { DEV: boolean; MODE: string }, boolean]>([
+    ['the development server', { DEV: true, MODE: 'development' }, true],
+    ['the desktop local check', { DEV: false, MODE: 'desktop-local' }, true],
+    ['a production build', { DEV: false, MODE: 'production' }, false],
+    ['a build in another mode', { DEV: false, MODE: 'staging' }, false],
+  ])('LoopbackHttpCells_In %s_AllowedIs%s', (_name, env, expected) => {
+    expect(allowsLoopbackHttpCells(env)).toBe(expected);
+  });
 });
 
 describe('cellOrigin', () => {
