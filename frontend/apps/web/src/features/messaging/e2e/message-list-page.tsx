@@ -13,7 +13,7 @@ import '../messaging.css';
 type ListProfile = { commits: number; duration: number; mountDuration: number; reset: () => void };
 declare global {
   interface Window {
-    __listProfile: ListProfile;
+    __listProfile?: ListProfile;
   }
 }
 

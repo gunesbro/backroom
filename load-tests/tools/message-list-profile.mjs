@@ -1,6 +1,8 @@
-// Measures the message list in a real browser: the Profiler numbers of apps/web/e2e/message-list.html for a mouse
-// sweep over the rows, the mount, and a wheel scroll. Run from the repository root with the web dev server up:
-//   pnpm -C frontend/apps/web exec vite --port 5179   (VITE_RICH_TEXT_ENABLED=true)
+// Measures the message list in a real browser: the Profiler numbers of apps/web/e2e/message-list.html for (a) a
+// mouse sweep over the rows, (b) the mount and (c) a wheel scroll. The numbers come from the development server, so
+// React runs its development build: compare them before and after a change, never against the budget.
+// Run from the repository root (PowerShell) with the web dev server up:
+//   $env:VITE_RICH_TEXT_ENABLED = "true"; pnpm -C frontend/apps/web exec vite --port 5179
 //   node load-tests/tools/message-list-profile.mjs [baseUrl] [runs]
 // Prints medians; it asserts nothing (timings are for people to read, never a test).
 import { createRequire } from 'node:module';
@@ -19,6 +21,7 @@ for (let run = 0; run < runs; run += 1) {
   await page.goto(`${baseUrl}/e2e/message-list.html`);
   await page.getByRole('feed').waitFor();
   await page.waitForTimeout(500);
+  // (b) the mount and the size of the list
   results.mountMs.push(await page.evaluate(() => window.__listProfile.mountDuration));
   results.nodes.push(await page.evaluate(() => document.querySelectorAll('[role="feed"] *').length));
 
