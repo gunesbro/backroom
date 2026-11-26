@@ -389,6 +389,47 @@ describe('Create a private channel', () => {
     );
   });
 
+  it('Prefix_FollowsTheVisibility_ALockForPrivateAndAHashForPublic', async () => {
+    renderWorkspace();
+    const dialog = await openCreate();
+    const prefix = () => dialog.querySelector('.ph-prefixed__prefix');
+
+    expect(prefix()).toHaveTextContent('#');
+    expect(prefix()?.querySelector('svg')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Private/ }));
+    expect(prefix()?.querySelector('svg')).not.toBeNull();
+    expect(prefix()).not.toHaveTextContent('#');
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Public/ }));
+    expect(prefix()).toHaveTextContent('#');
+    expect(prefix()?.querySelector('svg')).toBeNull();
+  });
+
+  it('Create_Private_SidebarRowKeepsTheLockBeforeAndAfterTheListReloadsAndAfterALiveEvent', async () => {
+    const { realtime } = renderWorkspace();
+    const dialog = await openCreate();
+    type(within(dialog).getByLabelText('Channel name'), 'launch');
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Private/ }));
+    click('Create', dialog);
+
+    const row = async () => {
+      const button = await screen.findByRole('button', { name: 'Private channel launch' });
+      return button.querySelector('.bm-item__icon');
+    };
+    const expectLock = async () => {
+      const icon = await row();
+      expect(icon?.querySelector('svg')).not.toBeNull();
+      expect(icon).not.toHaveTextContent('#');
+    };
+    await expectLock();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Private channel launch' })).toBeVisible();
+    });
+    const created = conversations.find(({ name }) => name === 'launch');
+    expect(created).toBeDefined();
+    if (created) realtime.emit('ConversationUpdated', { ...updated(created), name: 'launch' });
+    await expectLock();
+  });
+
   it('Create_Public_SendsNoPeopleAndNoPrivateFlag', async () => {
     renderWorkspace();
     const dialog = await openCreate();

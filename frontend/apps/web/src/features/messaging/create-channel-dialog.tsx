@@ -12,6 +12,7 @@ import {
   normalizeText,
   sameNameExists,
 } from './channel-fields';
+import { ChannelMark } from './channel-mark';
 import { conversationErrorText } from './conversation-errors';
 import { MemberPicker, type PickedMember } from './member-picker';
 import { messages } from './messages';
@@ -111,7 +112,7 @@ export function CreateChannelDialog({
             </label>
             <div className="ph-prefixed">
               <span className="ph-prefixed__prefix" aria-hidden="true">
-                #
+                <ChannelMark isPrivate={isPrivate} />
               </span>
               <input
                 ref={inputRef}
