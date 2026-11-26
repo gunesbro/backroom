@@ -42,6 +42,8 @@ type Sent = { method: string; path: string; body: unknown };
 let conversations: Conversation[] = [];
 let canManagePublic = false;
 let sent: Sent[] = [];
+/** How many times the sidebar's list (not the archived one) was asked for. */
+let listRequests = 0;
 let people: { accountId: string; displayName: string }[] = [];
 
 const general = (): Conversation => ({
@@ -102,6 +104,7 @@ const server = setupServer(
   ),
   http.get(`${BASE}/conversations`, ({ request }) => {
     const archived = new URL(request.url).searchParams.get('archived') === 'true';
+    if (!archived) listRequests += 1;
     return HttpResponse.json({
       items: conversations
         .filter(
@@ -243,6 +246,7 @@ beforeEach(() => {
   conversations = [general(), plans()];
   canManagePublic = false;
   sent = [];
+  listRequests = 0;
   people = [
     { accountId: VELI_ID, displayName: 'Veli Yılmaz' },
     { accountId: AYSE_ID, displayName: 'Ayşe Demir' },
@@ -387,6 +391,49 @@ describe('Create a private channel', () => {
       'aria-current',
       'true',
     );
+  });
+
+  it('Prefix_FollowsTheVisibility_ALockForPrivateAndAHashForPublic', async () => {
+    renderWorkspace();
+    const dialog = await openCreate();
+    const prefix = () => dialog.querySelector('.ph-prefixed__prefix');
+
+    expect(prefix()).toHaveTextContent('#');
+    expect(prefix()?.querySelector('svg')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Private/ }));
+    expect(prefix()?.querySelector('svg')).not.toBeNull();
+    expect(prefix()).not.toHaveTextContent('#');
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Public/ }));
+    expect(prefix()).toHaveTextContent('#');
+    expect(prefix()?.querySelector('svg')).toBeNull();
+  });
+
+  it('Create_Private_SidebarRowKeepsTheLockBeforeAndAfterTheListReloadsAndAfterALiveEvent', async () => {
+    const { realtime } = renderWorkspace();
+    const dialog = await openCreate();
+    type(within(dialog).getByLabelText('Channel name'), 'launch');
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Private/ }));
+    click('Create', dialog);
+
+    const row = async () => {
+      const button = await screen.findByRole('button', { name: 'Private channel launch' });
+      return button.querySelector('.bm-item__icon');
+    };
+    const expectLock = async () => {
+      const icon = await row();
+      expect(icon?.querySelector('svg')).not.toBeNull();
+      expect(icon).not.toHaveTextContent('#');
+    };
+    await expectLock();
+    // Creating invalidates the list: wait for the second request, then look again.
+    await waitFor(() => {
+      expect(listRequests).toBeGreaterThanOrEqual(2);
+    });
+    await expectLock();
+    const created = conversations.find(({ name }) => name === 'launch');
+    expect(created).toBeDefined();
+    if (created) realtime.emit('ConversationUpdated', { ...updated(created), name: 'launch' });
+    await expectLock();
   });
 
   it('Create_Public_SendsNoPeopleAndNoPrivateFlag', async () => {
