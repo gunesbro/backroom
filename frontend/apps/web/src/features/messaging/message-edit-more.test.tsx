@@ -600,6 +600,72 @@ describe('MessageList editing rules', () => {
     expect(rowOf(log, 'message 2')).toHaveFocus();
   });
 
+  it('ActionBar_WhenItsMenuIsClosedByAPressElsewhere_DoesNotStayShown', async () => {
+    const two: Row[] = [
+      { key: 'k2', message: message(2) },
+      { key: 'k4', message: message(4) },
+    ];
+    render(list({ rows: two, editing: editing(false) }));
+    const log = await screen.findByRole('feed');
+    const row = rowOf(log, 'message 2');
+    fireEvent.click(await hover(row).findByRole('button', { name: 'More' }));
+    const item = within(row).getByRole('menuitem', { name: 'Edit message' });
+    act(() => {
+      item.focus();
+    });
+    expect(item).toHaveFocus();
+
+    // A press outside closes the menu: its focused item is removed, so the focus drops to the page with no blur.
+    fireEvent.pointerDown(document.body);
+    await settle();
+    expect(within(row).queryByRole('menu')).toBeNull();
+    expect(row).not.toContainElement(document.activeElement as HTMLElement | null);
+    fireEvent.pointerLeave(row, { pointerType: 'mouse' });
+    fireEvent.pointerUp(document.body, { pointerType: 'mouse' });
+
+    // Neither under the pointer nor holding the focus: the bar is gone.
+    expect(within(row).queryByRole('button', { name: 'More' })).toBeNull();
+  });
+
+  it('ActionBar_WhenFocusDroppedOutOfTheRowLandsOnAnotherRow_IsGoneFromTheFirst', async () => {
+    const two: Row[] = [
+      { key: 'k2', message: message(2) },
+      { key: 'k4', message: message(4) },
+    ];
+    render(list({ rows: two, editing: editing(false) }));
+    const log = await screen.findByRole('feed');
+    const first = rowOf(log, 'message 2');
+    fireEvent.click(await hover(first).findByRole('button', { name: 'More' }));
+    act(() => {
+      within(first).getByRole('menuitem', { name: 'Edit message' }).focus();
+    });
+    fireEvent.pointerDown(document.body);
+    await settle();
+    fireEvent.pointerLeave(first, { pointerType: 'mouse' });
+
+    // The next focus anywhere else shows that the first row does not hold it any more.
+    act(() => {
+      rowOf(log, 'message 4').focus();
+    });
+
+    expect(within(first).queryByRole('button', { name: 'More' })).toBeNull();
+  });
+
+  it('ActionBar_OnTheRowBeingEdited_IsNotShownEvenUnderThePointerOrWithFocus', async () => {
+    render(list({ rows: rows(), editing: editing(true), editingId: 'm-2' }));
+    const log = await screen.findByRole('feed');
+    await screen.findByRole('textbox', { name: 'Edit message' });
+    const row = rowOf(log, 'Alice');
+
+    hover(row);
+    act(() => {
+      row.focus();
+    });
+
+    expect(within(row).queryByRole('button', { name: 'More' })).toBeNull();
+    expect(log.querySelector('.bm-actions')).toBeNull();
+  });
+
   it('Editor_StartedByThePerson_TakesTheFocus', async () => {
     render(list({ rows: rows(), editing: editing(true), editingId: 'm-2' }));
 

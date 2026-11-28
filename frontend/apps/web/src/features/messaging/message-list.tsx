@@ -646,6 +646,30 @@ const MessageRow = memo(function MessageRow({
     }
     wasEditing.current = editingThis;
   }, [editingThis]);
+  // Focus can leave the row with no blur: a focused element inside it that is removed (the item of a menu closed by a
+  // press elsewhere, the bar's button when an edit starts) drops the focus to the page, and the row never hears of
+  // it. While focus or a tap keeps the bar shown, the next focus move, press or key outside the row checks that the
+  // focus is still inside, so a bar cannot stay behind on a row the person has left. Only such a row listens.
+  const pinned = focused || tapped;
+  useEffect(() => {
+    if (!pinned) return;
+    const check = (event: Event) => {
+      const element = rowRef.current;
+      if (!element || (event.target instanceof Node && element.contains(event.target))) return;
+      if (element.contains(document.activeElement)) return;
+      setFocused(false);
+      setTapped(false);
+    };
+    const options = { capture: true, passive: true };
+    document.addEventListener('focusin', check, options);
+    document.addEventListener('pointerup', check, options);
+    document.addEventListener('keyup', check, options);
+    return () => {
+      document.removeEventListener('focusin', check, options);
+      document.removeEventListener('pointerup', check, options);
+      document.removeEventListener('keyup', check, options);
+    };
+  }, [pinned]);
   if (message && deleted) {
     // A tombstone (ADR 0011): its place stays, with no author, avatar or actions.
     return (
