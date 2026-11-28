@@ -50,6 +50,13 @@ const rows: Row[] = Array.from({ length: COUNT }, (_, index): Row => {
   return { key: message.clientMessageId, message };
 });
 const noop = () => undefined;
+const editing = {
+  start: noop,
+  cancel: noop,
+  save: () => Promise.resolve(undefined),
+  remove: noop,
+  takeFocus: () => false,
+};
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element #root is missing.');
@@ -76,7 +83,8 @@ createRoot(root).render(
           loadingNewer={false}
           onLoadNewer={noop}
           authorName={(id) => NAMES[id] ?? 'Someone'}
-          ownAccountId={undefined}
+          ownAccountId={AUTHORS[location.search === '?own=last' ? 1 : 0]}
+          editing={editing}
           ownName="Alice"
           locale="en"
           onRetry={noop}
