@@ -48,17 +48,35 @@ const NAMES: Record<string, string> = { [AUTHORS[0] ?? '']: 'Veli', [AUTHORS[1] 
 const COUNT = Number(new URLSearchParams(location.search).get('count') ?? 200);
 const OWN = AUTHORS[new URLSearchParams(location.search).has('own') ? 1 : 0];
 const START = Date.parse('2026-11-01T09:00:00Z');
-const initialRows: Row[] = Array.from({ length: COUNT }, (_, index): Row => {
-  const message: Message = {
+const JUMP = new URLSearchParams(location.search).has('jump');
+/** Message `index` of the channel; with ?jump the newest one replies to message 20, which the list does not hold. */
+function messageAt(index: number): Message {
+  return {
     id: `m-${String(index)}`,
     seq: index + 1,
     clientMessageId: `c-${String(index)}`,
     authorAccountId: AUTHORS[index % 2] ?? '',
     text: `message ${String(index + 1)}${index % 3 === 0 ? ' with a longer text that wraps over more than one line when the window is narrow enough to need it' : ''}`,
     createdAt: new Date(START + index * 37 * 60_000).toISOString(),
+    ...(JUMP && index === COUNT - 1
+      ? {
+          replyTo: {
+            messageId: 'm-19',
+            deleted: false,
+            authorAccountId: AUTHORS[1] ?? '',
+            text: 'message 20',
+          },
+        }
+      : {}),
   };
-  return { key: message.clientMessageId, message };
-});
+}
+
+const rowOf = (message: Message): Row => ({ key: message.clientMessageId, message });
+// With ?jump the list holds only the newest 100 messages; a jump shows the 50 around the original (detached).
+const initialRows: Row[] = Array.from({ length: COUNT }, (_, index) => messageAt(index))
+  .slice(JUMP ? -100 : 0)
+  .map(rowOf);
+const jumpWindow: Row[] = Array.from({ length: 50 }, (_, index) => messageAt(index)).map(rowOf);
 const noop = () => undefined;
 
 /**
@@ -68,6 +86,18 @@ const noop = () => undefined;
 // eslint-disable-next-line react-refresh/only-export-components -- a test page: the whole page reloads on a change
 function Page() {
   const [rows, setRows] = useState(initialRows);
+  // ?jump: the window a jump shows in place of the newest messages, as the workspace's query does.
+  const [detached, setDetached] = useState(false);
+  const jumpUnloaded = useCallback((id: string) => {
+    if (!jumpWindow.some((row) => row.message?.id === id)) return Promise.resolve(false);
+    setRows(jumpWindow);
+    setDetached(true);
+    return Promise.resolve(true);
+  }, []);
+  const jumpToLatest = useCallback(() => {
+    setRows(initialRows);
+    setDetached(false);
+  }, []);
   // ?edit=<id> opens the editor on that row from the start (for the tests of the editor frame).
   const [editingId, setEditingId] = useState(new URLSearchParams(location.search).get('edit') ?? undefined);
   const [deleting, setDeleting] = useState<string>();
@@ -134,6 +164,9 @@ function Page() {
         onRetry={noop}
         onDiscard={noop}
         onJoin={noop}
+        detached={detached}
+        onJumpToLatest={jumpToLatest}
+        onJumpUnloaded={JUMP ? jumpUnloaded : undefined}
       />
       {deleting !== undefined && (
         <DeleteMessageDialog

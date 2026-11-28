@@ -12,7 +12,7 @@ const MAX_ANNOUNCED_CHARACTERS = 200;
 /**
  * A small polite live region that reads out messages that arrive while the channel is open. The list itself is not
  * live (it is virtualized and holds hundreds of rows), so nothing else is announced. Own messages, messages loaded
- * from history and the messages present on opening are never announced.
+ * from history and the messages present on opening (or on going back to the newest ones) are never announced.
  */
 export function NewMessageAnnouncer({
   rows,
@@ -29,6 +29,8 @@ export function NewMessageAnnouncer({
   const t = useTranslate(messages);
   const [text, setText] = useState('');
   const seen = useRef(-1);
+  // Whether the last run was active: the rows that come with going back to the newest messages are shown, not news.
+  const wasActive = useRef(active);
   const queue = useRef<string[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef({ t, authorName });
@@ -37,7 +39,8 @@ export function NewMessageAnnouncer({
   });
 
   useEffect(() => {
-    const first = seen.current < 0;
+    const first = seen.current < 0 || !wasActive.current;
+    wasActive.current = active;
     let newest = Math.max(seen.current, 0);
     const fresh: string[] = [];
     for (const row of rows) {

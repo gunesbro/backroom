@@ -226,3 +226,38 @@ test('MessageEditor_WhenOpenedInPlace_FieldHasAVisibleFrameAndTheFocusRing', asy
   await page.getByRole('textbox', { name: 'Edit message' }).focus();
   await expect(field).toHaveCSS('outline-style', 'solid');
 });
+
+// A jump to a quoted original the list does not hold, in a real browser: the window replaces the rows, the original
+// is scrolled into view with the focus, and "Jump to latest" brings the newest messages back with the list at its end.
+test('Jump_ToAnOriginalNotLoaded_ShowsItWithFocusAndJumpToLatestReturnsToTheEnd', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto('/e2e/message-list.html?jump');
+  const feed = page.getByRole('feed');
+  await feed.waitFor();
+  const quote = page.getByRole('button', { name: /^Replied message: .*message 20$/ });
+  await quote.scrollIntoViewIfNeeded();
+  await quote.click();
+
+  const original = page.locator('[data-row-key="c-19"]');
+  await expect(original).toBeFocused();
+  await expect(original).toBeInViewport();
+  await expect(original).toHaveClass(/bm-message--flash/);
+  // The rows drawn before the scroll landed did not ask for anything; the view stays on the original.
+  await page.waitForTimeout(300);
+  await expect(original).toBeInViewport();
+
+  const latest = page.getByRole('button', { name: 'Jump to latest' });
+  await expect(latest).toBeVisible();
+  // A real button, used with the keyboard (it comes after the log, and after the focused row's action bar).
+  await latest.focus();
+  await page.keyboard.press('Enter');
+
+  await expect(latest).toHaveCount(0);
+  const newest = page.locator('[data-row-key="c-199"]');
+  await expect(newest).toBeFocused();
+  await expect(newest).toBeInViewport();
+  const atEnd = await feed.evaluate(
+    (element) => element.scrollHeight - element.scrollTop - element.clientHeight < 2,
+  );
+  expect(atEnd).toBe(true);
+});

@@ -32,6 +32,9 @@ type ByChannel = Readonly<Record<string, readonly PendingMessage[]>>;
 
 const NONE: readonly PendingMessage[] = [];
 
+/** Deleted originals remembered so that a reply started before the delete is known; the oldest go first. */
+const MAX_DELETED_ORIGINALS = 1000;
+
 const DELETED_REASONS: ReadonlySet<string> = new Set(['reply.deleted', 'reply.not_found']);
 
 /** The quote of a deleted original: its id only, with no author and no text. */
@@ -60,6 +63,8 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
   });
   // Sends in flight, so a second click cannot post the same message twice before the state shows it.
   const inFlight = useRef(new Set<string>());
+  // Originals known to be deleted: a send that still quotes one carries no author or text of it.
+  const deletedOriginals = useRef(new Set<string>());
 
   const update = useCallback(
     (channelId: string, change: (list: readonly PendingMessage[]) => readonly PendingMessage[]) => {
@@ -123,11 +128,12 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
   /** `text` is already normalized (the plain text derived from `blocks`, when there are blocks). */
   const send = useCallback(
     (channelId: string, text: string, blocks?: Block[], replyTo?: MessageQuote) => {
+      const known = replyTo !== undefined && deletedOriginals.current.has(replyTo.messageId);
       const pending: PendingMessage = {
         clientMessageId: crypto.randomUUID(),
         text,
         blocks,
-        replyTo,
+        replyTo: known ? deletedQuote(replyTo.messageId) : replyTo,
         createdAt: new Date().toISOString(),
         status: 'sending',
       };
@@ -168,6 +174,13 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
    * author and text, as the cached replies do.
    */
   const markOriginalDeleted = useCallback((messageId: string) => {
+    const deleted = deletedOriginals.current;
+    deleted.delete(messageId);
+    deleted.add(messageId);
+    if (deleted.size > MAX_DELETED_ORIGINALS) {
+      const oldest = deleted.values().next();
+      if (!oldest.done) deleted.delete(oldest.value);
+    }
     setByChannel((current) => {
       let changed = false;
       const next: Record<string, readonly PendingMessage[]> = {};

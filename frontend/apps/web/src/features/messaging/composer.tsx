@@ -203,7 +203,8 @@ export function Composer({
               <b>{reply.name}</b>
               {replyParts[1]}
             </span>
-            <span className="bm-replybar__text">· {reply.text}</span>
+            {/* No excerpt while the original is not in the view (a jump's window in the history). */}
+            {reply.text !== '' && <span className="bm-replybar__text">· {reply.text}</span>}
           </span>
           <button
             type="button"

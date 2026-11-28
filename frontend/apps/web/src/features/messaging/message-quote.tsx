@@ -5,8 +5,9 @@ import { messages } from './messages';
 
 /**
  * The quote above a reply (docs/design: Main, `.quote`): a corner line, the original's author and its text on one line.
- * When the original is loaded it is a button that goes to it; otherwise (not loaded yet) it only shows the quote. A
- * deleted original shows the contract's text and nothing of its author.
+ * When the list can go to the original (it is loaded, or the list can load a window around it) it is a button that goes
+ * there; otherwise it only shows the quote. A deleted original shows the contract's text and nothing of its author,
+ * and is never a button.
  */
 export function QuoteLine({
   quote,
@@ -19,7 +20,7 @@ export function QuoteLine({
   /** The original's author, as the list names people. */
   name: string;
   authorId: string;
-  /** The original is in the loaded list. */
+  /** The list can go to the original: it is loaded, or a window around it can be loaded. */
   canJump: boolean;
   /** `keyboard`: the person used the keyboard, so the focus follows to the original. */
   onJump: (messageId: string, keyboard: boolean) => void;
@@ -40,7 +41,8 @@ export function QuoteLine({
       <span className="bm-reply-quote__line" aria-hidden="true" />
       <Avatar name={name} toneKey={authorId} size="sm" />
       <b>{name}</b>
-      <span className="bm-reply-quote__text">{text}</span>
+      {/* A reply sent while its original was not in the view has no excerpt yet: the name only. */}
+      {text !== '' && <span className="bm-reply-quote__text">{text}</span>}
     </>
   );
   if (!canJump) return <p className="bm-reply-quote">{content}</p>;
@@ -48,7 +50,7 @@ export function QuoteLine({
     <button
       type="button"
       className="bm-reply-quote bm-reply-quote--link"
-      aria-label={t('repliedMessage', { name, text })}
+      aria-label={text === '' ? t('repliedMessageName', { name }) : t('repliedMessage', { name, text })}
       onClick={(event) => {
         // A click made by the keyboard (Enter, Space) has no pointer position.
         onJump(quote.messageId, event.detail === 0);
