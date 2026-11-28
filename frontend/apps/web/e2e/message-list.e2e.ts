@@ -227,6 +227,51 @@ test('MessageEditor_WhenOpenedInPlace_FieldHasAVisibleFrameAndTheFocusRing', asy
   await expect(field).toHaveCSS('outline-style', 'solid');
 });
 
+// The caret of a message opened for editing is at the end of its text, so typing continues the message.
+test('MessageEditor_WhenOpenedInPlace_PutsTheCaretAtTheEndOfTheText', async ({ page }) => {
+  await page.goto('/e2e/message-list.html?own=last');
+  await page.getByRole('feed').waitFor();
+  const row = page.locator('[data-row-key="c-199"]');
+  await row.hover();
+  await row.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Edit message' }).click();
+  const editor = page.getByRole('textbox', { name: 'Edit message' });
+  await expect(editor).toBeFocused();
+  await page.keyboard.type('X');
+  await expect(editor).toHaveText('message 200X');
+});
+
+test('MessageEditor_WhenOpenedOnAMessageWithSeveralBlocks_PutsTheCaretAtTheEndOfTheLastBlock', async ({
+  page,
+}) => {
+  await page.goto('/e2e/message-list.html?own=last&rich');
+  await page.getByRole('feed').waitFor();
+  const row = page.locator('[data-row-key="c-199"]');
+  await row.hover();
+  await row.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Edit message' }).click();
+  const editor = page.getByRole('textbox', { name: 'Edit message' });
+  await expect(editor).toBeFocused();
+  await page.keyboard.type('X');
+  await expect(editor.locator('li').last()).toHaveText('twoX');
+  await expect(editor.locator('p').first()).toHaveText('first line');
+});
+
+test('MessageEditor_WhenOpenedWithTheKeyboard_PutsTheCaretAtTheEndOfTheText', async ({ page }) => {
+  await page.goto('/e2e/message-list.html?own=last&rich');
+  await page.getByRole('feed').waitFor();
+  const row = page.locator('[data-row-key="c-199"]');
+  await row.focus();
+  await row.getByRole('button', { name: 'More' }).focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('menuitem', { name: 'Edit message' }).focus();
+  await page.keyboard.press('Enter');
+  const editor = page.getByRole('textbox', { name: 'Edit message' });
+  await expect(editor).toBeFocused();
+  await page.keyboard.type('X');
+  await expect(editor.locator('li').last()).toHaveText('twoX');
+});
+
 // A jump to a quoted original the list does not hold, in a real browser: the window replaces the rows, the original
 // is scrolled into view with the focus, and "Jump to latest" brings the newest messages back with the list at its end.
 test('Jump_ToAnOriginalNotLoaded_ShowsItWithFocusAndJumpToLatestReturnsToTheEnd', async ({ page }) => {

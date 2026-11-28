@@ -101,3 +101,16 @@ test('Composer_WhenALongMessageIsTypedWithTheKeyboard_SendsItsBlocksAndDrawsThem
   await expect(page.locator('.bm-rt__placeholder')).toBeVisible();
   await expect(field).toBeFocused();
 });
+
+test('Composer_WhenAMessageIsSent_KeepsTheFocusWithTheCaretInTheEmptyField', async ({ page }) => {
+  await page.goto('/e2e/composer.html');
+  const field = page.getByRole('textbox', { name: 'Message #general' });
+  await field.click();
+  await page.keyboard.type('hello');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('list', { name: 'Sent messages' }).getByRole('listitem')).toHaveCount(1);
+  await expect(field).toBeFocused();
+  await expect(page.locator('.bm-rt__placeholder')).toHaveCount(1);
+  await page.keyboard.type('next');
+  await expect(field).toHaveText('next');
+});
