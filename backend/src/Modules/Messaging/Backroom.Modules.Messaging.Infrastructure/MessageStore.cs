@@ -32,6 +32,14 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         WHERE m.conversation_id = $1 AND m.author_account_id = $2 AND m.client_message_id = $3
         """;
 
+    // The anchor of an around read: one row by the primary key, in its conversation.
+    private const string FindInConversationSql = $"""
+        SELECT {Columns}
+        FROM messaging.messages m
+        {QuoteJoin}
+        WHERE m.conversation_id = $1 AND m.id = $2
+        """;
+
     // History: newest first, by sequence number (commit order), tombstones included (they keep their place). Served by
     // the unique index (conversation_id, seq) read backwards.
     private const string ListBeforeSql = $"""
@@ -168,6 +176,15 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = authorAccountId });
         command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = clientMessageId });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
+    }
+
+    public async Task<MessageEntry?> FindInConversationAsync(Guid conversationId, Guid messageId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(FindInConversationSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = conversationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
     }
