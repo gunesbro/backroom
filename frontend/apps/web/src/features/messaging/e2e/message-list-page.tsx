@@ -36,7 +36,7 @@ const onRender: ProfilerOnRenderCallback = (_id, phase, actualDuration) => {
 
 const AUTHORS = ['00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003'];
 const NAMES: Record<string, string> = { [AUTHORS[0] ?? '']: 'Veli', [AUTHORS[1] ?? '']: 'Ayse' };
-const COUNT = 200;
+const COUNT = Number(new URLSearchParams(location.search).get('count') ?? 200);
 const START = Date.parse('2026-11-01T09:00:00Z');
 const rows: Row[] = Array.from({ length: COUNT }, (_, index): Row => {
   const message: Message = {
@@ -50,6 +50,13 @@ const rows: Row[] = Array.from({ length: COUNT }, (_, index): Row => {
   return { key: message.clientMessageId, message };
 });
 const noop = () => undefined;
+const editing = {
+  start: noop,
+  cancel: noop,
+  save: () => Promise.resolve(undefined),
+  remove: noop,
+  takeFocus: () => false,
+};
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element #root is missing.');
@@ -76,7 +83,8 @@ createRoot(root).render(
           loadingNewer={false}
           onLoadNewer={noop}
           authorName={(id) => NAMES[id] ?? 'Someone'}
-          ownAccountId={undefined}
+          ownAccountId={AUTHORS[new URLSearchParams(location.search).has('own') ? 1 : 0]}
+          editing={editing}
           ownName="Alice"
           locale="en"
           onRetry={noop}

@@ -421,6 +421,19 @@
   background: var(--ph-row-hover);
 }
 
+/*
+ * Rows are absolutely positioned and transformed, so each is its own stacking context and a later row paints over an
+ * earlier one. The row whose action bar is mounted goes above its neighbours (the bar hangs up into the row above),
+ * and the row with an open menu above that, so the menu covers the next row and takes the pointer.
+ */
+.bm-row:has(.bm-actions) {
+  z-index: 1;
+}
+
+.bm-row:has([aria-haspopup='menu'][aria-expanded='true']) {
+  z-index: 2;
+}
+
 /* The message actions (later phases) over the message under the pointer. */
 .bm-actions {
   position: absolute;

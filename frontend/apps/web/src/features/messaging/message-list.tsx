@@ -488,6 +488,7 @@ function MessageActions({
             label={t(action.key)}
             button={<Icon name={action.icon} size={16} />}
             menuClassName="bm-actions__menu"
+            placement="auto"
             entries={entries}
           />
         ) : (
