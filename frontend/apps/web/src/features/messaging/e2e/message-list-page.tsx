@@ -47,11 +47,12 @@ const AUTHORS = ['00000000-0000-4000-8000-000000000002', '00000000-0000-4000-800
 const NAMES: Record<string, string> = { [AUTHORS[0] ?? '']: 'Veli', [AUTHORS[1] ?? '']: 'Ayse' };
 const COUNT = Number(new URLSearchParams(location.search).get('count') ?? 200);
 const OWN = AUTHORS[new URLSearchParams(location.search).has('own') ? 1 : 0];
+const RICH = new URLSearchParams(location.search).has('rich');
 const START = Date.parse('2026-11-01T09:00:00Z');
 const JUMP = new URLSearchParams(location.search).has('jump');
 /** Message `index` of the channel; with ?jump the newest one replies to message 20, which the list does not hold. */
 function messageAt(index: number): Message {
-  return {
+  const message: Message = {
     id: `m-${String(index)}`,
     seq: index + 1,
     clientMessageId: `c-${String(index)}`,
@@ -69,6 +70,20 @@ function messageAt(index: number): Message {
         }
       : {}),
   };
+  // ?rich gives the newest message several blocks (for the caret test of the editor).
+  if (RICH && index === COUNT - 1) {
+    message.blocks = [
+      { type: 'paragraph', children: [{ type: 'text', text: 'first line' }] },
+      {
+        type: 'bulleted_list',
+        children: [
+          { type: 'list_item', children: [{ type: 'text', text: 'one' }] },
+          { type: 'list_item', children: [{ type: 'text', text: 'two', marks: [{ type: 'bold' }] }] },
+        ],
+      },
+    ];
+  }
+  return message;
 }
 
 const rowOf = (message: Message): Row => ({ key: message.clientMessageId, message });
