@@ -6,6 +6,7 @@ namespace Backroom.Modules.Messaging.Application.Messages;
 /// stored JSON of its blocks (validated when it was written). A deleted message is a tombstone:
 /// <paramref name="DeletedAt"/> is set and <paramref name="Text"/>, <paramref name="Blocks"/> and <paramref name="EditedAt"/> are <see langword="null"/>.
 /// <paramref name="EditedAt"/> is the time of the latest edit, <see langword="null"/> for a message never edited.
+/// <paramref name="ReplyTo"/> is the quote of a reply (<see langword="null"/> for other messages and for tombstones).
 /// </summary>
 internal sealed record MessageEntry(
     Guid Id,
@@ -17,4 +18,5 @@ internal sealed record MessageEntry(
     string? Blocks,
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeletedAt,
-    DateTimeOffset? EditedAt = null);
+    DateTimeOffset? EditedAt = null,
+    MessageQuote? ReplyTo = null);

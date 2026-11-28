@@ -10,4 +10,5 @@ internal sealed record NewMessage(
     Guid ClientMessageId,
     string Text,
     string Blocks,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    Guid? ReplyToMessageId = null);

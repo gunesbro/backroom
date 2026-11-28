@@ -158,7 +158,7 @@ public static class MessagingEndpoints
     private static async Task<IResult> SendMessageAsync(
         Guid conversationId, SendMessageRequest request, ICurrentAccount account, MessageService messages, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var result = await messages.SendAsync(account.AccountId, conversationId, request.ClientMessageId, request.Text, request.Blocks, cancellationToken);
+        var result = await messages.SendAsync(account.AccountId, conversationId, request.ClientMessageId, request.Text, request.Blocks, request.ReplyToMessageId, cancellationToken);
         return IsEpochUnconfirmed(result)
             ? EpochUnconfirmed(httpContext)
             : result.ToHttpResult(sent => sent.Created
@@ -250,12 +250,15 @@ public static class MessagingEndpoints
         conversation.Id, conversation.Kind, conversation.Name, conversation.Description, conversation.CreatedAt, conversation.ArchivedAt,
         conversation.MemberCount, conversation.OwnerAccountId, conversation.Role);
 
+    private static MessageQuoteResponse? ToQuote(MessageQuote? quote) =>
+        quote is null ? null : new(quote.MessageId, quote.AuthorAccountId, quote.Text, quote.Deleted);
+
     // A tombstone answers with its numbers and times only (docs/adr/0011): no author, no client id, no content.
     private static MessageResponse ToResponse(MessageEntry message) => message.DeletedAt is null
-        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt)
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt, ToQuote(message.ReplyTo))
         : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt, null);
 
     private static SentMessageResponse ToResponse(MessageEntry message, string epoch) => message.DeletedAt is null
-        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt, epoch)
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt, epoch, ToQuote(message.ReplyTo))
         : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt, null, epoch);
 }
