@@ -350,3 +350,85 @@ describe('A refused rich text send', () => {
     expect(onRetry).toHaveBeenCalledWith('client-1');
   });
 });
+
+describe('Loading pages from the rows in view', () => {
+  /** The list with earlier pages to load, and the rows kept drawn outside the view as the props say. */
+  function listWith(
+    rows: readonly Row[],
+    props: { hasEarlier: boolean; editingId?: string; onLoadEarlier: () => void },
+  ) {
+    return (
+      <LocaleProvider locale="en">
+        <MessageList
+          channelName="general"
+          rows={rows}
+          hasEarlier={props.hasEarlier}
+          loadingEarlier={false}
+          onLoadEarlier={props.onLoadEarlier}
+          hasNewer={false}
+          loadingNewer={false}
+          onLoadNewer={vi.fn()}
+          authorName={() => 'Veli'}
+          ownAccountId={undefined}
+          ownName="Alice"
+          locale="en"
+          onRetry={vi.fn()}
+          onDiscard={vi.fn()}
+          onJoin={vi.fn()}
+          editingId={props.editingId}
+        />
+      </LocaleProvider>
+    );
+  }
+
+  const scrollFeed = (feed: HTMLElement, top: number) => {
+    act(() => {
+      feed.scrollTop = top;
+      fireEvent.scroll(feed);
+    });
+  };
+
+  it('FocusedRowNearTheTop_WhileTheViewIsAtTheBottom_DoesNotLoadEarlierMessages', () => {
+    const onLoadEarlier = vi.fn();
+    const rows = range(1, 60);
+    const view = render(listWith(rows, { hasEarlier: false, onLoadEarlier }));
+    const feed = screen.getByRole('feed');
+    scrollFeed(feed, 0);
+    const kept = article('message 2');
+    focusOn(kept);
+    scrollFeed(feed, feed.scrollHeight);
+    expect(kept).toBeInTheDocument();
+
+    // Earlier messages exist now: only the rows in view (at the bottom) may ask for them, not the kept focused row.
+    view.rerender(listWith(rows, { hasEarlier: true, onLoadEarlier }));
+
+    expect(onLoadEarlier).not.toHaveBeenCalled();
+  });
+
+  it('EditedRowFarAbove_ThenAJumpToALoadedOriginal_LoadsNoEarlierMessages', () => {
+    const onLoadEarlier = vi.fn();
+    const rows = [
+      ...range(1, 59),
+      {
+        key: 'c-60',
+        message: {
+          ...message(60),
+          replyTo: { messageId: 'm-30', deleted: false, authorAccountId: OTHER, text: 'message 30' },
+        },
+      },
+    ];
+    const view = render(listWith(rows, { hasEarlier: false, onLoadEarlier }));
+    const feed = screen.getByRole('feed');
+    // The person edits message 2 (kept drawn), then reads at the bottom.
+    view.rerender(listWith(rows, { hasEarlier: false, editingId: 'm-2', onLoadEarlier }));
+    scrollFeed(feed, feed.scrollHeight);
+    view.rerender(listWith(rows, { hasEarlier: true, editingId: 'm-2', onLoadEarlier }));
+    expect(onLoadEarlier).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replied message: Veli: message 30' }));
+    scrollFeed(feed, feed.scrollTop);
+
+    expect(article('message 30')).toHaveClass('bm-message--flash');
+    expect(onLoadEarlier).not.toHaveBeenCalled();
+  });
+});

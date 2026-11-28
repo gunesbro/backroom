@@ -153,9 +153,10 @@ export function MessageList({
   const following = useRef(true);
   // Loading earlier messages waits until the list has been scrolled to its end once.
   const armed = useRef(false);
-  // The row a jump scrolls to, until the drawn rows include it or a scroll event reports where the list is: until then
-  // the drawn rows may be those of the old position (the end, or the top), which must not ask for pages. No timer: on a
-  // busy device the scroll lands late, and rows drawn from the old position are still wrong then.
+  // The row a jump scrolls to, until the rows in view (the visible range, not the rows kept drawn for focus or editing)
+  // include it or a scroll event reports where the list is: until then the rows in view may be those of the old
+  // position (the end, or the top), which must not ask for pages. No timer: on a busy device the scroll lands late, and
+  // rows drawn from the old position are still wrong then.
   // A ref, so the effects of the very commit that drew the jump's rows already see it.
   const settleKey = useRef<string>(undefined);
   // The row at the top of the view after the last change, and where it was: rows added or dropped above it move it.
@@ -450,9 +451,10 @@ export function MessageList({
     if (element) element.focus({ preventScroll: true });
     else pendingFocus.current = nextKey;
   };
-  const firstIndex = items[0]?.index;
-  const lastIndex = items.at(-1)?.index;
-  /** Pages may load from the drawn rows only once they are those around the jump's row (or no jump is pending). */
+  // The rows in view: the longest unbroken run of drawn rows. The rows kept drawn outside it (the focused row, the one
+  // being edited) say nothing about where the view is, so they never ask for pages.
+  const { firstIndex, lastIndex } = viewRange(items);
+  /** Pages may load from the rows in view only once they are those around the jump's row (or no jump is pending). */
   const landed = useCallback(() => {
     const key = settleKey.current;
     const at = key === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === key);
@@ -583,6 +585,31 @@ export function MessageList({
       )}
     </>
   );
+}
+
+/** The first and last index of the longest unbroken run of drawn rows (the visible range with its overscan). */
+function viewRange(items: readonly { index: number }[]): {
+  firstIndex: number | undefined;
+  lastIndex: number | undefined;
+} {
+  let best: { firstIndex: number | undefined; lastIndex: number | undefined } = {
+    firstIndex: undefined,
+    lastIndex: undefined,
+  };
+  let bestLength = 0;
+  let start = 0;
+  for (let at = 0; at < items.length; at += 1) {
+    const current = items[at]?.index ?? 0;
+    const next = items[at + 1]?.index;
+    if (next === current + 1) continue;
+    const length = at - start + 1;
+    if (length > bestLength) {
+      bestLength = length;
+      best = { firstIndex: items[start]?.index, lastIndex: current };
+    }
+    start = at + 1;
+  }
+  return best;
 }
 
 function createdAtOf(row: Row): string {

@@ -488,6 +488,9 @@ describe('Jump to an original that is not loaded', () => {
     await within(log).findByText('message 75');
     const before = reads('before').find((url) => url.searchParams.get('before') === '76');
     expect(before).toBeDefined();
+    // Each earlier page is asked for once: no cursor is read twice.
+    const cursors = reads('before').map((url) => url.searchParams.get('before'));
+    expect(new Set(cursors).size).toBe(cursors.length);
     expect(before?.searchParams.get('epoch')).toBe(EPOCH);
 
     scrollLog(log, 'end');
