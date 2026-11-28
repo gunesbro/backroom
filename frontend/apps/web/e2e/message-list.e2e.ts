@@ -130,3 +130,75 @@ test('MessageActions_WhenTheRowAboveIsFocused_TheBarOfTheHoveredRowStaysOnTop', 
   );
   expect(inside).toBe(true);
 });
+
+// A menu closed by a press elsewhere removes its focused item: the focus drops to the page with no blur on the row.
+// The bar must not stay behind on each row whose menu was used (a bug seen with several bars shown at once).
+test('MessageActions_AfterMenusAreClosedByPressesElsewhere_NoBarStaysBehind', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto('/e2e/message-list.html?count=12');
+  await page.getByRole('feed').waitFor();
+  const row = (n: number) => page.locator(`[data-row-key="c-${String(n)}"]`);
+  const bars = page.locator('.bm-actions');
+
+  // Closed by a press on another row, three times.
+  for (const n of [10, 8, 6]) {
+    await row(n).hover();
+    await row(n).getByRole('button', { name: 'More' }).click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await row(n - 5).click({ position: { x: 100, y: 10 } });
+    await page.mouse.move(0, 0);
+    await expect(bars).toHaveCount(0);
+  }
+
+  // Closed by a press on the page outside the list, where nothing takes the focus.
+  await row(4).hover();
+  await row(4).getByRole('button', { name: 'More' }).click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.mouse.click(5, 5);
+  await page.mouse.move(0, 0);
+  await expect(bars).toHaveCount(0);
+});
+
+// Edit and delete through the menu with the mouse: the row being edited shows no bar, and none stays behind after.
+test('MessageActions_AroundEditingAndDeletingWithTheMouse_OnlyTheRowUnderThePointerOrWithFocusShowsABar', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto('/e2e/message-list.html?count=12');
+  await page.getByRole('feed').waitFor();
+  const row = (n: number) => page.locator(`[data-row-key="c-${String(n)}"]`);
+  const bars = page.locator('.bm-actions');
+  const editor = page.getByRole('textbox', { name: 'Edit message' });
+
+  await row(8).hover();
+  await row(8).getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Edit message' }).click();
+  await expect(editor).toBeFocused();
+  // Under the pointer and holding the focus, the row being edited still shows no bar.
+  await row(8).hover();
+  await expect(row(8).locator('.bm-actions')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await expect(bars).toHaveCount(0);
+  // Saved: the row takes the focus back (and shows its bar); a press elsewhere hides it.
+  await page.keyboard.press('End');
+  await page.keyboard.type(' edited');
+  await page.keyboard.press('Enter');
+  await expect(editor).toHaveCount(0);
+  await expect(row(8)).toBeFocused();
+  await page.mouse.click(5, 5);
+  await expect(bars).toHaveCount(0);
+
+  await row(10).hover();
+  await row(10).getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete message' }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(row(10)).toHaveClass(/bm-message--deleted/);
+  await page.mouse.move(0, 0);
+  await page.mouse.click(5, 5);
+  await expect(bars).toHaveCount(0);
+
+  // Only the row under the pointer shows a bar afterwards.
+  await row(6).hover();
+  await expect(bars).toHaveCount(1);
+  await expect(row(6).locator('.bm-actions')).toHaveCount(1);
+});
