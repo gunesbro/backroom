@@ -508,6 +508,7 @@ export function MessageList({
         onScroll={(event) => {
           const element = event.currentTarget;
           settling.current = false;
+          clearTimeout(settleTimer.current);
           previous.current = { rows, ...anchorAt(element.scrollTop) };
           following.current =
             !detached && element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_DISTANCE;

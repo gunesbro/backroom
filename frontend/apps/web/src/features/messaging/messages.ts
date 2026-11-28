@@ -175,6 +175,7 @@ type Key =
   | 'cancelReply'
   | 'repliedMessage'
   | 'jumpToLatest'
+  | 'repliedMessageName'
   | 'messageUnavailable'
   | 'replyGone'
   | 'replyUnavailable'
@@ -362,6 +363,7 @@ export const messages: Messages<Key> = {
     cancelReply: 'Cancel reply',
     repliedMessage: 'Replied message: {name}: {text}',
     jumpToLatest: 'Jump to latest',
+    repliedMessageName: 'Replied message: {name}',
     messageUnavailable: 'This message can no longer be shown.',
     replyGone: 'The message you replied to was deleted or no longer exists. Your message was not sent.',
     replyUnavailable: 'Replying to a message is not available yet. Your message was not sent.',
@@ -546,6 +548,7 @@ export const messages: Messages<Key> = {
     cancelReply: 'Yanıtı iptal et',
     repliedMessage: 'Yanıtlanan mesaj: {name}: {text}',
     jumpToLatest: 'Son mesajlara dön',
+    repliedMessageName: 'Yanıtlanan mesaj: {name}',
     messageUnavailable: 'Bu mesaj artık görüntülenemiyor.',
     replyGone: 'Yanıt verdiğin mesaj silindi ya da artık yok. Mesajın gönderilmedi.',
     replyUnavailable: 'Mesaja yanıt verme henüz kullanılamıyor. Mesajın gönderilmedi.',

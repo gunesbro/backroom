@@ -41,7 +41,8 @@ export function QuoteLine({
       <span className="bm-reply-quote__line" aria-hidden="true" />
       <Avatar name={name} toneKey={authorId} size="sm" />
       <b>{name}</b>
-      <span className="bm-reply-quote__text">{text}</span>
+      {/* A reply sent while its original was not in the view has no excerpt yet: the name only. */}
+      {text !== '' && <span className="bm-reply-quote__text">{text}</span>}
     </>
   );
   if (!canJump) return <p className="bm-reply-quote">{content}</p>;
@@ -49,7 +50,7 @@ export function QuoteLine({
     <button
       type="button"
       className="bm-reply-quote bm-reply-quote--link"
-      aria-label={t('repliedMessage', { name, text })}
+      aria-label={text === '' ? t('repliedMessageName', { name }) : t('repliedMessage', { name, text })}
       onClick={(event) => {
         // A click made by the keyboard (Enter, Space) has no pointer position.
         onJump(quote.messageId, event.detail === 0);

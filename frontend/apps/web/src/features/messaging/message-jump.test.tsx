@@ -9,6 +9,7 @@ import { AuthProvider } from '@/features/auth';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { fakeAuthClient } from '@/testing/fakes';
 import { createMessagingApi, MessagingApiContext } from './api';
+import { QuoteLine } from './message-quote';
 import { RealtimeContext } from './realtime-context';
 import { messagesKey, type MessagePages } from './queries';
 import { forgetSeqs } from './seq-memory';
@@ -94,6 +95,20 @@ function wire(seq: number): Wire {
 
   const base = message(seq);
   // Message 105 (in the window around 100) replies to message 30, outside that window.
+  // Message 155 (in the newest page) replies to message 50, which it does not hold; message 110 (in the window around
+  // 100) replies to message 150, whose own window reaches the newest message.
+  if (seq === 155) {
+    return {
+      ...base,
+      replyTo: { messageId: 'm-50', deleted: false, authorAccountId: OTHER_ID, text: 'message 50' },
+    };
+  }
+  if (seq === 110) {
+    return {
+      ...base,
+      replyTo: { messageId: 'm-150', deleted: false, authorAccountId: OTHER_ID, text: 'message 150' },
+    };
+  }
   if (seq === 105) {
     return {
       ...base,
@@ -864,6 +879,162 @@ describe('Jump to an original that is not loaded', () => {
     expect(latestButton()).toBeVisible();
     expect(rowsSaying(log, 'message 100')).toHaveLength(1);
     expect(requested.filter((url) => url.search === '?limit=50')).toHaveLength(1);
+  });
+
+  it('ReplyTarget_WhenItsOriginalIsDeletedWhileDetached_IsDroppedAndTheSendIsNoReply', async () => {
+    const sent: { replyToMessageId?: string }[] = [];
+    server.use(
+      http.post(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, async ({ request }) => {
+        const body = (await request.json()) as {
+          clientMessageId: string;
+          text: string;
+          replyToMessageId?: string;
+        };
+        sent.push(body);
+        return HttpResponse.json(
+          {
+            ...message(161),
+            clientMessageId: body.clientMessageId,
+            authorAccountId: OWN_ID,
+            text: body.text,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    const realtime = fakeRealtime();
+    renderWorkspace(realtime.client);
+    const log = await openLog();
+    const reply = rowOf(log, 'message 159');
+    fireEvent.pointerEnter(reply, { pointerType: 'mouse' });
+    fireEvent.click(within(reply).getByRole('button', { name: 'Reply' }));
+    fireEvent.click(within(log).getByRole('button', { name: QUOTE_NAME }));
+    await waitFor(() => {
+      expect(rowOf(log, 'message 100')).toHaveFocus();
+    });
+    expect(document.querySelector('.bm-replybar')).toHaveTextContent('Veli Yılmaz');
+
+    // Deleted while the window does not hold it.
+    realtime.emit('MessageDeleted', {
+      orgId: ORG,
+      conversationId: GENERAL.id,
+      messageId: 'm-159',
+      versionSeq: 500,
+      changeSeq: 500,
+      epoch: EPOCH,
+    });
+
+    expect(document.querySelector('.bm-replybar')).toBeNull();
+    const field = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Message #general' });
+    act(() => {
+      field.focus();
+    });
+    fireEvent.change(field, { target: { value: 'hello' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => {
+      expect(sent).toHaveLength(1);
+    });
+    expect(sent[0]?.replyToMessageId).toBeUndefined();
+    expect(document.querySelector('.bm-replybar')).toBeNull();
+  });
+
+  it('Jump_OvertakenByASecondJump_ShowsTheSecond', async () => {
+    const hold = deferred();
+    cell.holdAround = hold.promise;
+    renderWorkspace();
+    const log = await openLog();
+    fireEvent.click(within(log).getByRole('button', { name: QUOTE_NAME }));
+    await waitFor(() => {
+      expect(reads('around')).toHaveLength(1);
+    });
+
+    // Message 155 quotes message 50: the second jump is answered first.
+    fireEvent.click(within(log).getByRole('button', { name: 'Replied message: Veli Yılmaz: message 50' }));
+    await waitFor(() => {
+      expect(rowOf(log, 'message 50')).toHaveFocus();
+    });
+    hold.resolve();
+    await settle();
+
+    expect(rowOf(log, 'message 50')).toHaveFocus();
+    expect(rowsSaying(log, 'message 100')).toHaveLength(0);
+    expect(latestButton()).toBeVisible();
+  });
+
+  it('Jump_WithNothingNewer_AttachesAndFillsTheGapBehindItsAnswer', async () => {
+    const realtime = fakeRealtime();
+    renderWorkspace(realtime.client);
+    const log = await jumpToOriginal();
+    const hold = deferred();
+    cell.holdAround = hold.promise;
+    fireEvent.click(within(log).getByRole('button', { name: 'Replied message: Veli Yılmaz: message 150' }));
+    await waitFor(() => {
+      expect(reads('around')).toHaveLength(2);
+    });
+    // Posted after the answer was made: the answer that replaces the view does not hold it.
+    cell.count = 161;
+    realtime.emit('MessagePosted', {
+      orgId: ORG,
+      channelId: GENERAL.id,
+      message: {
+        id: 'm-161',
+        seq: 161,
+        clientMessageId: '00000000-0000-4000-8000-000000000161',
+        authorAccountId: OTHER_ID,
+        text: 'message 161',
+        createdAt: '2026-11-22T10:00:00Z',
+      },
+    });
+    hold.resolve();
+
+    await waitFor(() => {
+      expect(reads('after').map((url) => url.searchParams.get('after'))).toEqual(['160']);
+    });
+    expect(latestButton()).toBeNull();
+    scrollLog(log, 'end');
+    expect(await findInLog(log, 'message 161')).toBeInTheDocument();
+  });
+
+  it('Attach_WhenMoreThanAPageCameMeanwhile_ReloadsTheNewestMessages', async () => {
+    renderWorkspace();
+    const log = await jumpToOriginal();
+    const hold = deferred();
+    cell.holdAfter = hold.promise;
+
+    scrollLog(log, 'end');
+    await waitFor(() => {
+      expect(reads('after')).toHaveLength(1);
+    });
+    // The read that attaches answers up to 160; 100 more come before the gap is filled.
+    cell.count = 260;
+    hold.resolve();
+
+    await waitFor(() => {
+      expect(requested.filter((url) => url.search === '?limit=50')).toHaveLength(2);
+    });
+    expect(reads('after').map((url) => url.searchParams.get('after'))).toEqual(['125', '160']);
+    expect(latestButton()).toBeNull();
+    // The reload draws the list anew.
+    const fresh = await screen.findByRole('feed', { name: 'Messages in #general' });
+    scrollLog(fresh, 'end');
+    expect(await findInLog(fresh, 'message 260')).toBeInTheDocument();
+  });
+
+  it('QuoteLine_WithoutText_ShowsTheNameOnly', () => {
+    render(
+      <LocaleProvider locale="en">
+        <QuoteLine
+          quote={{ messageId: 'm-1', deleted: false, authorAccountId: OTHER_ID, text: '' }}
+          name="Veli Yılmaz"
+          authorId={OTHER_ID}
+          canJump
+          onJump={() => undefined}
+        />
+      </LocaleProvider>,
+    );
+
+    const quote = screen.getByRole('button', { name: 'Replied message: Veli Yılmaz' });
+    expect(quote.querySelector('.bm-reply-quote__text')).toBeNull();
   });
 
   it('Quote_WhenTheFlagIsOff_IsTextAndNothingIsRead', async () => {

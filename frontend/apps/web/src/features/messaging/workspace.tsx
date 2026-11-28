@@ -150,6 +150,21 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
     else leaving.current.delete(conversationId);
   }, []);
   const channelIds = useMemo(() => channels.channels.map((channel) => channel.id), [channels.channels]);
+  // A deleted message is nobody's reply target any more, in any channel (ids are unique): its author must not stay in
+  // a bar, also while a jump's window does not hold it. Unsent replies to it lose its author and text too.
+  const { markOriginalDeleted } = pending;
+  const originalDeleted = useCallback(
+    (messageId: string) => {
+      markOriginalDeleted(messageId);
+      setReplyTargets((current) => {
+        if (!Object.values(current).some((target) => target.messageId === messageId)) return current;
+        return Object.fromEntries(
+          Object.entries(current).filter(([, target]) => target.messageId !== messageId),
+        );
+      });
+    },
+    [markOriginalDeleted],
+  );
   const live = useLiveUpdates({
     cell: organization.cell,
     api,
@@ -159,7 +174,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
     ownAccountId: user.accountId,
     detailedId: infoFor,
     onRemoved: drop,
-    onMessageDeleted: pending.markOriginalDeleted,
+    onMessageDeleted: originalDeleted,
   });
   const { clearActivity } = live;
   const select = useCallback(
@@ -227,6 +242,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
               channel={selected}
               joined={channelIds.includes(selected.id)}
               pending={pending}
+              onOriginalDeleted={originalDeleted}
               replyTarget={replyTargets[selected.id]}
               onReplyTargetChange={setReplyTarget}
               otherNames={otherNames}
@@ -316,6 +332,7 @@ function ChannelView({
   channel,
   joined,
   pending,
+  onOriginalDeleted,
   replyTarget,
   onReplyTargetChange,
   otherNames,
@@ -330,6 +347,8 @@ function ChannelView({
   /** The channel is in the person's own list (the sidebar). */
   joined: boolean;
   pending: ReturnType<typeof usePendingMessages>;
+  /** A message was deleted: replies being written to it, and reply targets naming it, forget it. */
+  onOriginalDeleted: (messageId: string) => void;
   /** The message the next one replies to, if the person chose one. */
   replyTarget: ReplyTarget | undefined;
   onReplyTargetChange: (channelId: string, target: ReplyTarget | undefined) => void;
@@ -512,7 +531,8 @@ function ChannelView({
     listRef.current?.followLatest();
     void returnToLatest();
   }, [resync, returnToLatest]);
-  const { retry: retryMessage, discard: discardMessage, markOriginalDeleted } = pending;
+  const { retry: retryMessage, discard: discardMessage } = pending;
+  const markOriginalDeleted = onOriginalDeleted;
   const retry = useCallback(
     (clientMessageId: string) => {
       retryMessage(channel.id, clientMessageId);
@@ -661,10 +681,10 @@ function ChannelView({
 
   // A delete can be learned without a live event (a read, a catch-up, a refused edit): unsent and just-sent replies
   // to a message that is a tombstone in the loaded list must forget its author and text all the same.
-  const quotedIds = pendingHere.flatMap((item) => [
-    item.replyTo?.messageId,
-    item.message?.replyTo?.messageId,
-  ]);
+  const quotedIds = [
+    replyTarget?.messageId,
+    ...pendingHere.flatMap((item) => [item.replyTo?.messageId, item.message?.replyTo?.messageId]),
+  ];
   const deletedQuotedIds = confirmed
     .filter((message) => message.deletedAt && quotedIds.includes(message.id))
     .map((message) => message.id)
