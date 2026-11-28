@@ -12,6 +12,7 @@ import {
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Icon, SoonButton, Spinner, Status } from '@backroom/ui';
 import { CellSignInPendingError, CellSignInPrompt, CellUnavailableError, useAuth } from '@/features/auth';
+import { config } from '@/config';
 import { useLocale, useTranslate } from '@/shared/locale';
 import { useMessagingApiFactory, type Cell, type Channel, type MessagingApi } from './api';
 import { ChannelMark } from './channel-mark';
@@ -19,8 +20,16 @@ import { ChannelSidebar, type ChannelsState } from './channel-sidebar';
 import { Composer } from './composer';
 import { isConversationGone } from './conversation-errors';
 import { CreateChannelDialog } from './create-channel-dialog';
-import { forgetConversation } from './live-cache';
-import { MessageList, type Row } from './message-list';
+import { DeleteMessageDialog } from './delete-message-dialog';
+import {
+  applyMessageChange,
+  deleteMessageOptimistically,
+  forgetConversation,
+  restoreMessage,
+} from './live-cache';
+import { isMessageDeleted, messageChangeErrorText } from './message-errors';
+import { MessageList, type MessageEditing, type Row } from './message-list';
+import { editableBlocks, type Block } from './rich-text/blocks';
 import { rowKey } from './row-key';
 import { messages } from './messages';
 import { PreviewBar } from './preview-bar';
@@ -31,6 +40,7 @@ import {
   conversationKey,
   conversationsKey,
   MAX_MEMBER_PAGES,
+  messagesKey,
   oldestFirst,
   useChannelMessages,
   useConversation,
@@ -308,7 +318,6 @@ function ChannelView({
   onLeaving: (conversationId: string, started: boolean) => void;
 }) {
   const t = useTranslate(messages);
-  const locale = useLocale();
   const { user } = useAuth();
   const query = useChannelMessages(api, orgId, channel.id);
   // Names of the organization's members, loaded page by page only while an author on screen is unknown.
@@ -400,7 +409,9 @@ function ChannelView({
     isFetchingNextPage: loadingMembers,
     fetchNextPage: fetchMembers,
   } = members;
-  const unknownAuthor = confirmed.some((message) => !names.has(message.authorAccountId));
+  const unknownAuthor = confirmed.some(
+    (message) => !message.deletedAt && !names.has(message.authorAccountId),
+  );
   useEffect(() => {
     if (
       unknownAuthor &&
@@ -448,6 +459,78 @@ function ChannelView({
     },
     [api, orgId, channel.id, queryClient, retryMessage],
   );
+
+  // Edit and delete one's own messages (Phase 2 step 9): off without its flag, and the editor is the rich text one.
+  const editEnabled = config.messageEditEnabled && config.richTextEnabled;
+  const [editingId, setEditingId] = useState<string | undefined>();
+  /** The message the person asked to delete, until they answer the question. */
+  const [deleting, setDeleting] = useState<string | undefined>();
+  /** What went wrong with the last delete (an edit shows its error in its own editor). */
+  const [changeError, setChangeError] = useState('');
+  const locale = useLocale();
+  const cancelEdit = useCallback(() => {
+    setEditingId(undefined);
+  }, []);
+  const saveEdit = useCallback(
+    async (messageId: string, blocks: Block[]): Promise<string | undefined> => {
+      try {
+        const edited = await api.editMessage(orgId, messageId, blocks);
+        // A fetch that started before the answer could return the old content and overwrite it.
+        await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channel.id) });
+        applyMessageChange(queryClient, orgId, channel.id, edited);
+        setEditingId(undefined);
+        return undefined;
+      } catch (error) {
+        if (isMessageDeleted(error)) {
+          // Deleted meanwhile (a live event may not have come yet): there is nothing left to edit.
+          deleteMessageOptimistically(queryClient, orgId, channel.id, messageId);
+          setEditingId(undefined);
+          return undefined;
+        }
+
+        return messageChangeErrorText(error, t, locale);
+      }
+    },
+    [api, orgId, channel.id, queryClient, t, locale],
+  );
+  const confirmDelete = useCallback(
+    async (messageId: string) => {
+      setDeleting(undefined);
+      setChangeError('');
+      await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channel.id) });
+      // Shown as deleted at once; put back if the server refuses.
+      const original = deleteMessageOptimistically(queryClient, orgId, channel.id, messageId);
+      try {
+        await api.deleteMessage(orgId, messageId);
+      } catch (error) {
+        if (isMessageDeleted(error)) return;
+        if (original) restoreMessage(queryClient, orgId, channel.id, original);
+        setChangeError(messageChangeErrorText(error, t, locale));
+      }
+    },
+    [api, orgId, channel.id, queryClient, t, locale],
+  );
+  const editing = useMemo<MessageEditing | undefined>(
+    () =>
+      editEnabled
+        ? {
+            editingId,
+            start: setEditingId,
+            cancel: cancelEdit,
+            save: saveEdit,
+            remove: setDeleting,
+          }
+        : undefined,
+    [editEnabled, editingId, cancelEdit, saveEdit],
+  );
+  /** ArrowUp in the empty composer: the person's newest own message in the loaded list, if it can be edited. */
+  const editNewest = useCallback(() => {
+    if (query.hasPreviousPage || ownAccountId === undefined) return;
+    const newest = confirmed.findLast(
+      (message) => !message.deletedAt && message.authorAccountId === ownAccountId,
+    );
+    if (newest && editableBlocks(newest.blocks, newest.text) !== null) setEditingId(newest.id);
+  }, [query.hasPreviousPage, ownAccountId, confirmed]);
 
   return (
     <>
@@ -508,6 +591,7 @@ function ChannelView({
             onRetry={retry}
             onDiscard={discard}
             onJoin={join}
+            editing={editing}
           />
           <NewMessageAnnouncer
             rows={rows}
@@ -516,6 +600,21 @@ function ChannelView({
             active={!query.hasPreviousPage}
           />
         </>
+      )}
+      {changeError && (
+        <div className="bm-stack">
+          <Alert>{changeError}</Alert>
+        </div>
+      )}
+      {deleting !== undefined && (
+        <DeleteMessageDialog
+          onConfirm={() => {
+            void confirmDelete(deleting);
+          }}
+          onCancel={() => {
+            setDeleting(undefined);
+          }}
+        />
       )}
       {archived ? (
         <p className="bm-archived">{t('archivedBanner')}</p>
@@ -532,6 +631,7 @@ function ChannelView({
         <Composer
           focusOnMount={joinedFromBar}
           channelName={name}
+          {...(editing ? { onEditLast: editNewest } : {})}
           onSend={(text, blocks) => {
             pending.send(channel.id, text, blocks);
           }}

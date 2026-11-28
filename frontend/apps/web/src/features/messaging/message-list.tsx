@@ -1,4 +1,6 @@
 import {
+  Suspense,
+  lazy,
   memo,
   useCallback,
   useEffect,
@@ -11,7 +13,7 @@ import {
 } from 'react';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
-import { Avatar, Icon, SoonButton, type IconName } from '@backroom/ui';
+import { Avatar, Icon, MenuButton, SoonButton, type IconName, type MenuEntry } from '@backroom/ui';
 import { config } from '@/config';
 import { useTranslate } from '@/shared/locale';
 import type { Message } from './api';
@@ -19,6 +21,24 @@ import { messages } from './messages';
 import type { PendingMessage } from './pending-messages';
 import { isRefusedContent, refusalKey } from './send-errors';
 import { MessageBody } from './rich-text/message-blocks';
+import { editableBlocks, type Block } from './rich-text/blocks';
+
+/** The editor and Lexical load as their own chunk, only when a message is edited. */
+const MessageEditor = lazy(() =>
+  import('./message-editor').then(({ MessageEditor: editor }) => ({ default: editor })),
+);
+
+/** What the list can do with the person's own messages (edit and delete, Phase 2 step 9); absent: nothing. */
+export type MessageEditing = {
+  /** The message being edited in place, if any. */
+  editingId: string | undefined;
+  start: (messageId: string) => void;
+  cancel: () => void;
+  /** Saves the new content; answers an error text to show, or nothing when it went through. */
+  save: (messageId: string, blocks: Block[]) => Promise<string | undefined>;
+  /** Asks for confirmation, then deletes the message. */
+  remove: (messageId: string) => void;
+};
 
 export type Row =
   | { key: string; message: Message; pending?: undefined }
@@ -56,6 +76,7 @@ export function MessageList({
   onRetry,
   onDiscard,
   onJoin,
+  editing,
 }: {
   channelName: string;
   rows: readonly Row[];
@@ -77,6 +98,7 @@ export function MessageList({
   onDiscard: (clientMessageId: string) => void;
   /** Joins the channel and then sends the failed message again. */
   onJoin: (clientMessageId: string) => void;
+  editing?: MessageEditing | undefined;
 }) {
   const t = useTranslate(messages);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -329,6 +351,7 @@ export function MessageList({
                 onRetry={onRetry}
                 onDiscard={onDiscard}
                 onJoin={onJoin}
+                editing={editing}
               />
             </li>
           );
@@ -356,19 +379,60 @@ const MESSAGE_ACTIONS: readonly {
 ];
 
 /**
- * Shown over the message under the pointer, with focus inside or tapped; every action is for a later phase. It is
- * built only for that one row, so a long list does not carry six buttons per message. Tab from the row reaches the
- * buttons and Escape returns to the row.
+ * Shown over the message under the pointer, with focus inside or tapped; the actions of later phases are passive. It
+ * is built only for that one row, so a long list does not carry six buttons per message. Tab from the row reaches the
+ * buttons and Escape returns to the row. On the person's own message the "more" button opens a menu with edit and
+ * delete (the message is parsed for editing only now, for this one row).
  */
-function MessageActions() {
+function MessageActions({
+  message,
+  editing,
+}: {
+  message: Message | undefined;
+  editing: MessageEditing | undefined;
+}) {
   const t = useTranslate(messages);
+  const entries: MenuEntry[] = [];
+  if (editing && message) {
+    if (editableBlocks(message.blocks, message.text) !== null) {
+      entries.push({
+        kind: 'item',
+        id: 'edit',
+        label: t('editMessage'),
+        onSelect: () => {
+          editing.start(message.id);
+        },
+      });
+    }
+
+    entries.push({
+      kind: 'item',
+      id: 'delete',
+      label: t('deleteMessage'),
+      danger: true,
+      onSelect: () => {
+        editing.remove(message.id);
+      },
+    });
+  }
+
   return (
     <div className="bm-actions">
-      {MESSAGE_ACTIONS.map((action) => (
-        <SoonButton key={action.key} label={t(action.key)} soon={t('soon')}>
-          <Icon name={action.icon} size={16} />
-        </SoonButton>
-      ))}
+      {MESSAGE_ACTIONS.map((action) =>
+        action.key === 'more' && entries.length > 0 ? (
+          <MenuButton
+            key={action.key}
+            label={t(action.key)}
+            button={<Icon name={action.icon} size={16} />}
+            menuClassName="bm-actions__menu"
+            entries={entries}
+          />
+        ) : (
+          <SoonButton key={action.key} label={t(action.key)} soon={t('soon')}>
+            <Icon name={action.icon} size={16} />
+          </SoonButton>
+        ),
+      )}
     </div>
   );
 }
@@ -385,6 +449,7 @@ const MessageRow = memo(function MessageRow({
   onRetry,
   onDiscard,
   onJoin,
+  editing,
 }: {
   row: Row;
   /** The list's one tab stop (roving tabindex); the other rows are reached by the arrow keys. */
@@ -400,6 +465,7 @@ const MessageRow = memo(function MessageRow({
   onRetry: (clientMessageId: string) => void;
   onDiscard: (clientMessageId: string) => void;
   onJoin: (clientMessageId: string) => void;
+  editing: MessageEditing | undefined;
 }) {
   const now = new Date();
   const [hovered, setHovered] = useState(false);
@@ -418,6 +484,42 @@ const MessageRow = memo(function MessageRow({
   const name = mine ? ownName : authorName(authorId);
   const createdAt = pending?.createdAt ?? message?.createdAt ?? '';
   const text = pending?.text ?? message?.text ?? '';
+  const deleted = Boolean(message?.deletedAt);
+  const editingMessage = editing && message && editing.editingId === message.id ? message : undefined;
+  const editingThis = editingMessage !== undefined;
+  // Own, confirmed and not deleted: the only messages that can be edited or deleted here.
+  const manageable =
+    editing !== undefined &&
+    message !== undefined &&
+    !deleted &&
+    ownAccountId !== undefined &&
+    message.authorAccountId === ownAccountId;
+  // The row takes the focus back when its editor closes.
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (wasEditing.current && !editingThis) rowRef.current?.focus({ preventScroll: true });
+    wasEditing.current = editingThis;
+  }, [editingThis]);
+  if (message && deleted) {
+    // A tombstone (ADR 0011): its place stays, with no author, avatar or actions.
+    return (
+      <div
+        ref={rowRef}
+        className="bm-message bm-message--deleted"
+        role="article"
+        aria-labelledby={headId}
+        aria-posinset={position}
+        aria-setsize={-1}
+        data-row-key={row.key}
+        tabIndex={tabStop ? 0 : -1}
+      >
+        <p className="bm-tombstone" id={headId}>
+          {t('messageDeleted')}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={rowRef}
@@ -458,14 +560,23 @@ const MessageRow = memo(function MessageRow({
         if (event.key !== 'Escape') return;
         setTapped(false);
         // From inside the action bar back to the row; Escape elsewhere is left alone.
-        if ((event.target as HTMLElement).closest('.bm-actions')) {
+        // The open menu closes itself first (and returns to its button); the next Escape returns to the row.
+        if (
+          (event.target as HTMLElement).closest('.bm-actions') &&
+          !(event.target as HTMLElement).closest('[role="menu"]')
+        ) {
           event.preventDefault();
           event.stopPropagation();
           rowRef.current?.focus({ preventScroll: true });
         }
       }}
     >
-      {(hovered || focused || tapped) && !pending && <MessageActions />}
+      {(hovered || focused || tapped) && !pending && !editingThis && (
+        <MessageActions
+          message={manageable ? message : undefined}
+          editing={manageable ? editing : undefined}
+        />
+      )}
       <Avatar name={name} toneKey={authorId} shape="square" size="lg" />
       <div className="bm-message__body">
         <p className="bm-message__head" id={headId}>
@@ -473,9 +584,18 @@ const MessageRow = memo(function MessageRow({
           <time className="ph-muted" dateTime={createdAt}>
             {formatMessageTime(new Date(createdAt), locale, now)}
           </time>
+          {message?.editedAt && <span className="ph-muted"> · {t('edited')}</span>}
         </p>
         {/* Plain text, never markup: React escapes it; line breaks are kept by the style. */}
-        {config.richTextEnabled ? (
+        {editing && editingMessage ? (
+          <Suspense fallback={<p className="bm-text bm-text--sending">{text}</p>}>
+            <MessageEditor
+              initial={editableBlocks(editingMessage.blocks, text) ?? []}
+              onSave={(blocks) => editing.save(editingMessage.id, blocks)}
+              onCancel={editing.cancel}
+            />
+          </Suspense>
+        ) : config.richTextEnabled ? (
           <MessageBody
             blocks={pending?.blocks ?? message?.blocks}
             text={text}

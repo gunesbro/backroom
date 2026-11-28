@@ -52,7 +52,41 @@ export type Message = {
   /** The rich text blocks (docs/contracts/phase-2.md). Unchecked server data: read it with `parseBlocks`. */
   blocks?: unknown;
   createdAt: string;
+  /**
+   * The number of the message's latest change (an edit or the delete); a change is applied only if its number is
+   * higher than this one. The server always sends it; it is missing only in older fixtures, and counts as 0.
+   */
+  versionSeq?: number | undefined;
+  /** When the message was last edited (ISO 8601); null or missing: never. */
+  editedAt?: string | null | undefined;
+  /**
+   * Set on a tombstone (ADR 0011): a deleted message keeps only its place. `clientMessageId`, `authorAccountId` and
+   * `text` are then empty strings, and `blocks` is missing.
+   */
+  deletedAt?: string | null | undefined;
 };
+
+/** A message as the server sends it: a tombstone has null instead of its content. */
+type WireMessage = Omit<Message, 'clientMessageId' | 'authorAccountId' | 'text'> & {
+  clientMessageId: string | null;
+  authorAccountId: string | null;
+  text: string | null;
+};
+
+/** Reads a message of the wire into ours: a tombstone loses everything but its place, whatever else it carries. */
+export function readMessage(raw: WireMessage): Message {
+  if (!raw.deletedAt) return raw as Message;
+  return {
+    id: raw.id,
+    seq: raw.seq,
+    versionSeq: raw.versionSeq,
+    createdAt: raw.createdAt,
+    deletedAt: raw.deletedAt,
+    clientMessageId: '',
+    authorAccountId: '',
+    text: '',
+  };
+}
 /** Where a page starts: the newest messages (none), earlier than a seq, or later than a seq. */
 export type MessageCursor = { before: number } | { after: number } | undefined;
 export type MessagePage = { messages: Message[]; next: number | null };
@@ -123,6 +157,13 @@ export interface MessagingApi {
     conversationId: string,
     input: { clientMessageId: string; text: string; blocks?: Block[] },
   ) => Promise<Message>;
+  /**
+   * Replaces the content of the person's own message (`PATCH /messages/{id}`); answers the changed message. The
+   * answer's `versionSeq` is the number the live event of the same edit carries.
+   */
+  editMessage: (orgId: string, messageId: string, blocks: Block[]) => Promise<Message>;
+  /** Deletes a message for everyone (`DELETE /messages/{id}`): the author's own, or any with moderator permission. */
+  deleteMessage: (orgId: string, messageId: string) => Promise<void>;
   /** One page of members, to put names to authors. */
   listMembers: (orgId: string, after: string | undefined, signal?: AbortSignal) => Promise<MemberPage>;
 }
@@ -175,6 +216,8 @@ export function createMessagingApi(
   const org = (orgId: string) => `${origin ?? 'about:blank'}/api/v1/orgs/${encodeURIComponent(orgId)}`;
   const conversation = (orgId: string, conversationId: string) =>
     `${org(orgId)}/conversations/${encodeURIComponent(conversationId)}`;
+  const message = (orgId: string, messageId: string) =>
+    `${org(orgId)}/messages/${encodeURIComponent(messageId)}`;
   return {
     listConversations: async (orgId, after, signal, options) => {
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
@@ -236,12 +279,12 @@ export function createMessagingApi(
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (cursor && 'before' in cursor) query.set('before', String(cursor.before));
       if (cursor && 'after' in cursor) query.set('after', String(cursor.after));
-      const raw = await requestJson<{ items: Message[]; next: number | null }>(
+      const raw = await requestJson<{ items: WireMessage[]; next: number | null }>(
         `${conversation(orgId, conversationId)}/messages?${query.toString()}`,
         getAccessToken,
         { signal },
       );
-      const page: MessagePage = { messages: raw.items, next: raw.next };
+      const page: MessagePage = { messages: raw.items.map(readMessage), next: raw.next };
       if (!(cursor && 'after' in cursor)) return page;
       // `after` answers oldest first and its `next` points forward. Pages are kept newest first and a refetch rebuilds
       // the pages below the first one with `before={next}`, so `next` is made the cursor of the page below this one:
@@ -249,11 +292,22 @@ export function createMessagingApi(
       const newestFirst = page.messages.toReversed();
       return { messages: newestFirst, next: newestFirst.at(-1)?.seq ?? null };
     },
-    sendMessage: (orgId, conversationId, input) =>
-      requestJson(`${conversation(orgId, conversationId)}/messages`, getAccessToken, {
-        method: 'POST',
-        body: input,
-      }),
+    sendMessage: async (orgId, conversationId, input) =>
+      readMessage(
+        await requestJson<WireMessage>(`${conversation(orgId, conversationId)}/messages`, getAccessToken, {
+          method: 'POST',
+          body: input,
+        }),
+      ),
+    editMessage: async (orgId, messageId, blocks) =>
+      readMessage(
+        await requestJson<WireMessage>(message(orgId, messageId), getAccessToken, {
+          method: 'PATCH',
+          body: { blocks },
+        }),
+      ),
+    deleteMessage: (orgId, messageId) =>
+      requestJson(message(orgId, messageId), getAccessToken, { method: 'DELETE' }),
     listMembers: (orgId, after, signal) =>
       requestJson(
         `${org(orgId)}/members?limit=100${after ? `&after=${encodeURIComponent(after)}` : ''}`,

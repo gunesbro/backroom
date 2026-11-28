@@ -83,6 +83,8 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     PresenceChanged: new Set(),
     MembershipChanged: new Set(),
     ConversationUpdated: new Set(),
+    MessageEdited: new Set(),
+    MessageDeleted: new Set(),
   };
   const statusListeners = new Set<(status: ConnectionStatus, reconnected: boolean) => void>();
   // The groups to be in, as hub method plus arguments; replayed after every connect.
@@ -142,6 +144,10 @@ export function createRealtimeClient(options: RealtimeOptions): RealtimeClient {
     if (name === 'MessagePosted') {
       const { orgId, channelId } = payload as RealtimeEvents['MessagePosted'];
       return wanted.has(conversationKey(orgId, channelId));
+    }
+    if (name === 'MessageEdited' || name === 'MessageDeleted') {
+      const { orgId, conversationId } = payload as RealtimeEvents['MessageEdited'];
+      return wanted.has(conversationKey(orgId, conversationId));
     }
     if (name === 'ConversationUpdated') {
       const { orgId, conversationId } = payload as RealtimeEvents['ConversationUpdated'];

@@ -43,9 +43,10 @@ export function NewMessageAnnouncer({
     for (const row of rows) {
       const message = row.message;
       if (!message || message.seq <= seen.current) continue;
+      // A tombstone has nothing to announce.
       newest = Math.max(newest, message.seq);
       // The rows present on opening, history and one's own messages are not announced.
-      if (!first && active && message.authorAccountId !== ownAccountId) {
+      if (!first && active && !message.deletedAt && message.authorAccountId !== ownAccountId) {
         fresh.push(
           latest.current.t('announceMessage', {
             name: latest.current.authorName(message.authorAccountId),

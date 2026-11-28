@@ -42,6 +42,12 @@ export const config = {
    * textarea. Off in development too (.env.development) until the server-side step 6 PR accepts client blocks.
    */
   richTextEnabled: import.meta.env.VITE_RICH_TEXT_ENABLED === 'true',
+  /**
+   * Feature flag: editing and deleting one's own messages (Phase 2 step 9), with the cells' `Features:MessageEdit`.
+   * Editing uses the rich text editor, so it needs `richTextEnabled` too. Off: no edit or delete controls at all, but
+   * edited messages and tombstones that arrive are still drawn. On in development.
+   */
+  messageEditEnabled: import.meta.env.VITE_MESSAGE_EDIT_ENABLED === 'true',
   /** The control plane's origin; empty means this origin (the development server proxies /api). */
   controlPlaneUrl: import.meta.env.VITE_CONTROL_PLANE_URL ?? '',
   /** Data regions offered for new organizations, comma-separated region ids. */

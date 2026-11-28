@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_INVITATIONS_UI_ENABLED?: string;
   readonly VITE_PRESENCE_ENABLED?: string;
   readonly VITE_RICH_TEXT_ENABLED?: string;
+  readonly VITE_MESSAGE_EDIT_ENABLED?: string;
   /** Set by vite.config.ts in tests when `CI` is set. */
   readonly BACKROOM_TEST_CI?: string;
 }

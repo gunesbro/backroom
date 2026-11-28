@@ -343,6 +343,35 @@ describe('RealtimeClient conversation events after leaving', () => {
     expect(received).toEqual(['c1']);
   });
 
+  it('MessageEditedAndDeleted_ForAConversationNotWanted_AreNotDelivered', async () => {
+    const { client, hubs } = setup();
+    const received: string[] = [];
+    client.on('MessageEdited', (payload) => received.push(`edited ${payload.conversationId}`));
+    client.on('MessageDeleted', (payload) => received.push(`deleted ${payload.conversationId}`));
+    client.subscribeConversation('o1', 'c1');
+    client.start();
+    await flush();
+    const change = (conversationId: string) => ({
+      orgId: 'o1',
+      conversationId,
+      messageId: 'm1',
+      versionSeq: 5,
+      changeSeq: 5,
+      epoch: '1',
+    });
+
+    hubs[0]?.emit('MessageEdited', {
+      ...change('c1'),
+      blocks: [],
+      text: 'new',
+      editedAt: '2026-11-22T10:00:00Z',
+    });
+    hubs[0]?.emit('MessageDeleted', change('c1'));
+    hubs[0]?.emit('MessageDeleted', change('never-joined'));
+
+    expect(received).toEqual(['edited c1', 'deleted c1']);
+  });
+
   it('MembershipChanged_Removed_StopsDeliveryAndTheReplay', async () => {
     const { client, hubs, retries } = setup();
     const received: string[] = [];

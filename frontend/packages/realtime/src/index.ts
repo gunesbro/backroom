@@ -15,6 +15,8 @@ export type {
   CustomStatus,
   LiveMessage,
   MembershipChanged,
+  MessageDeleted,
+  MessageEdited,
   MessagePosted,
   PresenceChanged,
   PresenceState,

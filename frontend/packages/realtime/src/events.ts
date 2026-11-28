@@ -34,6 +34,34 @@ export type ConversationUpdated = {
   epoch: string;
 };
 
+/**
+ * To the conversation's group: a message was edited. It carries the new content; `versionSeq` is the message's new
+ * change number, and a client ignores an event that is not newer than the version it has.
+ */
+export type MessageEdited = {
+  orgId: string;
+  conversationId: string;
+  messageId: string;
+  versionSeq: number;
+  changeSeq: number;
+  /** The new rich text blocks. Unchecked: read with `parseBlocks`. */
+  blocks: unknown;
+  text: string;
+  /** ISO 8601. */
+  editedAt: string;
+  epoch: string;
+};
+
+/** To the conversation's group: a message was deleted. It carries no content; clients show the tombstone. */
+export type MessageDeleted = {
+  orgId: string;
+  conversationId: string;
+  messageId: string;
+  versionSeq: number;
+  changeSeq: number;
+  epoch: string;
+};
+
 /** Automatic presence (docs/contracts/phase-2.md, flow 9); never platform or device. */
 export type PresenceState = 'online' | 'idle' | 'offline';
 
@@ -57,6 +85,8 @@ export type RealtimeEvents = {
   PresenceChanged: PresenceChanged;
   MembershipChanged: MembershipChanged;
   ConversationUpdated: ConversationUpdated;
+  MessageEdited: MessageEdited;
+  MessageDeleted: MessageDeleted;
 };
 
 export type RealtimeEventName = keyof RealtimeEvents;
@@ -68,6 +98,8 @@ export const EVENT_NAMES: readonly RealtimeEventName[] = [
   'PresenceChanged',
   'MembershipChanged',
   'ConversationUpdated',
+  'MessageEdited',
+  'MessageDeleted',
 ];
 
 /** What a client reports about its person's input; the server takes one report per 10 s per connection. */

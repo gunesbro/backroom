@@ -11,7 +11,7 @@ import {
   type MessagePages,
 } from './queries';
 import { lastSeenSeq, rememberSeq } from './seq-memory';
-import type { ConversationUpdated } from '@backroom/realtime';
+import type { ConversationUpdated, MessageDeleted, MessageEdited } from '@backroom/realtime';
 import type { ChannelPage, ConversationDetail, Message, MessagingApi } from './api';
 
 // Applying live events to the query cache. Live events are hints (ADR 0011): everything here is idempotent, and a
@@ -37,9 +37,11 @@ export function applyLiveMessage(
     const first = data?.pages[0];
     if (!data || !first || data.pageParams[0] !== undefined) return data;
     result.present = true;
+    // A tombstone has no client message id: an empty one matches nothing.
     const known = data.pages.some((page) =>
       page.messages.some(
-        ({ id, clientMessageId }) => id === message.id || clientMessageId === message.clientMessageId,
+        ({ id, clientMessageId }) =>
+          id === message.id || (clientMessageId !== '' && clientMessageId === message.clientMessageId),
       ),
     );
     if (known) return data;
@@ -49,6 +51,122 @@ export function applyLiveMessage(
     return { ...data, pages: [{ ...first, messages }, ...data.pages.slice(1)] };
   });
   return result.present;
+}
+
+/** Replaces the message with this id (if cached) by what `change` makes of it; nothing happens when it returns undefined. */
+function changeMessage(
+  queryClient: QueryClient,
+  orgId: string,
+  conversationId: string,
+  messageId: string,
+  change: (current: Message) => Message | undefined,
+): void {
+  queryClient.setQueryData<MessagePages>(messagesKey(orgId, conversationId), (data) => {
+    if (!data) return data;
+    for (const [pageIndex, page] of data.pages.entries()) {
+      const at = page.messages.findIndex(({ id }) => id === messageId);
+      const current = page.messages[at];
+      if (!current) continue;
+      const next = change(current);
+      if (!next) return data;
+      const messages = page.messages.with(at, next);
+      return { ...data, pages: data.pages.with(pageIndex, { ...page, messages }) };
+    }
+
+    return data;
+  });
+}
+
+const versionOf = (message: Message) => message.versionSeq ?? 0;
+
+/** What a deleted message keeps: its place (ADR 0011, the tombstone). */
+export function tombstoneOf(message: Message, versionSeq: number, deletedAt: string): Message {
+  return {
+    id: message.id,
+    seq: message.seq,
+    versionSeq,
+    createdAt: message.createdAt,
+    deletedAt,
+    clientMessageId: '',
+    authorAccountId: '',
+    text: '',
+  };
+}
+
+/**
+ * The server's own copy of a changed message (the answer to an edit): it replaces the cached one only if it is
+ * newer, so a live event that arrived first, or a later change, is never overwritten.
+ */
+export function applyMessageChange(
+  queryClient: QueryClient,
+  orgId: string,
+  conversationId: string,
+  message: Message,
+): void {
+  changeMessage(queryClient, orgId, conversationId, message.id, (current) =>
+    versionOf(message) > versionOf(current) ? message : undefined,
+  );
+}
+
+/** A live edit: new content, unless the event is not newer than the version the cache has (or the message is gone). */
+export function applyMessageEdited(queryClient: QueryClient, event: MessageEdited): void {
+  changeMessage(queryClient, event.orgId, event.conversationId, event.messageId, (current) =>
+    event.versionSeq > versionOf(current) && !current.deletedAt
+      ? {
+          ...current,
+          text: event.text,
+          blocks: event.blocks,
+          editedAt: event.editedAt,
+          versionSeq: event.versionSeq,
+        }
+      : undefined,
+  );
+}
+
+/** A live delete: the message becomes its tombstone, unless the event is not newer than the cache's version. */
+export function applyMessageDeleted(
+  queryClient: QueryClient,
+  event: MessageDeleted,
+  now: () => Date = () => new Date(),
+): void {
+  changeMessage(queryClient, event.orgId, event.conversationId, event.messageId, (current) =>
+    event.versionSeq > versionOf(current)
+      ? tombstoneOf(current, event.versionSeq, now().toISOString())
+      : undefined,
+  );
+}
+
+/**
+ * Shows a message as deleted before the server has answered. The tombstone keeps the message's own version, so the
+ * live event of the delete (a higher one) still applies. Returns the message that was replaced, to put back if the
+ * delete is refused.
+ */
+export function deleteMessageOptimistically(
+  queryClient: QueryClient,
+  orgId: string,
+  conversationId: string,
+  messageId: string,
+  now: () => Date = () => new Date(),
+): Message | undefined {
+  const result: { original?: Message } = {};
+  changeMessage(queryClient, orgId, conversationId, messageId, (current) => {
+    if (current.deletedAt) return undefined;
+    result.original = current;
+    return tombstoneOf(current, versionOf(current), now().toISOString());
+  });
+  return result.original;
+}
+
+/** Puts back what an optimistic delete replaced, unless the message has changed again since. */
+export function restoreMessage(
+  queryClient: QueryClient,
+  orgId: string,
+  conversationId: string,
+  original: Message,
+): void {
+  changeMessage(queryClient, orgId, conversationId, original.id, (current) =>
+    current.deletedAt && versionOf(current) === versionOf(original) ? original : undefined,
+  );
 }
 
 /**
