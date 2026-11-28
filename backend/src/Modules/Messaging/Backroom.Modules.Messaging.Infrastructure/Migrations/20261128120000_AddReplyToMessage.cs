@@ -23,9 +23,9 @@ internal sealed class AddReplyToMessage : Migration
             SET LOCAL lock_timeout = '5s';
 
             ALTER TABLE messaging.messages ADD COLUMN reply_to_message_id uuid;
+            -- Cheap: the column is new and all NULL (a constraint on a large existing column needs NOT VALID, then VALIDATE in a separate migration).
             ALTER TABLE messaging.messages ADD CONSTRAINT messages_reply_to_check
-                CHECK (reply_to_message_id IS NULL OR (reply_to_message_id <> id AND deleted_at IS NULL)) NOT VALID;
-            ALTER TABLE messaging.messages VALIDATE CONSTRAINT messages_reply_to_check;
+                CHECK (reply_to_message_id IS NULL OR (reply_to_message_id <> id AND deleted_at IS NULL));
             """);
     }
 

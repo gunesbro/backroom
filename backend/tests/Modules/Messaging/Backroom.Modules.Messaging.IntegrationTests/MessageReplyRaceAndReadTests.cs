@@ -31,10 +31,16 @@ public sealed class MessageReplyRaceAndReadTests(PostgresDatabase database, Keyc
         var (organizationId, channelId, _, original) = await BobsMessageAsync("will vanish");
         var before = await QuerySingleAsync("SELECT last_message_seq FROM messaging.conversations WHERE id = $1", channelId);
         Task<HttpResponseMessage> sending;
+        var holderPid = 0;
         await using (var holder = new NpgsqlConnection(Database.SuperuserConnectionString))
         {
             await holder.OpenAsync(CancellationToken);
             await using var transaction = await holder.BeginTransactionAsync(CancellationToken);
+            await using (var pid = new NpgsqlCommand("SELECT pg_backend_pid()", holder, transaction))
+            {
+                holderPid = (int)(await pid.ExecuteScalarAsync(CancellationToken))!;
+            }
+
             await using (var take = new NpgsqlCommand("SELECT 1 FROM messaging.conversations WHERE id = $1 FOR UPDATE", holder, transaction))
             {
                 take.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = channelId });
@@ -44,7 +50,7 @@ public sealed class MessageReplyRaceAndReadTests(PostgresDatabase database, Keyc
             // The send reads the live original, then waits for the conversation row lock.
             sending = Task.Run(() => ReplyAsync(organizationId, channelId, Alice, original, "racing"), CancellationToken);
             var waited = Stopwatch.StartNew();
-            while ((long)(await QuerySingleAsync("SELECT count(*) FROM pg_locks WHERE NOT granted AND locktype IN ('transactionid', 'tuple')"))[0]! < 1)
+            while ((long)(await QuerySingleAsync("SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", holderPid))[0]! < 1)
             {
                 waited.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(30), "the send should reach the conversation row lock");
                 await Task.Delay(TimeSpan.FromMilliseconds(50), CancellationToken);
@@ -161,7 +167,7 @@ public sealed class MessageReplyRaceAndReadTests(PostgresDatabase database, Keyc
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         (await OutboxAsync(organizationId)).Should().ContainSingle(entry => entry.Type == ActivityAdded.EventType, "no mention feed producer exists yet");
-        (await QuerySingleAsync("SELECT count(*) FROM messaging.message_mentions WHERE account_id = $1", bob)).Should().Equal(1L);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.message_mentions WHERE conversation_id = $1 AND account_id = $2", channelId, bob)).Should().Equal(1L);
     }
 
     private async Task<(Guid OrganizationId, Guid ChannelId, Guid Bob, Guid Original)> BobsMessageAsync(string text)
