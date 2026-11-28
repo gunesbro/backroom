@@ -366,7 +366,8 @@ export function applyConversationUpdated(
 /**
  * Fills the gap after a reconnect (or a long time in the background): reads `after={lastSeenSeq}` until `next` is
  * null, at most `MAX_CATCH_UP_PAGES` pages; beyond that, or without a known position, the channel is reset to its
- * newest page. Never throws: a failed read leaves the cache as it was and returns false.
+ * newest page. A detached view is read again in place instead. Never throws: a failed read leaves the cache as it was
+ * and returns false.
  */
 export async function catchUpChannel(
   api: MessagingApi,
@@ -379,8 +380,14 @@ export async function catchUpChannel(
   const data = queryClient.getQueryData<MessagePages>(queryKey);
   if (!data) return true; // Not loaded: opening the channel reads it.
   try {
+    // A detached view (a window in the history) has no gap at its end to fill: it is read again where it is, so the
+    // person is not taken away from what they are reading; going back to the newest messages reads those.
+    if (data.pageParams[0] !== undefined) {
+      await queryClient.invalidateQueries({ queryKey });
+      return true;
+    }
     let cursor = lastSeenSeq(orgId, channelId);
-    if (cursor === undefined || data.pageParams[0] !== undefined) {
+    if (cursor === undefined) {
       await queryClient.resetQueries({ queryKey });
       return true;
     }

@@ -1,11 +1,13 @@
 import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { InfiniteQueryObserver } from '@tanstack/react-query';
+import { describe, expect, it, vi } from 'vitest';
 import type { MessageDeleted, MessageEdited } from '@backroom/realtime';
-import type { Message } from './api';
+import type { Message, MessageCursor, MessagingApi } from './api';
 import {
   applyMessageChange,
   applyMessageDeleted,
   applyMessageEdited,
+  catchUpChannel,
   deleteMessageOptimistically,
   restoreMessage,
 } from './live-cache';
@@ -128,5 +130,38 @@ describe('Message changes in the cache', () => {
       authorAccountId: '',
       text: '',
     });
+  });
+});
+
+describe('catchUpChannel', () => {
+  it('CatchUp_OfADetachedView_ReadsItAgainInPlace', async () => {
+    const queryClient = new QueryClient();
+    const listMessages = vi.fn<MessagingApi['listMessages']>(() =>
+      Promise.resolve({ messages: [original], next: null, epoch: 'e1' }),
+    );
+    const api = { listMessages } as unknown as MessagingApi;
+    // A window around a message, as a jump leaves it; an observer makes the query active, as the open channel does.
+    const observer = new InfiniteQueryObserver(queryClient, {
+      queryKey: messagesKey(ORG, CHANNEL),
+      queryFn: ({ pageParam }) => api.listMessages(ORG, CHANNEL, pageParam),
+      initialPageParam: undefined as MessageCursor,
+      getNextPageParam: () => undefined,
+      enabled: false,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+    queryClient.setQueryData<MessagePages>(messagesKey(ORG, CHANNEL), {
+      pages: [{ messages: [original], next: null, epoch: 'e1' }],
+      pageParams: [{ around: 'm1' }],
+    });
+
+    await expect(catchUpChannel(api, queryClient, ORG, CHANNEL)).resolves.toBe(true);
+
+    // Not reset to the newest messages: the window stays and is marked to be read again where it is.
+    expect(queryClient.getQueryState(messagesKey(ORG, CHANNEL))?.isInvalidated).toBe(true);
+    expect(listMessages).not.toHaveBeenCalledWith(ORG, CHANNEL, undefined);
+    expect(queryClient.getQueryData<MessagePages>(messagesKey(ORG, CHANNEL))?.pageParams).toEqual([
+      { around: 'm1' },
+    ]);
+    unsubscribe();
   });
 });

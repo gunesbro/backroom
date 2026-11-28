@@ -679,6 +679,7 @@
 .bm-search:focus-visible,
 .bm-bell:focus-visible,
 .bm-header__button:focus-visible,
+.bm-latest__button:focus-visible,
 .bm-format button:focus-visible,
 .bm-composer__bar button:focus-visible {
   outline: 2px solid var(--ph-accent);
@@ -1159,4 +1160,45 @@ ol.bm-rt-list {
 .bm-replybar button:hover {
   background: var(--ph-hover);
   color: var(--ph-ink);
+}
+
+/* "Jump to latest": shown while the list is a window in the history; it floats over the foot of the log and takes no
+   room of its own. */
+.bm-latest {
+  position: relative;
+  z-index: 1;
+  height: 0;
+}
+
+.bm-latest__button {
+  position: absolute;
+  bottom: var(--ph-space-12);
+  left: 50%;
+  translate: -50% 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ph-space-6);
+  height: 32px;
+  padding: 0 var(--ph-space-12);
+  border: 1px solid var(--ph-line);
+  border-radius: var(--ph-radius-lg);
+  background: var(--ph-panel);
+  color: var(--ph-ink);
+  box-shadow: var(--ph-shadow-bar);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.bm-latest__button:hover {
+  background: var(--ph-hover);
+}
+
+/* A short notice under the log (an original that cannot be shown). */
+.bm-notice {
+  margin: 0;
+  padding: var(--ph-space-8) var(--ph-space-20);
+  font-size: 13px;
+  color: var(--ph-muted);
 }

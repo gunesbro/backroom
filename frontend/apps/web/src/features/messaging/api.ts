@@ -110,9 +110,21 @@ export function readMessage(raw: WireMessage): Message {
     text: '',
   };
 }
-/** Where a page starts: the newest messages (none), earlier than a seq, or later than a seq. */
-export type MessageCursor = { before: number } | { after: number } | undefined;
-export type MessagePage = { messages: Message[]; next: number | null };
+/**
+ * Where a page starts: the newest messages (none), earlier than a seq, later than a seq, or around a message (a jump
+ * to it, docs/contracts/phase-2.md, "Jump to a message"). `epoch` is the cell epoch a seq cursor belongs to: the pages
+ * of a jump carry the one of its answer, so the server can tell a cursor of another epoch (`409 resync_required`).
+ */
+export type MessageCursor =
+  { before: number; epoch?: string } | { after: number; epoch?: string } | { around: string } | undefined;
+export type MessagePage = {
+  messages: Message[];
+  next: number | null;
+  /** The cell epoch of the page's seqs, when the read was one of a jump (the cursors that follow carry it). */
+  epoch?: string;
+  /** The page reaches the conversation's newest message (a read `after`, or around, with nothing newer). */
+  newest?: boolean;
+};
 export type Member = { accountId: string; displayName: string; email: string | null };
 export type MemberPage = { members: Member[]; next: string | null };
 
@@ -167,7 +179,11 @@ export interface MessagingApi {
   joinConversation: (orgId: string, conversationId: string) => Promise<void>;
   /** Leaves a conversation (not a DM); leaving one the person is not in succeeds. */
   leaveConversation: (orgId: string, conversationId: string) => Promise<void>;
-  /** Always newest first: `before` pages back (the `next` of the previous page), `after` pages forward. */
+  /**
+   * Always newest first: `before` pages back (the `next` of the previous page), `after` pages forward, and `around`
+   * answers a message with the messages around it, `next` being the cursor of the older side (an anchor that cannot be
+   * read answers `404 messaging.message_not_found`).
+   */
   listMessages: (
     orgId: string,
     conversationId: string,
@@ -300,20 +316,44 @@ export function createMessagingApi(
       requestJson(`${conversation(orgId, conversationId)}/leave`, getAccessToken, { method: 'POST' }),
     listMessages: async (orgId, conversationId, cursor, signal) => {
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      const url = () => `${conversation(orgId, conversationId)}/messages?${query.toString()}`;
+      if (cursor && 'around' in cursor) {
+        // It takes no cursor, so no epoch; the answer's epoch goes with the cursors that continue from it.
+        query.set('around', cursor.around);
+        const raw = await requestJson<{
+          items: WireMessage[];
+          before: number | null;
+          after: number | null;
+          epoch: string;
+        }>(url(), getAccessToken, { signal });
+        return {
+          messages: raw.items.map(readMessage),
+          next: raw.before,
+          epoch: raw.epoch,
+          newest: raw.after === null,
+        };
+      }
+
       if (cursor && 'before' in cursor) query.set('before', String(cursor.before));
       if (cursor && 'after' in cursor) query.set('after', String(cursor.after));
-      const raw = await requestJson<{ items: WireMessage[]; next: number | null }>(
-        `${conversation(orgId, conversationId)}/messages?${query.toString()}`,
-        getAccessToken,
-        { signal },
-      );
-      const page: MessagePage = { messages: raw.items.map(readMessage), next: raw.next };
+      if (cursor?.epoch !== undefined) query.set('epoch', cursor.epoch);
+      const raw = await requestJson<{ items: WireMessage[]; next: number | null }>(url(), getAccessToken, {
+        signal,
+      });
+      const epoch = cursor?.epoch === undefined ? {} : { epoch: cursor.epoch };
+      const page: MessagePage = { messages: raw.items.map(readMessage), next: raw.next, ...epoch };
       if (!(cursor && 'after' in cursor)) return page;
       // `after` answers oldest first and its `next` points forward. Pages are kept newest first and a refetch rebuilds
       // the pages below the first one with `before={next}`, so `next` is made the cursor of the page below this one:
-      // its oldest seq. An empty page has nothing newer, and nothing below it either.
+      // its oldest seq. An empty page has nothing newer, and nothing below it either. Without a `next` of its own the
+      // page reaches the conversation's newest message.
       const newestFirst = page.messages.toReversed();
-      return { messages: newestFirst, next: newestFirst.at(-1)?.seq ?? null };
+      return {
+        messages: newestFirst,
+        next: newestFirst.at(-1)?.seq ?? null,
+        newest: raw.next === null,
+        ...epoch,
+      };
     },
     sendMessage: async (orgId, conversationId, input) =>
       readMessage(

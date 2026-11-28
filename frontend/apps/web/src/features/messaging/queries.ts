@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { rememberSeq } from './seq-memory';
 import { useCallback } from 'react';
+import { ApiError } from '@/shared/http';
 import type { ConversationPage, Message, MessageCursor, MessagePage, MessagingApi } from './api';
 
 // Explicit cache keys, per organization and conversation. The conversations list has its own segment so that
@@ -67,9 +68,34 @@ export const MAX_MESSAGE_PAGES = 10;
 
 export type MessagePages = InfiniteData<MessagePage, MessageCursor>;
 
+/** The cursors that continue from a page carry its epoch, if it has one. */
+const withEpoch = <T extends { before: number } | { after: number }>(cursor: T, page: MessagePage) =>
+  page.epoch === undefined ? cursor : { ...cursor, epoch: page.epoch };
+
 /**
- * The channel's messages, newest page first: `fetchNextPage` loads the page before the oldest one. When pages
- * were dropped (maxPages), `hasPreviousPage` is true and `fetchPreviousPage` loads the page after the newest one.
+ * The view of a conversation is detached from its newest messages: it is a window somewhere in its history (after a
+ * jump to a message, or after reading so far back that the newest pages were dropped). Live messages are then not
+ * put into it; going back to the newest messages reads them.
+ */
+export function isDetached(data: { pageParams: readonly unknown[] } | undefined): boolean {
+  return data !== undefined && data.pageParams[0] !== undefined;
+}
+
+/** How a jump to a message ended: shown (it is in the list now), gone (it cannot be read), or failed (try again). */
+export type JumpResult = 'shown' | 'gone' | 'failed';
+
+/** The server's epoch is not the one of the cursors held (ADR 0011): the view starts over from the newest messages. */
+export function isResyncRequired(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'messaging.resync_required';
+}
+
+/**
+ * The channel's messages, newest page first: `fetchNextPage` loads the page before the oldest one. When the view is
+ * detached (`isDetached`: pages were dropped by maxPages, or `jumpTo` replaced them with a window around a message),
+ * `hasPreviousPage` is true and `fetchNewer` loads the page after the newest one held, until it reaches the newest
+ * message and the view is attached again. A jump is one more page of the same query, so the cache stays bounded by
+ * `MAX_MESSAGE_PAGES` and every change to cached messages (live edits and deletes, quotes) reaches whichever view is
+ * shown.
  */
 export function useChannelMessages(api: MessagingApi, orgId: string, channelId: string) {
   const queryClient = useQueryClient();
@@ -82,27 +108,85 @@ export function useChannelMessages(api: MessagingApi, orgId: string, channelId: 
       return page;
     },
     initialPageParam: undefined as MessageCursor,
-    getNextPageParam: (last): MessageCursor => (last.next === null ? undefined : { before: last.next }),
+    getNextPageParam: (last): MessageCursor =>
+      last.next === null ? undefined : withEpoch({ before: last.next }, last),
     // The first page is newer than the channel's newest message only when it is not the initial one.
     getPreviousPageParam: (first, _all, firstParam): MessageCursor => {
       const newest = first.messages[0];
-      return firstParam === undefined || !newest ? undefined : { after: newest.seq };
+      return firstParam === undefined || !newest ? undefined : withEpoch({ after: newest.seq }, first);
     },
     maxPages: MAX_MESSAGE_PAGES,
   });
 
+  /** Replaces the view with one page (nothing that runs may overwrite it), attached when its param is undefined. */
+  const replaceWith = useCallback(
+    async (page: MessagePage, param: MessageCursor) => {
+      await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channelId) });
+      const newest = page.messages[0];
+      if (newest && param === undefined) rememberSeq(orgId, channelId, newest.seq);
+      queryClient.setQueryData<MessagePages>(messagesKey(orgId, channelId), {
+        pages: [page],
+        pageParams: [param],
+      });
+    },
+    [queryClient, orgId, channelId],
+  );
+
+  /**
+   * Back to the newest messages, as when the channel is opened: they are read again (messages that came while the
+   * view was detached are among them). If the read fails, the channel is reloaded, which shows the error.
+   */
+  const returnToLatest = useCallback(async () => {
+    try {
+      await replaceWith(await api.listMessages(orgId, channelId, undefined), undefined);
+    } catch {
+      await queryClient.resetQueries({ queryKey: messagesKey(orgId, channelId) });
+    }
+  }, [api, orgId, channelId, queryClient, replaceWith]);
+
+  /**
+   * Replaces the view with the messages around this one (docs/contracts/phase-2.md, "Jump to a message"). The window
+   * is attached when nothing is newer than it; otherwise it continues both ways with the answer's cursors and epoch.
+   * Nothing changes when the read fails.
+   */
+  const jumpTo = useCallback(
+    async (messageId: string): Promise<JumpResult> => {
+      try {
+        const page = await api.listMessages(orgId, channelId, { around: messageId });
+        if (!page.messages.some(({ id }) => id === messageId)) return 'gone';
+        await replaceWith(page, page.newest ? undefined : { around: messageId });
+        return 'shown';
+      } catch (error) {
+        return error instanceof ApiError && error.code === 'messaging.message_not_found' ? 'gone' : 'failed';
+      }
+    },
+    [api, orgId, channelId, replaceWith],
+  );
+
   const { fetchPreviousPage } = query;
-  /** Loads the page after the newest one held; when nothing is newer, starts over from the channel's newest page. */
+  /**
+   * Loads the page after the newest one held. A page that reaches the channel's newest message attaches the view
+   * again; an empty one cannot be rebuilt by a refetch (it has no cursor), so the newest messages are reloaded instead.
+   */
   const fetchNewer = useCallback(async () => {
     const result = await fetchPreviousPage();
     const first = result.data?.pages[0];
-    // An empty page cannot be rebuilt by a refetch (it has no cursor): reload the newest messages instead.
     if (first && first.messages.length === 0) {
       await queryClient.resetQueries({ queryKey: messagesKey(orgId, channelId) });
+      return;
     }
+
+    const newest = first?.messages[0];
+    if (!first?.newest || !newest) return;
+    // The page is what a read of the newest messages would answer first: it becomes the initial one.
+    rememberSeq(orgId, channelId, newest.seq);
+    queryClient.setQueryData<MessagePages>(
+      messagesKey(orgId, channelId),
+      (data) => data && { ...data, pageParams: data.pageParams.with(0, undefined) },
+    );
   }, [fetchPreviousPage, queryClient, orgId, channelId]);
 
-  return { ...query, fetchNewer };
+  return { ...query, fetchNewer, jumpTo, returnToLatest, detached: isDetached(query.data) };
 }
 
 /** The messages oldest first, as drawn. */

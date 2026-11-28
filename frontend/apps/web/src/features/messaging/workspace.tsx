@@ -41,6 +41,7 @@ import { BrowseChannelsDialog } from './browse-channels-dialog';
 import {
   conversationKey,
   conversationsKey,
+  isResyncRequired,
   MAX_MEMBER_PAGES,
   messagesKey,
   oldestFirst,
@@ -344,6 +345,8 @@ function ChannelView({
   const t = useTranslate(messages);
   const { user } = useAuth();
   const query = useChannelMessages(api, orgId, channel.id);
+  // A window in the history (after a jump to a message, or reading far back): no live messages, no unsent rows.
+  const { detached } = query;
   // Names of the organization's members, loaded page by page only while an author on screen is unknown.
   const members = useOrganizationMembers(api, orgId);
   // The channel's kind, archive state and member count; the messages do not wait for it.
@@ -411,14 +414,16 @@ function ChannelView({
     const known = new Set(confirmed.map((message) => message.id));
     const knownClient = new Set(confirmed.map((message) => message.clientMessageId));
     // Confirmed messages not in a fetched page yet are shown from the pending list (only next to the newest page).
-    const overlay = query.hasPreviousPage
+    const overlay = detached
       ? []
       : pendingHere.flatMap((item) =>
           item.message && !known.has(item.message.id)
             ? [{ key: rowKey(item.message), message: item.message, overlay: true }]
             : [],
         );
-    const unsent = pendingHere
+    // Unsent messages belong after the newest ones: a window in the history does not show them (they stay pending,
+    // and come back with the newest messages).
+    const unsent = (detached ? [] : pendingHere)
       .filter((item) => item.status !== 'confirmed' && !knownClient.has(item.clientMessageId))
       .map((item) => ({
         key: rowKey({ authorAccountId: ownAccountId ?? '', clientMessageId: item.clientMessageId, id: '' }),
@@ -429,7 +434,7 @@ function ChannelView({
       return { key: rowKey(message), message };
     });
     return [...confirmedRows, ...overlay, ...unsent];
-  }, [confirmed, pendingHere, query.hasPreviousPage, ownAccountId, rowKeys]);
+  }, [confirmed, pendingHere, detached, ownAccountId, rowKeys]);
   // Remember what was committed: only the messages in the list, and only when something changed.
   useLayoutEffect(() => {
     // Recording what React committed is the point of this effect; it sets state only when the keys changed.
@@ -479,6 +484,31 @@ function ChannelView({
   const loadNewer = useCallback(() => {
     void fetchNewer();
   }, [fetchNewer]);
+  // Going to the original of a quote that is not loaded (with replying, Phase 2 step 9): the view becomes a window
+  // around it. An original that cannot be read any more leaves the view as it is, with a short notice.
+  const { jumpTo, returnToLatest } = query;
+  const [jumpNotice, setJumpNotice] = useState<'gone' | 'failed'>();
+  const jumpUnloaded = useCallback(
+    async (messageId: string) => {
+      setJumpNotice(undefined);
+      const result = await jumpTo(messageId);
+      if (result !== 'shown') setJumpNotice(result);
+      return result === 'shown';
+    },
+    [jumpTo],
+  );
+  const jumpToLatest = useCallback(() => {
+    setJumpNotice(undefined);
+    void returnToLatest();
+  }, [returnToLatest]);
+  // A cursor of another epoch (a restored cell, ADR 0011): what is held cannot be continued, so the view starts over
+  // from the newest messages, as when the channel is opened.
+  const resync = isResyncRequired(query.error);
+  useEffect(() => {
+    if (!resync) return;
+    listRef.current?.followLatest();
+    void returnToLatest();
+  }, [resync, returnToLatest]);
   const { retry: retryMessage, discard: discardMessage, markOriginalDeleted } = pending;
   const retry = useCallback(
     (clientMessageId: string) => {
@@ -619,12 +649,12 @@ function ChannelView({
   );
   /** ArrowUp in the empty composer: the person's newest own message in the loaded list, if it can be edited. */
   const editNewest = useCallback(() => {
-    if (query.hasPreviousPage || ownAccountId === undefined) return;
+    if (detached || ownAccountId === undefined) return;
     const newest = confirmed.findLast(
       (message) => !message.deletedAt && message.authorAccountId === ownAccountId,
     );
     if (newest && editableBlocks(newest.blocks, newest.text) !== null) startEdit(newest.id);
-  }, [query.hasPreviousPage, ownAccountId, confirmed, startEdit]);
+  }, [detached, ownAccountId, confirmed, startEdit]);
 
   // A delete can be learned without a live event (a read, a catch-up, a refused edit): unsent and just-sent replies
   // to a message that is a tombstone in the loaded list must forget its author and text all the same.
@@ -653,8 +683,11 @@ function ChannelView({
   // An original that is not in the loaded list (or is a tombstone) ends the reply quietly, once the list is there.
   // Known limit: this also happens when the page that held the original is evicted (`maxPages`) or when a reset
   // reloads only the newest page; the person then picks the message again.
+  // A window in the history (a jump) may not hold it: the target waits, without its bar, for the newest messages.
   const targetGone =
-    replyTarget !== undefined && query.data !== undefined && (!original || Boolean(original.deletedAt));
+    replyTarget !== undefined &&
+    query.data !== undefined &&
+    (original ? Boolean(original.deletedAt) : !detached);
   // A send that the server refused because its original is gone ends the reply to that original too.
   const targetRefused =
     replyTarget !== undefined &&
@@ -752,13 +785,30 @@ function ChannelView({
             editing={editing}
             editingId={activeEditingId}
             onReply={replyEnabled ? startReply : undefined}
+            detached={detached}
+            onJumpToLatest={jumpToLatest}
+            onJumpUnloaded={config.messageReplyEnabled ? jumpUnloaded : undefined}
             ref={listRef}
           />
+          {jumpNotice && (
+            <p className="bm-notice" role="status">
+              {jumpNotice === 'gone' ? t('messageUnavailable') : t('generic')}{' '}
+              <button
+                type="button"
+                className="ph-link"
+                onClick={() => {
+                  setJumpNotice(undefined);
+                }}
+              >
+                {t('close')}
+              </button>
+            </p>
+          )}
           <NewMessageAnnouncer
             rows={rows}
             ownAccountId={ownAccountId}
             authorName={authorName}
-            active={!query.hasPreviousPage}
+            active={!detached}
           />
         </>
       )}
@@ -816,6 +866,11 @@ function ChannelView({
               },
             );
             if (activeReply) onReplyTargetChange(channel.id, undefined);
+            // The new message goes after the newest ones: a window in the history makes way for them.
+            if (detached) {
+              listRef.current?.followLatest();
+              jumpToLatest();
+            }
           }}
         />
       ) : null}

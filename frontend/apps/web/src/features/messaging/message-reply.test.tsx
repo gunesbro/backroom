@@ -547,7 +547,17 @@ describe('Quotes', () => {
     expect(rowOf(log, 'message 5').querySelector('.bm-reply-quote b')).toBeNull();
   });
 
-  it('Quote_WhenTheOriginalIsNotLoaded_IsTextNotAButton', async () => {
+  it('Quote_WhenTheOriginalIsNotLoaded_IsAButton', async () => {
+    renderWorkspace(fakeApi({}, [message(5, { replyTo: quoteOf(1) })]));
+    const log = await openLog();
+
+    expect(
+      within(log).getByRole('button', { name: 'Replied message: Veli Yilmaz: message 1' }),
+    ).toBeVisible();
+  });
+
+  it('Quote_WhenTheOriginalIsNotLoadedAndTheFlagIsOff_IsTextNotAButton', async () => {
+    flags.reply = false;
     renderWorkspace(fakeApi({}, [message(5, { replyTo: quoteOf(1) })]));
     const log = await openLog();
 
