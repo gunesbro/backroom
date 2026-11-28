@@ -555,7 +555,7 @@ The owner answered the open questions of the first draft; the numbers are those 
 17. Sidebar sections, prefs, All DMs; web screens.
 18. Saved messages and reminders; scheduled messages and the off-hours warning.
 19. Polls, closing job, vote erasure. _(human review)_
-20. Plan limit settings (Organization, ops endpoint, `OrganizationLimitsChanged`), the visibility boundary in every Messaging read path, unread counts, sync and `HistoryBoundaryChanged`, transparency texts. _(human review)_
+20. Plan limit settings (Organization, ops endpoint, `OrganizationLimitsChanged`), the visibility boundary in every Messaging read path, unread counts, sync and `HistoryBoundaryChanged`, transparency texts. _(human review)_ Follow-up from reply with quote: a quote (`replyTo`) must respect the boundary too, so an original hidden by the plan limit is shown as deleted (`{ messageId, deleted: true }`).
 
 **2B Files, search, palette**
 
