@@ -75,6 +75,8 @@ const MAX_CACHED_DAYS = 2000;
 const ESTIMATED_ROW_HEIGHT = 64;
 /** Closer than this to the bottom, the list keeps following new messages. */
 const FOLLOW_DISTANCE = 80;
+/** Further than this many list heights above the bottom, "Jump to latest" is offered in the normal list too. */
+const FAR_FROM_END = 1.5;
 /** Earlier messages are asked for once the oldest drawn row is this close to the top of the list. */
 const LOAD_EARLIER_WITHIN = 3;
 const ROW_KEY_ATTRIBUTE = 'data-row-key';
@@ -151,6 +153,18 @@ export function MessageList({
   const t = useTranslate(messages);
   const scrollRef = useRef<HTMLDivElement>(null);
   const following = useRef(true);
+  // The view is further than FAR_FROM_END list heights above the bottom. State changes only when it flips, so a scroll
+  // frame does not render the rows.
+  const [far, setFar] = useState(false);
+  const farNow = useRef(false);
+  const updateFar = useCallback((element: HTMLElement) => {
+    const next =
+      element.clientHeight > 0 &&
+      element.scrollHeight - element.scrollTop - element.clientHeight > FAR_FROM_END * element.clientHeight;
+    if (next === farNow.current) return;
+    farNow.current = next;
+    setFar(next);
+  }, []);
   // Loading earlier messages waits until the list has been scrolled to its end once.
   const armed = useRef(false);
   // The row a jump scrolls to, until the rows in view (the visible range, not the rows kept drawn for focus or editing)
@@ -253,7 +267,9 @@ export function MessageList({
 
     previous.current = { rows, ...anchorAt(element.scrollTop) };
     if (element.scrollHeight <= element.clientHeight) armed.current = true;
-  }, [rows, total, virtualizer, anchorAt, detached]);
+    // New messages below a view that stays where it is move it away from the end without a scroll event.
+    updateFar(element);
+  }, [rows, total, updateFar, virtualizer, anchorAt, detached]);
 
   const items = virtualizer.getVirtualItems();
   // Day keys and texts are formatted once per message time and language, not on every scroll; today and yesterday
@@ -509,6 +525,7 @@ export function MessageList({
           following.current =
             !detached && element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_DISTANCE;
           if (element.scrollTop > 0 || following.current) armed.current = true;
+          updateFar(element);
         }}
       >
         {loadingEarlier && <p className="bm-log__status">{t('loadingEarlier')}</p>}
@@ -564,7 +581,7 @@ export function MessageList({
           })}
         </ol>
       </div>
-      {detached && onJumpToLatest && (
+      {(detached || far) && (
         // After the log in the page, so Tab reaches it between the messages and the composer; it floats over the
         // log's foot. Its focus goes to the newest message once it has done its work (and is gone).
         <div className="bm-latest">
@@ -573,9 +590,24 @@ export function MessageList({
             className="bm-latest__button"
             onClick={(event) => {
               const hadFocus = event.currentTarget === document.activeElement;
-              followNext.current = true;
-              focusLatest.current = hadFocus;
-              onJumpToLatest();
+              if (detached) {
+                followNext.current = true;
+                focusLatest.current = hadFocus;
+                onJumpToLatest?.();
+                return;
+              }
+              // Still the newest view: scroll to its end and follow again; the focus goes to the newest message.
+              const last = rows.at(-1);
+              if (!last) return;
+              following.current = true;
+              if (hadFocus) pendingFocus.current = last.key;
+              const reduced =
+                typeof window.matchMedia === 'function' &&
+                window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+              virtualizer.scrollToIndex(rows.length - 1, {
+                align: 'end',
+                behavior: reduced ? 'auto' : 'smooth',
+              });
             }}
           >
             <Icon name="chevronDown" size={16} />

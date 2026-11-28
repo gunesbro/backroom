@@ -510,10 +510,7 @@ describe('Jump to an original that is not loaded', () => {
       expect(reads('after')).toHaveLength(1);
     });
 
-    // The read after 125 reached the newest message: the button goes; one read after the newest fills the gap.
-    await waitFor(() => {
-      expect(latestButton()).toBeNull();
-    });
+    // The read after 125 reached the newest message (the view is attached); one read after the newest fills the gap.
     await waitFor(() => {
       expect(reads('after').map((url) => url.searchParams.get('after'))).toEqual(['125', '160']);
     });
@@ -533,6 +530,8 @@ describe('Jump to an original that is not loaded', () => {
     });
     scrollLog(log, 'end');
     expect(await findInLog(log, 'message 161')).toBeInTheDocument();
+    // Back at the end of the newest messages, the button is gone.
+    expect(latestButton()).toBeNull();
   });
 
   it('LiveMessage_WhileDetached_IsNotDrawnAndIsThereAfterReturning', async () => {
@@ -776,13 +775,11 @@ describe('Jump to an original that is not loaded', () => {
     hold.resolve();
 
     await waitFor(() => {
-      expect(latestButton()).toBeNull();
-    });
-    await waitFor(() => {
       expect(reads('after').map((url) => url.searchParams.get('after'))).toEqual(['125', '160']);
     });
     scrollLog(log, 'end');
     expect(await findInLog(log, 'message 161')).toBeInTheDocument();
+    expect(latestButton()).toBeNull();
   });
 
   it('Jump_WhenTheReadFails_ShowsTheGenericNotice', async () => {

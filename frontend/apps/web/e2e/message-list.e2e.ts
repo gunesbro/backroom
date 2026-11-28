@@ -261,3 +261,25 @@ test('Jump_ToAnOriginalNotLoaded_ShowsItWithFocusAndJumpToLatestReturnsToTheEnd'
   );
   expect(atEnd).toBe(true);
 });
+
+// In the normal list, "Jump to latest" appears once the view is far above the end and scrolls back to it.
+test('JumpToLatest_InTheNormalListFarFromTheEnd_ScrollsBackToTheEnd', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto('/e2e/message-list.html');
+  const feed = page.getByRole('feed');
+  await feed.waitFor();
+  const latest = page.getByRole('button', { name: 'Jump to latest' });
+  await expect(latest).toHaveCount(0);
+
+  await feed.evaluate((element) => {
+    element.scrollTop = element.scrollHeight / 2;
+  });
+  await expect(latest).toBeVisible();
+  await latest.click();
+
+  await expect(latest).toHaveCount(0);
+  await expect(page.locator('[data-row-key="c-199"]')).toBeInViewport();
+  await expect
+    .poll(() => feed.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight))
+    .toBeLessThan(2);
+});
