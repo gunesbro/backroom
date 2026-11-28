@@ -430,7 +430,7 @@
   z-index: 1;
 }
 
-.bm-row:has([aria-expanded='true']) {
+.bm-row:has([aria-haspopup='menu'][aria-expanded='true']) {
   z-index: 2;
 }
 

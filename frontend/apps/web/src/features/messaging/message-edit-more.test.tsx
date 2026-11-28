@@ -267,7 +267,7 @@ async function askToDelete(log: HTMLElement, text: string) {
 const byKey = (log: HTMLElement, key: string) => log.querySelector<HTMLElement>(`[data-row-key="${key}"]`);
 
 describe('Message menu placement', () => {
-  it('Menu_OnTheLastMessage_OpensUpwardSoTheListDoesNotClipIt', async () => {
+  it('Menu_InJsdomWithoutLayout_DefaultsBelow', async () => {
     renderWorkspace(fakeApi());
     const log = await openLog();
     const articles = within(log).getAllByRole('article');

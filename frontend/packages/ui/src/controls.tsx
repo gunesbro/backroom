@@ -195,13 +195,16 @@ export type MenuEntry =
   | { kind: 'separator'; id: string }
   | { kind: 'group'; id: string; label: string; entries: readonly MenuEntry[] };
 
-/** The visible box of the nearest scrolling ancestor (the viewport when there is none). */
+/** The gap between the button and the menu: --ph-space-10 in .ph-menu--above. */
+const MENU_GAP = 10;
+
+/** The visible box of the nearest clipping ancestor, cut to the viewport (the viewport when there is none). */
 function scrollBounds(element: HTMLElement): { top: number; bottom: number } {
   for (let node = element.parentElement; node; node = node.parentElement) {
     const overflow = getComputedStyle(node).overflowY;
-    if (overflow === 'auto' || overflow === 'scroll' || overflow === 'hidden') {
+    if (overflow === 'auto' || overflow === 'scroll' || overflow === 'hidden' || overflow === 'clip') {
       const box = node.getBoundingClientRect();
-      return { top: box.top, bottom: box.bottom };
+      return { top: Math.max(box.top, 0), bottom: Math.min(box.bottom, window.innerHeight) };
     }
   }
   return { top: 0, bottom: window.innerHeight };
@@ -266,12 +269,13 @@ export function MenuButton({
     if (!open) return;
     const panel = panelRef.current;
     const anchor = wrapperRef.current;
+    // Measured once per open, not on scroll or resize: an outside pointerdown closes the menu.
     if (placement !== 'auto' || !panel || !anchor) return;
     const bounds = scrollBounds(anchor);
     const box = panel.getBoundingClientRect();
     const button = anchor.getBoundingClientRect();
     const fitsBelow = box.bottom <= bounds.bottom;
-    const fitsAbove = button.top - box.height - 8 >= bounds.top;
+    const fitsAbove = button.top - box.height - MENU_GAP >= bounds.top;
     if (!fitsBelow && fitsAbove) setFlipped(true);
     return () => {
       setFlipped(false);
