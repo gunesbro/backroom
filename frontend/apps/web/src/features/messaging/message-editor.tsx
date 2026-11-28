@@ -22,15 +22,19 @@ export function MessageEditor({
   initial,
   onSave,
   onCancel,
+  takeFocus,
 }: {
   initial: readonly Block[];
   onSave: (blocks: Block[]) => Promise<string | undefined>;
   onCancel: () => void;
+  /** Whether this editor was just started by the person and so takes the focus (not when it is drawn again). */
+  takeFocus: () => boolean;
 }) {
   const t = useTranslate(messages);
   const hintId = useId();
   const counterId = useId();
   const errorId = useId();
+  const emptyId = useId();
   const richRef = useRef<RichFieldHandle>(null);
   const [blocks, setBlocks] = useState<Block[]>([...initial]);
   // The editor's own form of the message, reported once when it starts: what "unchanged" is measured against.
@@ -38,8 +42,9 @@ export function MessageEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
+  const focusIfStarted = useRef(takeFocus);
   useEffect(() => {
-    richRef.current?.focus();
+    if (focusIfStarted.current()) richRef.current?.focus();
   }, []);
 
   const text = blocksToText(blocks);
@@ -51,6 +56,11 @@ export function MessageEditor({
   const empty = text.length === 0;
   const canSave = !empty && !over && !saving;
   const showCounter = remaining <= COUNTER_FROM_REMAINING || tooLarge || tooManyLinks;
+
+  // The editor stays until the answer comes: closing it meanwhile would leave the answer without a place.
+  const cancel = () => {
+    if (!saving) onCancel();
+  };
 
   const save = () => {
     if (!canSave) return;
@@ -79,7 +89,9 @@ export function MessageEditor({
         ref={richRef}
         label={t('editMessage')}
         placeholder=""
-        describedBy={[hintId, showCounter && counterId, error && errorId].filter(Boolean).join(' ')}
+        describedBy={[hintId, showCounter && counterId, empty && emptyId, error && errorId]
+          .filter(Boolean)
+          .join(' ')}
         invalid={over}
         initialBlocks={initial}
         onChange={(next: RichValue) => {
@@ -87,7 +99,7 @@ export function MessageEditor({
           setBlocks(next.blocks);
         }}
         onSubmit={save}
-        onCancel={onCancel}
+        onCancel={cancel}
       />
       <div className="bm-edit__bar">
         <p id={hintId} className="bm-composer__hint">
@@ -108,10 +120,21 @@ export function MessageEditor({
                   : t('charactersLeft', { count: remaining })}
           </p>
         )}
-        {empty && <p className="bm-counter">{t('editEmpty')}</p>}
+        {empty && (
+          <p id={emptyId} className="bm-counter">
+            {t('editEmpty')}
+          </p>
+        )}
         <div className="bm-edit__buttons">
-          <Button onClick={onCancel}>{t('cancel')}</Button>
-          <Button type="submit" variant="primary" disabled={!canSave}>
+          <Button disabled={saving} onClick={cancel}>
+            {t('cancel')}
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={!canSave}
+            aria-describedby={empty ? emptyId : undefined}
+          >
             {t('saveEdit')}
           </Button>
         </div>

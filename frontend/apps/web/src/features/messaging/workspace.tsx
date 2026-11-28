@@ -377,7 +377,11 @@ function ChannelView({
     if (refused) void refetchDetail();
   }, [refused, refetchDetail]);
   const confirmed = useMemo(() => oldestFirst(query.data), [query.data]);
+  // The key a message had while it was a whole message: its tombstone keeps it, so the row is not drawn anew (and
+  // loses focus) when the message is deleted. Kept here, not in the cache: a tombstone holds no author or client id.
+  const [rowKeys] = useState(() => new Map<string, string>());
   const rows = useMemo<Row[]>(() => {
+    const keys = rowKeys;
     const known = new Set(confirmed.map((message) => message.id));
     const knownClient = new Set(confirmed.map((message) => message.clientMessageId));
     // Confirmed messages not in a fetched page yet are shown from the pending list (only next to the newest page).
@@ -385,7 +389,7 @@ function ChannelView({
       ? []
       : pendingHere.flatMap((item) =>
           item.message && !known.has(item.message.id)
-            ? [{ key: rowKey(item.message), message: item.message }]
+            ? [{ key: rowKey(item.message), message: item.message, overlay: true }]
             : [],
         );
     const unsent = pendingHere
@@ -394,8 +398,17 @@ function ChannelView({
         key: rowKey({ authorAccountId: ownAccountId ?? '', clientMessageId: item.clientMessageId, id: '' }),
         pending: item,
       }));
-    return [...confirmed.map((message) => ({ key: rowKey(message), message })), ...overlay, ...unsent];
-  }, [confirmed, pendingHere, query.hasPreviousPage, ownAccountId]);
+    const confirmedRows = confirmed.map((message) => {
+      const remembered = keys.get(message.id);
+      if (message.deletedAt) return { key: remembered ?? message.id, message };
+      const key = rowKey(message);
+      keys.set(message.id, key);
+      return { key, message };
+    });
+    // Only the messages in the list are remembered.
+    for (const id of keys.keys()) if (!known.has(id)) keys.delete(id);
+    return [...confirmedRows, ...overlay, ...unsent];
+  }, [confirmed, pendingHere, query.hasPreviousPage, ownAccountId, rowKeys]);
 
   // Confirmed messages leave the pending list once a fetched page has them.
   const { prune } = pending;
@@ -468,6 +481,40 @@ function ChannelView({
   /** What went wrong with the last delete (an edit shows its error in its own editor). */
   const [changeError, setChangeError] = useState('');
   const locale = useLocale();
+  // A message deleted while it is edited (by a live event) is not edited any more.
+  const activeEditingId =
+    editingId !== undefined && !confirmed.some((message) => message.id === editingId && message.deletedAt)
+      ? editingId
+      : undefined;
+  /** The editor just started by the person takes the focus once; one drawn again later does not. */
+  const focusEditorFor = useRef<string>(undefined);
+  const startEdit = useCallback((messageId: string) => {
+    focusEditorFor.current = messageId;
+    setEditingId(messageId);
+  }, []);
+  const takeFocus = useCallback((messageId: string) => {
+    const mine = focusEditorFor.current === messageId;
+    if (mine) focusEditorFor.current = undefined;
+    return mine;
+  }, []);
+  /** The message the delete dialog was opened for: its row takes the focus when the dialog closes. */
+  const refocusId = useRef<string>(undefined);
+  const askToDelete = useCallback((messageId: string) => {
+    refocusId.current = messageId;
+    setDeleting(messageId);
+  }, []);
+  useEffect(() => {
+    if (deleting !== undefined) return;
+    const id = refocusId.current;
+    refocusId.current = undefined;
+    const key = id === undefined ? undefined : rowKeys.get(id);
+    // The dialog's own return of focus aims at the button that opened it, which is gone with the action bar.
+    if (key !== undefined) {
+      document
+        .querySelector<HTMLElement>(`[data-row-key="${CSS.escape(key)}"]`)
+        ?.focus({ preventScroll: true });
+    }
+  }, [deleting, rowKeys]);
   const cancelEdit = useCallback(() => {
     setEditingId(undefined);
   }, []);
@@ -478,13 +525,15 @@ function ChannelView({
         // A fetch that started before the answer could return the old content and overwrite it.
         await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channel.id) });
         applyMessageChange(queryClient, orgId, channel.id, edited);
-        setEditingId(undefined);
+        // Only this message's editor closes: another may have been opened while the answer was on its way.
+        setEditingId((current) => (current === messageId ? undefined : current));
+        setChangeError('');
         return undefined;
       } catch (error) {
         if (isMessageDeleted(error)) {
           // Deleted meanwhile (a live event may not have come yet): there is nothing left to edit.
           deleteMessageOptimistically(queryClient, orgId, channel.id, messageId);
-          setEditingId(undefined);
+          setEditingId((current) => (current === messageId ? undefined : current));
           return undefined;
         }
 
@@ -502,9 +551,13 @@ function ChannelView({
       const original = deleteMessageOptimistically(queryClient, orgId, channel.id, messageId);
       try {
         await api.deleteMessage(orgId, messageId);
+        // A read that finished in between may have brought the message back: it is deleted.
+        deleteMessageOptimistically(queryClient, orgId, channel.id, messageId);
       } catch (error) {
         if (isMessageDeleted(error)) return;
         if (original) restoreMessage(queryClient, orgId, channel.id, original);
+        // What was put back is the copy from before; read the channel again for the real one.
+        void queryClient.invalidateQueries({ queryKey: messagesKey(orgId, channel.id) });
         setChangeError(messageChangeErrorText(error, t, locale));
       }
     },
@@ -514,14 +567,14 @@ function ChannelView({
     () =>
       editEnabled
         ? {
-            editingId,
-            start: setEditingId,
+            start: startEdit,
             cancel: cancelEdit,
             save: saveEdit,
-            remove: setDeleting,
+            remove: askToDelete,
+            takeFocus,
           }
         : undefined,
-    [editEnabled, editingId, cancelEdit, saveEdit],
+    [editEnabled, startEdit, cancelEdit, saveEdit, askToDelete, takeFocus],
   );
   /** ArrowUp in the empty composer: the person's newest own message in the loaded list, if it can be edited. */
   const editNewest = useCallback(() => {
@@ -529,8 +582,8 @@ function ChannelView({
     const newest = confirmed.findLast(
       (message) => !message.deletedAt && message.authorAccountId === ownAccountId,
     );
-    if (newest && editableBlocks(newest.blocks, newest.text) !== null) setEditingId(newest.id);
-  }, [query.hasPreviousPage, ownAccountId, confirmed]);
+    if (newest && editableBlocks(newest.blocks, newest.text) !== null) startEdit(newest.id);
+  }, [query.hasPreviousPage, ownAccountId, confirmed, startEdit]);
 
   return (
     <>
@@ -592,6 +645,7 @@ function ChannelView({
             onDiscard={discard}
             onJoin={join}
             editing={editing}
+            editingId={activeEditingId}
           />
           <NewMessageAnnouncer
             rows={rows}
@@ -604,6 +658,13 @@ function ChannelView({
       {changeError && (
         <div className="bm-stack">
           <Alert>{changeError}</Alert>
+          <Button
+            onClick={() => {
+              setChangeError('');
+            }}
+          >
+            {t('close')}
+          </Button>
         </div>
       )}
       {deleting !== undefined && (
@@ -631,7 +692,7 @@ function ChannelView({
         <Composer
           focusOnMount={joinedFromBar}
           channelName={name}
-          {...(editing ? { onEditLast: editNewest } : {})}
+          onEditLast={editEnabled ? editNewest : undefined}
           onSend={(text, blocks) => {
             pending.send(channel.id, text, blocks);
           }}

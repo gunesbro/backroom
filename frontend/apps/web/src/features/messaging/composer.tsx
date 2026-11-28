@@ -96,7 +96,7 @@ export function Composer({
   /** Gets the normalized text and, with the rich text editor, the blocks. */
   onSend: (text: string, blocks?: Block[]) => void;
   /** ArrowUp in the empty rich text field: edit the person's newest message (absent without message editing). */
-  onEditLast?: () => void;
+  onEditLast?: (() => void) | undefined;
 }) {
   const t = useTranslate(messages);
   const counterId = useId();

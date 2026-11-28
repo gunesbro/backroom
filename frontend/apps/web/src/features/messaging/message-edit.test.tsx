@@ -265,6 +265,12 @@ const live = {
   }),
 };
 
+/** Lets what an event or a request started finish, so a negative check cannot pass just because it ran early. */
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+
 const NO_CONTRAST = { 'color-contrast': { enabled: false }, region: { enabled: false } };
 
 describe('Message menu', () => {
@@ -674,6 +680,7 @@ describe('Live edits and deletes', () => {
 
     realtime.emit('MessageEdited', live.edited(3, 29, 'message 3 first'));
     realtime.emit('MessageEdited', live.edited(3, 30, 'message 3 again'));
+    await settle();
 
     expect(within(log).getByText('message 3 second')).toBeInTheDocument();
     expect(within(log).queryByText('message 3 first')).toBeNull();
@@ -699,6 +706,7 @@ describe('Live edits and deletes', () => {
     const log = await openLog();
 
     realtime.emit('MessageDeleted', live.deleted(3, 2));
+    await settle();
 
     expect(within(log).getByText('message 3')).toBeInTheDocument();
     expect(within(log).queryByText('This message was deleted')).toBeNull();
@@ -713,7 +721,9 @@ describe('Live edits and deletes', () => {
       expect(within(log).getByText('This message was deleted')).toBeInTheDocument();
     });
 
-    realtime.emit('MessageEdited', live.edited(3, 20, 'back from the dead'));
+    // Newer than the delete: only the tombstone itself keeps it out.
+    realtime.emit('MessageEdited', live.edited(3, 40, 'back from the dead'));
+    await settle();
 
     expect(within(log).queryByText('back from the dead')).toBeNull();
   });

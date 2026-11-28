@@ -30,18 +30,27 @@ const MessageEditor = lazy(() =>
 
 /** What the list can do with the person's own messages (edit and delete, Phase 2 step 9); absent: nothing. */
 export type MessageEditing = {
-  /** The message being edited in place, if any. */
-  editingId: string | undefined;
   start: (messageId: string) => void;
   cancel: () => void;
   /** Saves the new content; answers an error text to show, or nothing when it went through. */
   save: (messageId: string, blocks: Block[]) => Promise<string | undefined>;
   /** Asks for confirmation, then deletes the message. */
   remove: (messageId: string) => void;
+  /**
+   * True once for the editor the person just started: it takes the keyboard focus. An editor that is drawn again
+   * (its row scrolled out and back) must not take it.
+   */
+  takeFocus: (messageId: string) => boolean;
 };
 
 export type Row =
-  | { key: string; message: Message; pending?: undefined }
+  | {
+      key: string;
+      message: Message;
+      pending?: undefined;
+      /** Confirmed but not in a fetched page yet (the pending overlay): it cannot be edited or deleted yet. */
+      overlay?: boolean;
+    }
   | { key: string; message?: undefined; pending: PendingMessage };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -77,6 +86,7 @@ export function MessageList({
   onDiscard,
   onJoin,
   editing,
+  editingId,
 }: {
   channelName: string;
   rows: readonly Row[];
@@ -99,6 +109,8 @@ export function MessageList({
   /** Joins the channel and then sends the failed message again. */
   onJoin: (clientMessageId: string) => void;
   editing?: MessageEditing | undefined;
+  /** The message being edited in place, if any; kept apart from `editing` so the rows stay memoized. */
+  editingId?: string | undefined;
 }) {
   const t = useTranslate(messages);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -116,12 +128,18 @@ export function MessageList({
   const previousRows = useRef<readonly Row[]>(rows);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+  const editingIdRef = useRef(editingId);
+  editingIdRef.current = editingId;
   const rangeExtractor = useCallback((range: Range) => {
     const indexes = defaultRangeExtractor(range);
+    // The row that holds focus and the row being edited stay drawn, whatever the scroll position.
     const focused = focusedKey.current;
-    const at = focused === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === focused);
-    if (at < 0 || indexes.includes(at)) return indexes;
-    return [...indexes, at].sort((a, b) => a - b);
+    const editing = editingIdRef.current;
+    const keep = [
+      focused === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === focused),
+      editing === undefined ? -1 : rowsRef.current.findIndex((row) => row.message?.id === editing),
+    ].filter((at) => at >= 0 && !indexes.includes(at));
+    return keep.length === 0 ? indexes : [...indexes, ...keep].sort((a, b) => a - b);
   }, []);
 
   // The virtualizer is used only in this component and its functions are not passed to memoized children.
@@ -135,6 +153,12 @@ export function MessageList({
     rangeExtractor,
   });
   const total = virtualizer.getTotalSize();
+  // An edit started from elsewhere (ArrowUp in the composer) may be for a row far from the view: bring it in.
+  useEffect(() => {
+    if (editingId === undefined) return;
+    const at = rowsRef.current.findIndex((row) => row.message?.id === editingId);
+    if (at >= 0) virtualizer.scrollToIndex(at);
+  }, [editingId, virtualizer]);
 
   /** The row at the top of the view, as the anchor to keep still when rows are added or dropped above it. */
   const anchorAt = useCallback(
@@ -352,6 +376,7 @@ export function MessageList({
                 onDiscard={onDiscard}
                 onJoin={onJoin}
                 editing={editing}
+                isEditing={editingId !== undefined && row.message?.id === editingId}
               />
             </li>
           );
@@ -450,6 +475,7 @@ const MessageRow = memo(function MessageRow({
   onDiscard,
   onJoin,
   editing,
+  isEditing,
 }: {
   row: Row;
   /** The list's one tab stop (roving tabindex); the other rows are reached by the arrow keys. */
@@ -466,6 +492,8 @@ const MessageRow = memo(function MessageRow({
   onDiscard: (clientMessageId: string) => void;
   onJoin: (clientMessageId: string) => void;
   editing: MessageEditing | undefined;
+  /** This row's message is the one being edited. */
+  isEditing: boolean;
 }) {
   const now = new Date();
   const [hovered, setHovered] = useState(false);
@@ -485,19 +513,26 @@ const MessageRow = memo(function MessageRow({
   const createdAt = pending?.createdAt ?? message?.createdAt ?? '';
   const text = pending?.text ?? message?.text ?? '';
   const deleted = Boolean(message?.deletedAt);
-  const editingMessage = editing && message && editing.editingId === message.id ? message : undefined;
+  const editingMessage = editing && message && isEditing ? message : undefined;
   const editingThis = editingMessage !== undefined;
   // Own, confirmed and not deleted: the only messages that can be edited or deleted here.
   const manageable =
     editing !== undefined &&
     message !== undefined &&
+    !row.overlay &&
     !deleted &&
     ownAccountId !== undefined &&
     message.authorAccountId === ownAccountId;
   // The row takes the focus back when its editor closes.
   const wasEditing = useRef(false);
   useEffect(() => {
-    if (wasEditing.current && !editingThis) rowRef.current?.focus({ preventScroll: true });
+    if (wasEditing.current && !editingThis) {
+      // The editor that had the focus is gone: the row takes it, unless the person has moved on.
+      const active = document.activeElement;
+      if (active === null || active === document.body || rowRef.current?.contains(active)) {
+        rowRef.current?.focus({ preventScroll: true });
+      }
+    }
     wasEditing.current = editingThis;
   }, [editingThis]);
   if (message && deleted) {
@@ -593,6 +628,7 @@ const MessageRow = memo(function MessageRow({
               initial={editableBlocks(editingMessage.blocks, text) ?? []}
               onSave={(blocks) => editing.save(editingMessage.id, blocks)}
               onCancel={editing.cancel}
+              takeFocus={() => editing.takeFocus(editingMessage.id)}
             />
           </Suspense>
         ) : config.richTextEnabled ? (
