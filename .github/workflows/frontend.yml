@@ -124,9 +124,63 @@ jobs:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ steps.pnpm-cache.outputs.cache-primary-key }}
 
+  # Browser smoke tests: real Chromium against the Vite dev server, no backend (apps/web/playwright.config.ts).
+  # A separate job so it runs in parallel with lint-test-build; the gate job below counts it.
+  browser-smoke:
+    needs: changes
+    if: ${{ needs.changes.outputs.relevant == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        run: npm install --global "$(node -p "require('./package.json').packageManager")"
+
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      # Restore only; the lint-test-build job on main saves the same key.
+      - name: Restore pnpm store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The browser build is the one pinned by the locked @playwright/test version. Not cached: browsers are
+      # downloaded on every run, which keeps the cache policy (only main saves) simple.
+      - name: Install Chromium
+        working-directory: frontend/apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser smoke tests
+        run: pnpm test:e2e
+
+      - name: Upload Playwright traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-traces
+          path: frontend/apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The only check the branch ruleset requires for this workflow. Skipped jobs pass; failed or cancelled ones fail.
   frontend-required:
-    needs: [changes, lint-test-build]
+    needs: [changes, lint-test-build, browser-smoke]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     permissions: {}
