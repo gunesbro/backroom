@@ -194,14 +194,17 @@ export function Composer({
       }}
     >
       {reply && (
-        <div className="bm-replybar" id={replyId}>
+        <div className="bm-replybar">
           <Icon name="reply" size={14} />
-          <span>
-            {replyParts[0]}
-            <b>{reply.name}</b>
-            {replyParts[1]}
+          {/* The field is described by this text only, not by the close button. */}
+          <span id={replyId} className="bm-replybar__what">
+            <span>
+              {replyParts[0]}
+              <b>{reply.name}</b>
+              {replyParts[1]}
+            </span>
+            <span className="bm-replybar__text">· {reply.text}</span>
           </span>
-          <span className="bm-replybar__text">· {reply.text}</span>
           <button
             type="button"
             aria-label={t('cancelReply')}

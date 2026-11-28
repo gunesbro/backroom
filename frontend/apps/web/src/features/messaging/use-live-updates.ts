@@ -71,6 +71,7 @@ export function useLiveUpdates({
   ownAccountId,
   detailedId,
   onRemoved,
+  onMessageDeleted,
 }: {
   cell: Cell;
   api: MessagingApi;
@@ -82,6 +83,8 @@ export function useLiveUpdates({
   detailedId?: string | undefined;
   /** The person's membership of a conversation ended (they left, or were removed). */
   onRemoved?: (conversationId: string) => void;
+  /** A message was deleted (a live event): state kept outside the query cache that quotes it must forget its content. */
+  onMessageDeleted?: (messageId: string) => void;
 }) {
   const client = useRealtimeClient(cell);
   // Idle after 10 minutes without input, active again on input (presence, Phase 2 flow 9); off with its flag.
@@ -97,9 +100,27 @@ export function useLiveUpdates({
   );
 
   // Handlers read the latest values through a ref, so they are registered once per connection.
-  const latest = useRef({ api, orgId, selectedId, ownAccountId, signOut, detailedId, onRemoved });
+  const latest = useRef({
+    api,
+    orgId,
+    selectedId,
+    ownAccountId,
+    signOut,
+    detailedId,
+    onRemoved,
+    onMessageDeleted,
+  });
   useLayoutEffect(() => {
-    latest.current = { api, orgId, selectedId, ownAccountId, signOut, detailedId, onRemoved };
+    latest.current = {
+      api,
+      orgId,
+      selectedId,
+      ownAccountId,
+      signOut,
+      detailedId,
+      onRemoved,
+      onMessageDeleted,
+    };
   });
 
   // Groups: the organization, and the channels (a diff, never a full re-subscribe: the hub rate-limits it).
@@ -201,7 +222,9 @@ export function useLiveUpdates({
         if (event.orgId === latest.current.orgId) applyMessageEdited(queryClient, event);
       }),
       client.on('MessageDeleted', (event) => {
-        if (event.orgId === latest.current.orgId) applyMessageDeleted(queryClient, event);
+        if (event.orgId !== latest.current.orgId) return;
+        applyMessageDeleted(queryClient, event);
+        latest.current.onMessageDeleted?.(event.messageId);
       }),
       client.on('ChannelCreated', ({ orgId: eventOrg }) => {
         if (eventOrg === latest.current.orgId) noteChannelCreated(queryClient, eventOrg);

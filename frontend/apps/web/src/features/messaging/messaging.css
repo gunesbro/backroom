@@ -1108,6 +1108,13 @@ ol.bm-rt-list {
   color: var(--ph-ink);
 }
 
+.bm-replybar__what {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: var(--ph-space-4);
+}
+
 .bm-replybar__text {
   flex: 1;
   min-width: 0;

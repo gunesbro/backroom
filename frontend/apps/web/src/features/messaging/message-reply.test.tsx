@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axe from 'axe-core';
 import type { LexicalEditor } from 'lexical';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionStatus, RealtimeClient, RealtimeEventName, RealtimeEvents } from '@backroom/realtime';
 import { AuthProvider } from '@/features/auth';
 import { ApiError } from '@/shared/http';
@@ -679,6 +679,176 @@ describe('Quotes', () => {
     expect(
       within(log).getByRole('button', { name: 'Replied message: Veli Yilmaz: message 1' }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('Deleted originals', () => {
+  it('LiveDelete_WhileTheReplyIsBeingSent_RemovesTheOriginalFromItsQuote', async () => {
+    const realtime = fakeRealtime();
+    renderWorkspace(
+      fakeApi({ sendMessage: vi.fn(() => new Promise<Message>(() => undefined)) }),
+      realtime.client,
+    );
+    const log = await openLog();
+    await replyTo(log, 'message 3');
+    typeInComposer('waiting');
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(within(rowOf(log, 'waiting')).getByText('message 3')).toBeInTheDocument();
+
+    realtime.emit('MessageDeleted', live.deleted(3, 100));
+
+    const row = rowOf(log, 'waiting');
+    await waitFor(() => {
+      expect(within(row).getByText('This message was deleted')).toBeInTheDocument();
+    });
+    expect(row.querySelector('.bm-quote b')).toBeNull();
+    expect(within(row).queryByText('message 3')).toBeNull();
+  });
+
+  it('Send_RefusedBecauseTheOriginalIsGone_KeepsNoNameOrTextOfIt', async () => {
+    const sendMessage = vi.fn(() =>
+      Promise.reject(new ApiError(400, 'messaging.reply_invalid', undefined, 'reply.deleted')),
+    );
+    renderWorkspace(fakeApi({ sendMessage }));
+    const log = await openLog();
+    await replyTo(log, 'message 3');
+    typeInComposer('my answer');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await within(log).findByText(GONE_TEXT);
+    const row = rowOf(log, 'my answer');
+    expect(within(row).getByText('This message was deleted')).toBeInTheDocument();
+    expect(row.querySelector('.bm-quote b')).toBeNull();
+    expect(within(row).queryByText('message 3')).toBeNull();
+  });
+
+  it('LiveDelete_OfTheOriginalOfAJustSentReply_RemovesItFromTheReplysQuote', async () => {
+    const realtime = fakeRealtime();
+    const sendMessage = vi.fn(sendEcho);
+    renderWorkspace(fakeApi({ sendMessage }), realtime.client);
+    const log = await openLog();
+    await replyTo(log, 'message 3');
+    typeInComposer('sent reply');
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await within(log).findByRole('button', { name: 'Replied message: Veli Yilmaz: message 3' });
+
+    realtime.emit('MessageDeleted', live.deleted(3, 100));
+
+    await waitFor(() => {
+      expect(within(rowOf(log, 'sent reply')).getByText('This message was deleted')).toBeInTheDocument();
+    });
+  });
+
+  it('Target_ShowsTheOriginalsNewTextAfterALiveEdit', async () => {
+    const realtime = fakeRealtime();
+    renderWorkspace(fakeApi(), realtime.client);
+    const log = await openLog();
+    await replyTo(log, 'message 3');
+
+    realtime.emit('MessageEdited', live.edited(3, 100, 'edited text'));
+
+    await waitFor(() => {
+      expect(screen.getByText('· edited text')).toBeInTheDocument();
+    });
+  });
+
+  it('Target_WhenTheOriginalIsNotInTheLoadedList_IsDroppedQuietly', async () => {
+    const { queryClient } = renderWorkspace(fakeApi());
+    const log = await openLog();
+    await replyTo(log, 'message 3');
+
+    // The page that held it is gone from the cache (the list keeps a few pages at most).
+    act(() => {
+      queryClient.setQueryData(['orgs', ORG, 'conversations', GENERAL.id, 'messages'], {
+        pages: [{ messages: [message(4)], next: null }],
+        pageParams: [undefined],
+      });
+    });
+
+    await waitFor(() => {
+      expect(replyBar()).toBeNull();
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('DeleteRefused_PutsTheRepliesQuotesBack', async () => {
+    const deleteMessage = vi.fn(() => Promise.reject(new ApiError(500, 'server.error')));
+    renderWorkspace(fakeApi({ deleteMessage }, withReply(quoteOf(2))));
+    const log = await openLog();
+    const row = rowOf(log, 'message 2');
+    fireEvent.pointerEnter(row, { pointerType: 'mouse' });
+    fireEvent.click(await within(row).findByRole('button', { name: 'More' }));
+    fireEvent.click(within(row).getByRole('menuitem', { name: 'Delete message' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => {
+      expect(deleteMessage).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      await within(log).findByRole('button', { name: 'Replied message: Alice Example: message 2' }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('Highlight', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('Flash_EndsAfterAWhile', async () => {
+    renderWorkspace(fakeApi({}, withReply()));
+    const log = await openLog();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    fireEvent.click(within(log).getByRole('button', { name: 'Replied message: Veli Yilmaz: message 1' }));
+    await waitFor(() => {
+      expect(rowOf(log, 'message 1')).toHaveClass('bm-message--flash');
+    });
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(rowOf(log, 'message 1')).not.toHaveClass('bm-message--flash');
+  });
+
+  it('Flash_TimerIsClearedWhenTheListGoesAway', async () => {
+    const view = renderWorkspace(fakeApi({}, withReply()));
+    const log = await openLog();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const clear = vi.spyOn(globalThis, 'clearTimeout');
+
+    fireEvent.click(within(log).getByRole('button', { name: 'Replied message: Veli Yilmaz: message 1' }));
+    await waitFor(() => {
+      expect(rowOf(log, 'message 1')).toHaveClass('bm-message--flash');
+    });
+    clear.mockClear();
+    view.unmount();
+
+    expect(clear).toHaveBeenCalled();
+  });
+});
+
+describe('Focus', () => {
+  it('Edit_InPlace_PutsTheCaretAtTheEndOfTheContent', async () => {
+    renderWorkspace(fakeApi());
+    const log = await openLog();
+    const row = rowOf(log, 'message 2');
+    fireEvent.pointerEnter(row, { pointerType: 'mouse' });
+    fireEvent.click(await within(row).findByRole('button', { name: 'More' }));
+    fireEvent.click(within(row).getByRole('menuitem', { name: 'Edit message' }));
+
+    const input = await screen.findByRole('textbox', { name: 'Edit message' });
+
+    await waitFor(() => {
+      expect(input).toHaveFocus();
+    });
+    await waitFor(() => {
+      const selection = window.getSelection();
+      expect(selection?.anchorNode && input.contains(selection.anchorNode)).toBe(true);
+      expect(selection?.anchorOffset).toBe('message 2'.length);
+    });
   });
 });
 

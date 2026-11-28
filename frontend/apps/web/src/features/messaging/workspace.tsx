@@ -128,6 +128,11 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
       setDropped(conversationId);
       setChosen((current) => (current?.id === conversationId ? undefined : current));
       setInfoFor((current) => (current === conversationId ? undefined : current));
+      // What was being written in it is gone with it.
+      setReplyTargets((current) => {
+        if (!(conversationId in current)) return current;
+        return Object.fromEntries(Object.entries(current).filter(([id]) => id !== conversationId));
+      });
     },
     [lostAccess],
   );
@@ -153,6 +158,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
     ownAccountId: user.accountId,
     detailedId: infoFor,
     onRemoved: drop,
+    onMessageDeleted: pending.markOriginalDeleted,
   });
   const { clearActivity } = live;
   const select = useCallback(
@@ -473,7 +479,7 @@ function ChannelView({
   const loadNewer = useCallback(() => {
     void fetchNewer();
   }, [fetchNewer]);
-  const { retry: retryMessage, discard: discardMessage } = pending;
+  const { retry: retryMessage, discard: discardMessage, markOriginalDeleted } = pending;
   const retry = useCallback(
     (clientMessageId: string) => {
       retryMessage(channel.id, clientMessageId);
@@ -586,6 +592,8 @@ function ChannelView({
         // A read that finished in between may have brought the message back: it is deleted.
         await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channel.id) });
         deleteMessageOptimistically(queryClient, orgId, channel.id, messageId);
+        // Unsent and just-sent replies to it must not keep its author and text either.
+        markOriginalDeleted(messageId);
       } catch (error) {
         if (isMessageDeleted(error)) return;
         if (original) restoreMessage(queryClient, orgId, channel.id, original);
@@ -594,7 +602,7 @@ function ChannelView({
         setChangeError(messageChangeErrorText(error, t, locale));
       }
     },
-    [api, orgId, channel.id, queryClient, t, locale],
+    [api, orgId, channel.id, queryClient, t, locale, markOriginalDeleted],
   );
   const editing = useMemo<MessageEditing | undefined>(
     () =>
@@ -622,10 +630,15 @@ function ChannelView({
   const composerShown = !archived && !previewing && stateKnown;
   const replyEnabled = config.messageReplyEnabled && composerShown;
   const composerRef = useRef<ComposerHandle>(null);
-  // A target whose message was deleted meanwhile (by a live event) is dropped quietly.
-  const targetDeleted =
-    replyTarget !== undefined &&
-    confirmed.some((message) => message.id === replyTarget.messageId && message.deletedAt);
+  // The target holds only the original's id: its author and text are read from the loaded list when the bar is drawn,
+  // so an edit shows in the bar and a deleted original never stays in it.
+  const original = useMemo(
+    () => (replyTarget ? rows.find((row) => row.message?.id === replyTarget.messageId)?.message : undefined),
+    [replyTarget, rows],
+  );
+  // An original that is not in the loaded list (or is a tombstone) ends the reply quietly, once the list is there.
+  const targetGone =
+    replyTarget !== undefined && query.data !== undefined && (!original || Boolean(original.deletedAt));
   // A send that the server refused because its original is gone ends the reply to that original too.
   const targetRefused =
     replyTarget !== undefined &&
@@ -635,23 +648,19 @@ function ChannelView({
         item.replyTo?.messageId === replyTarget.messageId &&
         (item.code === 'messaging.reply_invalid' || item.code === 'messaging.message_reply_unavailable'),
     );
-  const dropTarget = targetDeleted || targetRefused;
+  const dropTarget = targetGone || targetRefused;
   useEffect(() => {
     if (dropTarget) onReplyTargetChange(channel.id, undefined);
   }, [dropTarget, onReplyTargetChange, channel.id]);
-  const activeReply = replyEnabled && !dropTarget ? replyTarget : undefined;
+  const activeReply = replyEnabled && !dropTarget && original ? original : undefined;
   // The composer takes the focus once the bar is drawn: each request (a number) asks for it once.
   const [focusRequest, setFocusRequest] = useState(0);
   useEffect(() => {
     if (focusRequest > 0) composerRef.current?.focus();
   }, [focusRequest]);
   const startReply = useCallback(
-    (original: Message) => {
-      onReplyTargetChange(channel.id, {
-        messageId: original.id,
-        authorAccountId: original.authorAccountId,
-        text: truncateQuote(original.text),
-      });
+    (target: Message) => {
+      onReplyTargetChange(channel.id, { messageId: target.id });
       setFocusRequest((count) => count + 1);
     },
     [onReplyTargetChange, channel.id],
@@ -662,7 +671,7 @@ function ChannelView({
   }, [onReplyTargetChange, channel.id]);
   const replyBar = activeReply && {
     name: activeReply.authorAccountId === ownAccountId ? user.name : authorName(activeReply.authorAccountId),
-    text: activeReply.text,
+    text: truncateQuote(activeReply.text),
   };
 
   return (
@@ -784,10 +793,10 @@ function ChannelView({
               text,
               blocks,
               activeReply && {
-                messageId: activeReply.messageId,
+                messageId: activeReply.id,
                 deleted: false,
                 authorAccountId: activeReply.authorAccountId,
-                text: activeReply.text,
+                text: truncateQuote(activeReply.text),
               },
             );
             if (activeReply) onReplyTargetChange(channel.id, undefined);
