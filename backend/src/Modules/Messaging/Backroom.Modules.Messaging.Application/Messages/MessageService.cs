@@ -165,19 +165,14 @@ internal sealed partial class MessageService(
         Guid? quotedAuthor = null;
         if (replyToMessageId is { } replyId)
         {
-            var source = await messages.FindQuoteSourceAsync(replyId, cancellationToken);
-            if (source is null || source.ConversationId != conversationId)
+            var (refusal, resolved) = await ResolveQuoteAsync(replyId, conversationId, cancellationToken);
+            if (refusal is not null)
             {
-                return ReplyInvalid.WithReason("reply.not_found");
+                return refusal;
             }
 
-            if (source.Deleted)
-            {
-                return ReplyInvalid.WithReason("reply.deleted");
-            }
-
-            quote = MessageQuote.Of(replyId, source.AuthorAccountId, source.Text ?? string.Empty);
-            quotedAuthor = source.AuthorAccountId;
+            quote = resolved;
+            quotedAuthor = resolved!.AuthorAccountId;
         }
 
         // Mentions (docs/contracts/phase-2.md, flow 2): every mentioned account must be an active member, whose name
@@ -209,6 +204,21 @@ internal sealed partial class MessageService(
         if (await channels.NextSequenceAsync(organizationId, conversationId, now, cancellationToken) is not { } seq)
         {
             return ConversationNotFound;
+        }
+
+        // A delete takes this same row lock, so a delete that committed between the first read and the lock is visible now: read again.
+        // A refusal rolls the whole request back (the endpoint rolls back on an error), so last_message_seq does not move and nothing is
+        // announced or notified for a deleted original; the quote of the answer, of the live event and of the notification is the fresh one.
+        if (replyToMessageId is { } lockedReplyId)
+        {
+            var (refusal, resolved) = await ResolveQuoteAsync(lockedReplyId, conversationId, cancellationToken);
+            if (refusal is not null)
+            {
+                return refusal;
+            }
+
+            quote = resolved;
+            quotedAuthor = resolved!.AuthorAccountId;
         }
 
         var message = new NewMessage(ids.NewId(), organizationId, conversationId, seq, authorAccountId, clientId, prepared, MessageBlocks.ToJson(parsed.Blocks), now, replyToMessageId);
@@ -253,7 +263,8 @@ internal sealed partial class MessageService(
 
         // The quoted message's author is told (docs/contracts/phase-2.md, flow 2): not when replying to oneself, and only if they can still read the
         // conversation. Ids only; Notifications applies the person's settings and the read check again.
-        if (quotedAuthor is { } author && author != authorAccountId
+        // A person who is also mentioned in the reply gets the mention, not a second item for the quote.
+        if (quotedAuthor is { } author && author != authorAccountId && !mentionedReaders.Contains(author)
             && (await conversations.FilterReadersAsync(organizationId, conversationId, [author], cancellationToken)).Count > 0)
         {
             await outbox.AddAsync(
@@ -323,6 +334,19 @@ internal sealed partial class MessageService(
         return found.Count > pageSize
             ? new MessagePage([.. found.Take(pageSize)], found[pageSize - 1].Seq, current)
             : new MessagePage(found, null, current);
+    }
+
+    private async Task<(Error? Refusal, MessageQuote? Quote)> ResolveQuoteAsync(Guid replyId, Guid conversationId, CancellationToken cancellationToken)
+    {
+        var source = await messages.FindQuoteSourceAsync(replyId, cancellationToken);
+        if (source is null || source.ConversationId != conversationId)
+        {
+            return (ReplyInvalid.WithReason("reply.not_found"), null);
+        }
+
+        return source.Deleted
+            ? (ReplyInvalid.WithReason("reply.deleted"), null)
+            : (null, MessageQuote.Of(replyId, source.AuthorAccountId, source.Text ?? string.Empty));
     }
 
     private static LiveQuote? ToLive(MessageQuote? quote) =>

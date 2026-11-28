@@ -24,7 +24,8 @@ internal sealed class AddReplyToMessage : Migration
 
             ALTER TABLE messaging.messages ADD COLUMN reply_to_message_id uuid;
             ALTER TABLE messaging.messages ADD CONSTRAINT messages_reply_to_check
-                CHECK (reply_to_message_id IS NULL OR (reply_to_message_id <> id AND deleted_at IS NULL));
+                CHECK (reply_to_message_id IS NULL OR (reply_to_message_id <> id AND deleted_at IS NULL)) NOT VALID;
+            ALTER TABLE messaging.messages VALIDATE CONSTRAINT messages_reply_to_check;
             """);
     }
 
