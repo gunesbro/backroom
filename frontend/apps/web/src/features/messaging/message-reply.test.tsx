@@ -723,6 +723,46 @@ describe('Deleted originals', () => {
     expect(within(row).queryByText('message 3')).toBeNull();
   });
 
+  it('Refetch_BringingTheOriginalAsATombstone_RemovesItFromAFailedRepliesQuote', async () => {
+    let current = [1, 2, 3, 4].map((n) => message(n));
+    const listMessages = vi.fn(() => Promise.resolve({ messages: current.toReversed(), next: null }));
+    const sendMessage = vi.fn(() => Promise.reject(new ApiError(500, 'server.error')));
+    const { queryClient } = renderWorkspace(fakeApi({ listMessages, sendMessage }));
+    const log = await openLog();
+    await replyTo(log, 'message 3');
+    typeInComposer('my answer');
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await within(log).findByRole('button', { name: 'Discard' });
+    expect(within(rowOf(log, 'my answer')).getByText('message 3')).toBeInTheDocument();
+
+    current = current.map((item) =>
+      item.id === 'm-3'
+        ? {
+            id: 'm-3',
+            seq: 3,
+            versionSeq: 100,
+            createdAt: item.createdAt,
+            deletedAt: '2026-11-22T11:00:00Z',
+            clientMessageId: '',
+            authorAccountId: '',
+            text: '',
+          }
+        : item,
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['orgs', ORG, 'conversations', GENERAL.id, 'messages'],
+      });
+    });
+
+    await waitFor(() => {
+      expect(within(rowOf(log, 'my answer')).getByText('This message was deleted')).toBeInTheDocument();
+    });
+    const row = rowOf(log, 'my answer');
+    expect(row.querySelector('.bm-quote b')).toBeNull();
+    expect(within(row).queryByText('message 3')).toBeNull();
+  });
+
   it('LiveDelete_OfTheOriginalOfAJustSentReply_RemovesItFromTheReplysQuote', async () => {
     const realtime = fakeRealtime();
     const sendMessage = vi.fn(sendEcho);

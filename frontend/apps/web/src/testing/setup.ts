@@ -28,3 +28,25 @@ if (typeof HTMLDialogElement !== 'undefined') {
     };
   }
 }
+
+// jsdom has no layout: when the editor puts a caret in view (after focus or an undo) it asks the selection's range
+// where it is.
+if (typeof Range !== 'undefined') {
+  const rect = () => ({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: 0,
+    height: 0,
+    toJSON: () => ({}),
+  });
+  Range.prototype.getBoundingClientRect = rect;
+  Range.prototype.getClientRects = () => ({
+    length: 0,
+    item: () => null,
+    [Symbol.iterator]: [][Symbol.iterator],
+  });
+}

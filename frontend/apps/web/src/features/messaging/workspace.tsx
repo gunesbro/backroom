@@ -626,6 +626,20 @@ function ChannelView({
     if (newest && editableBlocks(newest.blocks, newest.text) !== null) startEdit(newest.id);
   }, [query.hasPreviousPage, ownAccountId, confirmed, startEdit]);
 
+  // A delete can be learned without a live event (a read, a catch-up, a refused edit): unsent and just-sent replies
+  // to a message that is a tombstone in the loaded list must forget its author and text all the same.
+  const quotedIds = pendingHere.flatMap((item) => [
+    item.replyTo?.messageId,
+    item.message?.replyTo?.messageId,
+  ]);
+  const deletedQuotedIds = confirmed
+    .filter((message) => message.deletedAt && quotedIds.includes(message.id))
+    .map((message) => message.id)
+    .join(',');
+  useEffect(() => {
+    for (const id of deletedQuotedIds === '' ? [] : deletedQuotedIds.split(',')) markOriginalDeleted(id);
+  }, [deletedQuotedIds, markOriginalDeleted]);
+
   // Replying with a quote (Phase 2 step 9): off without its flag, and only where there is a composer to write in.
   const composerShown = !archived && !previewing && stateKnown;
   const replyEnabled = config.messageReplyEnabled && composerShown;
@@ -637,6 +651,8 @@ function ChannelView({
     [replyTarget, rows],
   );
   // An original that is not in the loaded list (or is a tombstone) ends the reply quietly, once the list is there.
+  // Known limit: this also happens when the page that held the original is evicted (`maxPages`) or when a reset
+  // reloads only the newest page; the person then picks the message again.
   const targetGone =
     replyTarget !== undefined && query.data !== undefined && (!original || Boolean(original.deletedAt));
   // A send that the server refused because its original is gone ends the reply to that original too.
