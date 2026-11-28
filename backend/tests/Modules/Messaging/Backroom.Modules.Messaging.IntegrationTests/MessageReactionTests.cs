@@ -6,6 +6,8 @@ using Backroom.Modules.Permissions.Contracts;
 using Backroom.Testing.Keycloak;
 using Backroom.Testing.Postgres;
 
+#pragma warning disable CA5394 // A seeded Random makes the test sequence repeatable; it is not used for security.
+
 namespace Backroom.Modules.Messaging.IntegrationTests;
 
 /// <summary>
@@ -662,6 +664,157 @@ public sealed class MessageReactionTests(PostgresDatabase database, KeycloakReal
         Logs.Entries.Where(entry => entry.StartsWith("Backroom.", StringComparison.Ordinal)).Should().NotContain(entry => entry.Contains(ThumbsUp, StringComparison.Ordinal), "the module logs ids only");
     }
 
+    [Fact]
+    public async Task Put_AfterTwoSpellingsOfAHeart_IsOneReactionInTheListedSpellingAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var messageId = (await SendMessageAsync(organizationId, channelId, Alice, "hello"))["id"]!.GetValue<Guid>();
+
+        using var bare = await PutAsync(organizationId, messageId, "❤", Alice);
+        using var qualified = await PutAsync(organizationId, messageId, Heart, Alice);
+
+        bare.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        qualified.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await QuerySingleAsync("SELECT count(*), min(emoji) FROM messaging.reactions WHERE message_id = $1", messageId)).Should().Equal(1L, Heart);
+        Publisher.Reactions.Should().HaveCount(1, "the second spelling was the same reaction");
+
+        using var removed = await RemoveAsync(organizationId, messageId, "❤", Alice);
+
+        removed.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.reactions WHERE message_id = $1", messageId)).Should().Equal(0L);
+    }
+
+    [Fact]
+    public async Task Delete_OwnReactionInAnArchivedConversation_WorksWhileAddingIsConflictAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var messageId = (await SendMessageAsync(organizationId, channelId, Alice, "hello"))["id"]!.GetValue<Guid>();
+        using (await PutAsync(organizationId, messageId, ThumbsUp, Alice))
+        {
+        }
+
+        await ExecuteAsync("UPDATE messaging.conversations SET archived_at = now() WHERE id = $1", channelId);
+
+        using var add = await PutAsync(organizationId, messageId, Heart, Alice);
+        using var remove = await RemoveAsync(organizationId, messageId, ThumbsUp, Alice);
+
+        add.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        remove.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.reactions WHERE message_id = $1", messageId)).Should().Equal(0L);
+        Publisher.Reactions[^1].Reactions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Delete_OwnReactionAfterLeavingAPublicChannel_WorksWhileAddingIsForbiddenAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        await JoinAsync(organizationId, channelId, Bob);
+        var messageId = (await SendMessageAsync(organizationId, channelId, Alice, "hello"))["id"]!.GetValue<Guid>();
+        using (await PutAsync(organizationId, messageId, ThumbsUp, Bob))
+        {
+        }
+
+        using (await SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/leave", Bob, null))
+        {
+        }
+
+        using var add = await PutAsync(organizationId, messageId, Heart, Bob);
+        using var remove = await RemoveAsync(organizationId, messageId, ThumbsUp, Bob);
+        using var removeAgain = await RemoveAsync(organizationId, messageId, ThumbsUp, Bob);
+
+        add.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        remove.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        removeAgain.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.reactions WHERE message_id = $1", messageId)).Should().Equal(0L);
+    }
+
+    [Theory]
+    [InlineData("dm")]
+    [InlineData("group_dm")]
+    [Trait("Category", "Privacy")]
+    public async Task PutAndDelete_ByANonParticipantOfADirectConversation_AnswerLikeAnUnknownMessageAndNeverShowTheSummaryAsync(string kind)
+    {
+        var organizationId = await ProvisionForAsync(Alice);
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Admin);
+        var alice = await AccountAsync(Alice);
+        var other = await AddSilentMemberAsync(organizationId);
+        var conversationId = Guid.CreateVersion7();
+        await ExecuteAsync(
+            "INSERT INTO messaging.conversations (id, org_id, kind, created_by, created_at, member_count) VALUES ($1, $2, $3, $4, now(), 2)",
+            conversationId, organizationId, kind, alice);
+        foreach (var member in new[] { alice, other })
+        {
+            await ExecuteAsync(
+                "INSERT INTO messaging.conversation_members (org_id, conversation_id, account_id, role, joined_at, joined_seq, added_by) VALUES ($1, $2, $3, 'member', now(), 0, $4)",
+                organizationId, conversationId, member, alice);
+        }
+
+        var messageId = (await SendMessageAsync(organizationId, conversationId, Alice, "between us"))["id"]!.GetValue<Guid>();
+        using (await PutAsync(organizationId, messageId, ThumbsUp, Alice))
+        {
+        }
+
+        using var put = await PutAsync(organizationId, messageId, Heart, Bob);
+        using var delete = await RemoveAsync(organizationId, messageId, ThumbsUp, Bob);
+        using var unknown = await PutAsync(organizationId, Guid.CreateVersion7(), Heart, Bob);
+        using var read = await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{conversationId}/messages", Bob);
+        using var around = await GetAsync($"/api/v1/orgs/{organizationId}/conversations/{conversationId}/messages?around={messageId}", Bob);
+
+        foreach (var response in new[] { put, delete })
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            (await ErrorCodeAsync(response)).Should().Be("messaging.message_not_found");
+            (await response.Content.ReadAsStringAsync(CancellationToken)).Should().Be(await unknown.Content.ReadAsStringAsync(CancellationToken));
+        }
+
+        read.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        around.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await read.Content.ReadAsStringAsync(CancellationToken)).Should().NotContain(ThumbsUp);
+        (await QuerySingleAsync("SELECT count(*) FROM messaging.reactions WHERE message_id = $1", messageId)).Should().Equal(1L);
+        Publisher.Reactions.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task Summary_AfterARandomSequenceOfAddsAndRemovals_EqualsAFullRebuildFromTheRowsAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        await AddMemberAsync(organizationId, Bob, SystemRoles.Member);
+        await JoinAsync(organizationId, channelId, Bob);
+        var messageId = (await SendMessageAsync(organizationId, channelId, Alice, "reactions here"))["id"]!.GetValue<Guid>();
+
+        // Alice is the earliest reactor with the first emoji; later reactors who never sign in come after her (their times are in the
+        // future), so removing her has to read the sample again.
+        using (await PutAsync(organizationId, messageId, Face(0), Alice))
+        {
+        }
+
+        var later = DateTimeOffset.UtcNow.AddHours(1);
+        await SeedAsync(messageId, organizationId, Enumerable.Range(0, 5).Select(_ => (Face(0), Guid.CreateVersion7())), later);
+        await SeedAsync(messageId, organizationId, Enumerable.Range(0, 2).Select(_ => (Face(1), Guid.CreateVersion7())), later.AddMinutes(1));
+        await AssertSummaryEqualsFullRebuildAsync(messageId);
+        using (await RemoveAsync(organizationId, messageId, Face(0), Alice))
+        {
+        }
+
+        await AssertSummaryEqualsFullRebuildAsync(messageId);
+
+        var random = new Random(20261128);
+        var present = new HashSet<(string User, int Face)>();
+        for (var step = 0; step < 50; step++)
+        {
+            var user = step % 2 == 0 ? Alice : Bob;
+            var face = random.Next(0, 6);
+            var remove = present.Contains((user, face)) && random.Next(0, 3) > 0;
+            using var response = remove
+                ? await RemoveAsync(organizationId, messageId, Face(face), user)
+                : await PutAsync(organizationId, messageId, Face(face), user);
+            response.StatusCode.Should().Be(HttpStatusCode.NoContent, $"step {step}");
+            _ = remove ? present.Remove((user, face)) : present.Add((user, face));
+            await AssertSummaryEqualsFullRebuildAsync(messageId);
+        }
+    }
+
     private Task<HttpResponseMessage> JoinAsync(Guid organizationId, Guid channelId, string username) =>
         SendAsync(HttpMethod.Post, $"/api/v1/orgs/{organizationId}/conversations/{channelId}/join", username, null);
 
@@ -701,12 +854,43 @@ public sealed class MessageReactionTests(PostgresDatabase database, KeycloakReal
         await ExecuteAsync(
             """
             UPDATE messaging.messages SET reaction_summary = (
-                SELECT jsonb_agg(jsonb_build_object('emoji', r.emoji, 'count', r.total, 'sample', to_jsonb(r.sample)) ORDER BY r.first_at, r.emoji COLLATE "C")
-                FROM (SELECT emoji, count(*)::int AS total, min(created_at) AS first_at, (array_agg(account_id ORDER BY created_at, account_id))[1:3] AS sample
+                SELECT jsonb_agg(jsonb_build_object('emoji', r.emoji, 'count', r.total, 'sample', to_jsonb(r.sample), 'at', to_jsonb(r.at)) ORDER BY r.first_at, r.emoji COLLATE "C")
+                FROM (SELECT emoji, count(*)::int AS total, min(created_at) AS first_at,
+                             (array_agg(account_id ORDER BY created_at, account_id))[1:3] AS sample,
+                             (array_agg(to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') ORDER BY created_at, account_id))[1:3] AS at
                       FROM messaging.reactions WHERE message_id = $1 GROUP BY emoji) r)
             WHERE id = $1
             """,
             messageId);
+    }
+
+    /// <summary>
+    /// The summary the server stores (without the sample times) and the one a full rebuild from all the message's reaction rows gives
+    /// (the order of the contract: first reaction time then code point; the earliest three reactors by time then account id).
+    /// </summary>
+    private async Task AssertSummaryEqualsFullRebuildAsync(Guid messageId)
+    {
+        var stored = (await QuerySingleAsync("SELECT reaction_summary::text FROM messaging.messages WHERE id = $1", messageId))[0] as string;
+        var rebuilt = (await QuerySingleAsync(
+            """
+            SELECT (SELECT jsonb_agg(jsonb_build_object('emoji', r.emoji, 'count', r.total, 'sample', to_jsonb(r.sample)) ORDER BY r.first_at, r.emoji COLLATE "C")
+                    FROM (SELECT emoji, count(*)::int AS total, min(created_at) AS first_at, (array_agg(account_id ORDER BY created_at, account_id))[1:3] AS sample
+                          FROM messaging.reactions WHERE message_id = $1 GROUP BY emoji) r)::text
+            """,
+            messageId))[0] as string;
+        var storedNode = stored is null ? null : JsonNode.Parse(stored)!.AsArray();
+        if (storedNode is not null)
+        {
+            foreach (var entry in storedNode)
+            {
+                entry!.AsObject().Remove("at");
+            }
+        }
+
+        var storedText = storedNode?.ToJsonString() ?? "null";
+        var rebuiltText = rebuilt is null ? "null" : JsonNode.Parse(rebuilt)!.ToJsonString();
+        // Same content, whatever the order of an object's members.
+        JsonNode.DeepEquals(JsonNode.Parse(storedText), JsonNode.Parse(rebuiltText)).Should().BeTrue($"stored {storedText} must equal rebuilt {rebuiltText}");
     }
 
     private async Task<(Guid OrganizationId, Guid ChannelId)> ChannelAsync()

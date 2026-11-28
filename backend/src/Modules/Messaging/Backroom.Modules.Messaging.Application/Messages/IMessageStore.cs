@@ -66,11 +66,18 @@ internal interface IMessageStore
     /// <summary>Removes the account's reaction; <see langword="false"/> if there was none.</summary>
     Task<bool> RemoveReactionAsync(Guid messageId, Guid accountId, string emoji, CancellationToken cancellationToken);
 
+    /// <summary>The emoji's entry of the message's stored reaction summary, <see langword="null"/> if no one reacted with it: one small value, never the whole summary.</summary>
+    Task<StoredReaction?> ReadReactionEntryAsync(Guid messageId, string emoji, CancellationToken cancellationToken);
+
     /// <summary>
-    /// Rebuilds the stored summary of a live message from its reaction rows (one aggregate over the rows of one message), sets the
-    /// message's <c>version_seq</c> and returns the new summary (empty when no reaction is left). The caller holds the conversation row lock.
+    /// Replaces the emoji's entry of a live message's stored summary with <paramref name="entry"/> (removes it when <see langword="null"/>),
+    /// puts the entries in their order, sets the message's <c>version_seq</c> and returns the new summary (empty when nobody reacted). Done in
+    /// one statement on the server with only the changed entry as a parameter. The caller holds the conversation row lock.
     /// </summary>
-    Task<IReadOnlyList<ReactionSummary>> RefreshReactionSummaryAsync(Guid messageId, long versionSeq, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ReactionSummary>> ReplaceReactionEntryAsync(Guid messageId, long versionSeq, string emoji, StoredReaction? entry, CancellationToken cancellationToken);
+
+    /// <summary>The earliest reactors with the emoji (at most 3, by time then account id): an index range read of three rows.</summary>
+    Task<IReadOnlyList<Reactor>> ListEarliestReactorsAsync(Guid messageId, string emoji, CancellationToken cancellationToken);
 
     /// <summary>The (message, emoji) pairs among <paramref name="messageIds"/> the account reacted with: one statement for a page (primary key range per message).</summary>
     Task<IReadOnlyList<(Guid MessageId, string Emoji)>> ListReactedByAsync(IReadOnlyCollection<Guid> messageIds, Guid accountId, CancellationToken cancellationToken);

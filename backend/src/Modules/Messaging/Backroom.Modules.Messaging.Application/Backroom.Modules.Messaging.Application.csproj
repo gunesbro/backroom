@@ -12,6 +12,11 @@
     <ProjectReference Include="..\..\Organization\Backroom.Modules.Organization.Contracts\Backroom.Modules.Organization.Contracts.csproj" />
   </ItemGroup>
 
+  <!-- The picker's emoji list (one source with the web tests and Identity's tests), shipped in the assembly for canonical spellings. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\..\..\docs\contracts\test-data\picker-emoji.json" LogicalName="picker-emoji.json" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Backroom.Modules.Messaging.Infrastructure" />
     <InternalsVisibleTo Include="Backroom.Modules.Messaging.Presentation" />

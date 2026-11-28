@@ -7,11 +7,12 @@ namespace Backroom.Modules.Messaging.Application.Messages;
 
 /// <summary>
 /// Reactions (docs/contracts/phase-2.md, flow 2 "Reactions"; HTTP <c>PUT</c> and <c>DELETE .../messages/{id}/reactions/{emoji}</c>).
-/// Both need read access and the right to post (an open membership in a conversation that is not archived), like an edit; an unknown
+/// Adding needs read access and the right to post (an open membership in a conversation that is not archived), like an edit; removing one's own
+/// reaction needs read access only (it works after leaving a public channel and in an archived conversation); an unknown
 /// message, one the caller cannot read and a deleted one are the same <c>404 messaging.message_not_found</c>. Both are idempotent:
 /// adding a reaction that exists and removing one that does not change nothing, take no change number and announce nothing. A real
-/// change takes the conversation's next change number as the message's <c>version_seq</c> (so sync sees it), rebuilds the message's
-/// stored summary and announces <c>ReactionsChanged</c> to the conversation's group after the commit. No integration event: the
+/// change takes the conversation's next change number as the message's <c>version_seq</c> (so sync sees it), updates the message's
+/// stored summary (by this one reaction, see <see cref="ReactionSummaryEditor"/>) and announces <c>ReactionsChanged</c> to the conversation's group after the commit. No integration event: the
 /// contract lists none for reactions. Reactions of a message are erased by its delete.
 /// <para>
 /// The limits (50 distinct emoji per message, 20 reactions per person per message) are checked under the conversation row lock,
@@ -61,12 +62,14 @@ internal sealed partial class MessageService
             return MessageNotFound;
         }
 
-        if (access.Archived)
+        // Adding needs the right to post. Removing one's own reaction needs read access only: it must work after leaving a public
+        // channel and in an archived conversation.
+        if (add && access.Archived)
         {
             return MembershipService.ConversationArchived;
         }
 
-        if (!access.IsMember)
+        if (add && !access.IsMember)
         {
             return NotMember;
         }
@@ -88,12 +91,12 @@ internal sealed partial class MessageService
             return MessageNotFound;
         }
 
-        if (locked.Archived)
+        if (add && locked.Archived)
         {
             return MembershipService.ConversationArchived;
         }
 
-        if (!locked.IsMember)
+        if (add && !locked.IsMember)
         {
             return NotMember;
         }
@@ -114,9 +117,24 @@ internal sealed partial class MessageService
             return Result.Success;
         }
 
-        // A real change: the next change number is the message's version, and the summary is rebuilt from the rows.
+        // A real change: only this emoji's entry of the summary changes (never rebuilt from all the rows: with thousands of reactions that
+        // would hold the conversation lock for every change), then the next change number becomes the message's version.
+        var current = await messages.ReadReactionEntryAsync(messageId, emoji, cancellationToken);
+        StoredReaction? updated;
+        if (add)
+        {
+            updated = ReactionSummaryEditor.Added(current, emoji, new Reactor(accountId, now));
+        }
+        else
+        {
+            var refill = ReactionSummaryEditor.NeedsRefill(current, accountId)
+                ? await messages.ListEarliestReactorsAsync(messageId, emoji, cancellationToken)
+                : null;
+            updated = ReactionSummaryEditor.Removed(current, accountId, refill);
+        }
+
         var change = await conversations.TouchAsync(organizationId, head.ConversationId, cancellationToken);
-        var summary = await messages.RefreshReactionSummaryAsync(messageId, change.ChangeSeq, cancellationToken);
+        var summary = await messages.ReplaceReactionEntryAsync(messageId, change.ChangeSeq, emoji, updated, cancellationToken);
         liveEvents.Add(new ReactionsChangedPayload(
             organizationId, head.ConversationId, messageId, change.ChangeSeq, change.ChangeSeq,
             [.. summary.Select(reaction => new LiveReaction(reaction.Emoji, reaction.Count, reaction.Sample))], epoch));
