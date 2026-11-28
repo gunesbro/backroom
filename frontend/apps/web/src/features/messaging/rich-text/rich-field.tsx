@@ -17,6 +17,7 @@ import { registerRichText } from '@lexical/rich-text';
 import { $findMatchingParent } from '@lexical/utils';
 import {
   $createTextNode,
+  $getRoot,
   $getSelection,
   $isRangeSelection,
   CLEAR_HISTORY_COMMAND,
@@ -62,7 +63,8 @@ export type RichValue = { blocks: Block[] };
 
 export type RichFieldHandle = {
   clear: () => void;
-  focus: () => void;
+  /** Focus the field; `atEnd` puts the caret at the end of the content first (an edit starts there), otherwise it stays where it was. */
+  focus: (options?: { atEnd?: boolean }) => void;
 };
 
 type ActiveState = {
@@ -232,7 +234,7 @@ export function RichField({
       });
       editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
     },
-    focus: () => {
+    focus: (options) => {
       const editor = editorRef.current;
       if (!editor) return;
       // The element takes the focus first, and Lexical puts the caret at the end after it: an editor with nothing in
@@ -240,6 +242,17 @@ export function RichField({
       // start of the content by the element's own focus.
       const root = editor.getRootElement();
       if (root && !root.contains(document.activeElement)) root.focus({ preventScroll: true });
+      // Whatever selection the element's own focus left (the browser puts it at the start of the content, and when
+      // Lexical reads it varies) must not decide where an edit starts: the caret goes to the end explicitly.
+      if (options?.atEnd) {
+        editor.update(
+          () => {
+            const content = $getRoot();
+            if (content.getChildrenSize() > 0) content.selectEnd();
+          },
+          { discrete: true },
+        );
+      }
       editor.focus(undefined, { defaultSelection: 'rootEnd' });
     },
   }));

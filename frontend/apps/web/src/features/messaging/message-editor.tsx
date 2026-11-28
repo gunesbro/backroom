@@ -44,7 +44,7 @@ export function MessageEditor({
 
   const focusIfStarted = useRef(takeFocus);
   useEffect(() => {
-    if (focusIfStarted.current()) richRef.current?.focus();
+    if (focusIfStarted.current()) richRef.current?.focus({ atEnd: true });
   }, []);
 
   const text = blocksToText(blocks);

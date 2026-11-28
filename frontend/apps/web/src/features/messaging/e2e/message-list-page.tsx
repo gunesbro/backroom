@@ -47,6 +47,7 @@ const AUTHORS = ['00000000-0000-4000-8000-000000000002', '00000000-0000-4000-800
 const NAMES: Record<string, string> = { [AUTHORS[0] ?? '']: 'Veli', [AUTHORS[1] ?? '']: 'Ayse' };
 const COUNT = Number(new URLSearchParams(location.search).get('count') ?? 200);
 const OWN = AUTHORS[new URLSearchParams(location.search).has('own') ? 1 : 0];
+const RICH = new URLSearchParams(location.search).has('rich');
 const START = Date.parse('2026-11-01T09:00:00Z');
 const initialRows: Row[] = Array.from({ length: COUNT }, (_, index): Row => {
   const message: Message = {
@@ -57,6 +58,19 @@ const initialRows: Row[] = Array.from({ length: COUNT }, (_, index): Row => {
     text: `message ${String(index + 1)}${index % 3 === 0 ? ' with a longer text that wraps over more than one line when the window is narrow enough to need it' : ''}`,
     createdAt: new Date(START + index * 37 * 60_000).toISOString(),
   };
+  // ?rich gives the newest message several blocks (for the caret test of the editor).
+  if (RICH && index === COUNT - 1) {
+    message.blocks = [
+      { type: 'paragraph', children: [{ type: 'text', text: 'first line' }] },
+      {
+        type: 'bulleted_list',
+        children: [
+          { type: 'list_item', children: [{ type: 'text', text: 'one' }] },
+          { type: 'list_item', children: [{ type: 'text', text: 'two', marks: [{ type: 'bold' }] }] },
+        ],
+      },
+    ];
+  }
   return { key: message.clientMessageId, message };
 });
 const noop = () => undefined;
