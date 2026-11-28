@@ -1,6 +1,14 @@
 // Live events of the cell's hub (docs/contracts/phase-1.md and phase-2.md, "Live events"). Payloads are MessagePack
 // maps with camelCase keys. Events are hints: the HTTP API stays the source of truth, and clients catch up by `seq`.
 
+/** What a reply shows of the message it quotes: a snapshot of the moment it was posted (deleted: the id only). */
+export type LiveQuote = {
+  messageId: string;
+  deleted: boolean;
+  authorAccountId?: string | null | undefined;
+  text?: string | null | undefined;
+};
+
 export type LiveMessage = {
   id: string;
   seq: number;
@@ -10,6 +18,8 @@ export type LiveMessage = {
   /** The rich text blocks, when the event carries them (`MessagePosted.v2`). Unchecked: read with `parseBlocks`. */
   blocks?: unknown;
   createdAt: string;
+  /** The quote, when the message is a reply. */
+  replyTo?: LiveQuote | null | undefined;
 };
 
 export type MessagePosted = { orgId: string; channelId: string; message: LiveMessage };

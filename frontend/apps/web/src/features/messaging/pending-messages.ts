@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/shared/http';
 import { applyLiveMessage } from './live-cache';
 import { messagesKey } from './queries';
-import type { Message, MessagingApi } from './api';
+import type { Message, MessageQuote, MessagingApi } from './api';
 import type { Block } from './rich-text/blocks';
 
 /**
@@ -16,6 +16,8 @@ export type PendingMessage = {
   text: string;
   /** The rich text blocks, when the message was written in the rich text composer. */
   blocks?: Block[] | undefined;
+  /** The quote of the message this one replies to, as it was when the person sent it (drawn until the server answers). */
+  replyTo?: MessageQuote | undefined;
   createdAt: string;
   status: 'sending' | 'failed' | 'confirmed';
   /** The error code of a failed send. */
@@ -29,6 +31,23 @@ export type PendingMessage = {
 type ByChannel = Readonly<Record<string, readonly PendingMessage[]>>;
 
 const NONE: readonly PendingMessage[] = [];
+
+const DELETED_REASONS: ReadonlySet<string> = new Set(['reply.deleted', 'reply.not_found']);
+
+/** The quote of a deleted original: its id only, with no author and no text. */
+const deletedQuote = (messageId: string): MessageQuote => ({ messageId, deleted: true });
+
+/** The item with the quote of this original (its own and its confirmed message's) turned into a deleted one. */
+function withDeletedOriginal(item: PendingMessage, messageId: string): PendingMessage {
+  const own = item.replyTo?.messageId === messageId && !item.replyTo.deleted;
+  const confirmed = item.message?.replyTo?.messageId === messageId && !item.message.replyTo.deleted;
+  if (!own && !confirmed) return item;
+  return {
+    ...item,
+    ...(own ? { replyTo: deletedQuote(messageId) } : {}),
+    ...(confirmed && item.message ? { message: { ...item.message, replyTo: deletedQuote(messageId) } } : {}),
+  };
+}
 
 /** Optimistic sending for one organization: pending messages per channel, replaced by the server's message. */
 export function usePendingMessages(api: MessagingApi, orgId: string) {
@@ -69,6 +88,7 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
           clientMessageId: pending.clientMessageId,
           text: pending.text,
           ...(pending.blocks ? { blocks: pending.blocks } : {}),
+          ...(pending.replyTo ? { replyToMessageId: pending.replyTo.messageId } : {}),
         });
         // A fetch that started before the answer could return a page without the message and overwrite it.
         await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channelId) });
@@ -79,10 +99,19 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
         }
         patch({ status: 'confirmed', message });
       } catch (error) {
+        const reason = error instanceof ApiError ? error.reason : undefined;
         patch({
           status: 'failed',
           code: error instanceof ApiError ? error.code : 'client.failed',
-          reason: error instanceof ApiError ? error.reason : undefined,
+          reason,
+          // The original is gone: the row must not keep its author and text.
+          ...(pending.replyTo &&
+          error instanceof ApiError &&
+          error.code === 'messaging.reply_invalid' &&
+          reason !== undefined &&
+          DELETED_REASONS.has(reason)
+            ? { replyTo: deletedQuote(pending.replyTo.messageId) }
+            : {}),
         });
       } finally {
         inFlight.current.delete(pending.clientMessageId);
@@ -93,11 +122,12 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
 
   /** `text` is already normalized (the plain text derived from `blocks`, when there are blocks). */
   const send = useCallback(
-    (channelId: string, text: string, blocks?: Block[]) => {
+    (channelId: string, text: string, blocks?: Block[], replyTo?: MessageQuote) => {
       const pending: PendingMessage = {
         clientMessageId: crypto.randomUUID(),
         text,
         blocks,
+        replyTo,
         createdAt: new Date().toISOString(),
         status: 'sending',
       };
@@ -133,7 +163,25 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
     [update],
   );
 
+  /**
+   * A message was deleted: the quotes of unsent and just-sent replies to it (in any channel; ids are unique) lose its
+   * author and text, as the cached replies do.
+   */
+  const markOriginalDeleted = useCallback((messageId: string) => {
+    setByChannel((current) => {
+      let changed = false;
+      const next: Record<string, readonly PendingMessage[]> = {};
+      for (const [channelId, list] of Object.entries(current)) {
+        const mapped = list.map((item) => withDeletedOriginal(item, messageId));
+        const same = mapped.every((item, index) => item === list[index]);
+        if (!same) changed = true;
+        next[channelId] = same ? list : mapped;
+      }
+      return changed ? next : current;
+    });
+  }, []);
+
   const forChannel = useCallback((channelId: string) => byChannel[channelId] ?? NONE, [byChannel]);
 
-  return { forChannel, send, retry, discard, prune };
+  return { forChannel, send, retry, discard, prune, markOriginalDeleted };
 }

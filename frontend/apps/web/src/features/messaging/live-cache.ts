@@ -12,7 +12,15 @@ import {
 } from './queries';
 import { lastSeenSeq, rememberSeq } from './seq-memory';
 import type { ConversationUpdated, MessageDeleted, MessageEdited } from '@backroom/realtime';
-import type { ChannelPage, ConversationDetail, Message, MessagingApi } from './api';
+import {
+  readQuote,
+  type ChannelPage,
+  type ConversationDetail,
+  type Message,
+  type MessageQuote,
+  type MessagingApi,
+} from './api';
+import { truncateQuote } from './text';
 
 // Applying live events to the query cache. Live events are hints (ADR 0011): everything here is idempotent, and a
 // missed event is repaired by `catchUpChannel`.
@@ -30,8 +38,15 @@ export function applyLiveMessage(
   queryClient: QueryClient,
   orgId: string,
   channelId: string,
-  message: Message,
+  event: Message,
 ): boolean {
+  // A live quote may carry nulls (the wire's missing values): read it as the HTTP API's.
+  let message = event.replyTo ? { ...event, replyTo: readQuote(event.replyTo) } : event;
+  // The quote is a snapshot: if the original is already a tombstone here, the reply shows it as deleted.
+  const quoted = message.replyTo;
+  if (quoted && !quoted.deleted && findMessage(queryClient, orgId, channelId, quoted.messageId)?.deletedAt) {
+    message = { ...message, replyTo: { messageId: quoted.messageId, deleted: true } };
+  }
   const result = { present: false };
   queryClient.setQueryData<MessagePages>(messagesKey(orgId, channelId), (data) => {
     const first = data?.pages[0];
@@ -53,14 +68,18 @@ export function applyLiveMessage(
   return result.present;
 }
 
-/** Replaces the message with this id (if cached) by what `change` makes of it; nothing happens when it returns undefined. */
+/**
+ * Replaces the message with this id (if cached) by what `change` makes of it; nothing happens when it returns
+ * undefined. Returns whether a message was replaced.
+ */
 function changeMessage(
   queryClient: QueryClient,
   orgId: string,
   conversationId: string,
   messageId: string,
   change: (current: Message) => Message | undefined,
-): void {
+): boolean {
+  const result = { replaced: false };
   queryClient.setQueryData<MessagePages>(messagesKey(orgId, conversationId), (data) => {
     if (!data) return data;
     for (const [pageIndex, page] of data.pages.entries()) {
@@ -70,14 +89,74 @@ function changeMessage(
       const next = change(current);
       if (!next) return data;
       const messages = page.messages.with(at, next);
+      result.replaced = true;
       return { ...data, pages: data.pages.with(pageIndex, { ...page, messages }) };
     }
 
     return data;
   });
+  return result.replaced;
 }
 
 const versionOf = (message: Message) => message.versionSeq ?? 0;
+
+/** The cached message with this id, if it is loaded. */
+function findMessage(
+  queryClient: QueryClient,
+  orgId: string,
+  conversationId: string,
+  messageId: string,
+): Message | undefined {
+  const data = queryClient.getQueryData<MessagePages>(messagesKey(orgId, conversationId));
+  for (const page of data?.pages ?? []) {
+    const found = page.messages.find(({ id }) => id === messageId);
+    if (found) return found;
+  }
+
+  return undefined;
+}
+
+/**
+ * Changes the quote of every cached reply to this message (a quote is a snapshot, so an edit or delete of the original
+ * reaches it here). One pass over the loaded pages, which hold at most a few hundred messages; nothing changes (and
+ * nothing re-renders) when no reply quotes the message.
+ */
+function changeQuotes(
+  queryClient: QueryClient,
+  orgId: string,
+  conversationId: string,
+  messageId: string,
+  change: (quote: MessageQuote) => MessageQuote | undefined,
+): void {
+  queryClient.setQueryData<MessagePages>(messagesKey(orgId, conversationId), (data) => {
+    if (!data) return data;
+    const touched = { pages: 0, messages: 0 };
+    const pages = data.pages.map((page) => {
+      const before = touched.messages;
+      const messages = page.messages.map((message) => {
+        const quote = message.replyTo;
+        if (quote?.messageId !== messageId) return message;
+        const next = change(quote);
+        if (!next) return message;
+        touched.messages += 1;
+        return { ...message, replyTo: next };
+      });
+      if (touched.messages === before) return page;
+      touched.pages += 1;
+      return { ...page, messages };
+    });
+    return touched.pages > 0 ? { ...data, pages } : data;
+  });
+}
+
+/** A quote after its original was edited: the new text, cut as the server cuts it; a deleted quote stays deleted. */
+function editedQuote(text: string): (quote: MessageQuote) => MessageQuote | undefined {
+  return (quote) => (quote.deleted ? undefined : { ...quote, text: truncateQuote(text) });
+}
+
+/** A quote after its original was deleted: the id only. */
+const deletedQuote = (quote: MessageQuote): MessageQuote | undefined =>
+  quote.deleted ? undefined : { messageId: quote.messageId, deleted: true };
 
 /** What a deleted message keeps: its place (ADR 0011, the tombstone). */
 export function tombstoneOf(message: Message, versionSeq: number, deletedAt: string): Message {
@@ -103,13 +182,21 @@ export function applyMessageChange(
   conversationId: string,
   message: Message,
 ): void {
-  changeMessage(queryClient, orgId, conversationId, message.id, (current) =>
+  const replaced = changeMessage(queryClient, orgId, conversationId, message.id, (current) =>
     versionOf(message) > versionOf(current) ? message : undefined,
   );
+  if (replaced && !message.deletedAt)
+    changeQuotes(queryClient, orgId, conversationId, message.id, editedQuote(message.text));
 }
 
 /** A live edit: new content, unless the event is not newer than the version the cache has (or the message is gone). */
 export function applyMessageEdited(queryClient: QueryClient, event: MessageEdited): void {
+  // The replies' quotes follow the same rule: nothing for a stale event or a deleted original. An original that is
+  // not loaded cannot be judged, and the quote takes the edit.
+  const original = findMessage(queryClient, event.orgId, event.conversationId, event.messageId);
+  if (!original || (event.versionSeq > versionOf(original) && !original.deletedAt)) {
+    changeQuotes(queryClient, event.orgId, event.conversationId, event.messageId, editedQuote(event.text));
+  }
   changeMessage(queryClient, event.orgId, event.conversationId, event.messageId, (current) =>
     event.versionSeq > versionOf(current) && !current.deletedAt
       ? {
@@ -129,6 +216,8 @@ export function applyMessageDeleted(
   event: MessageDeleted,
   now: () => Date = () => new Date(),
 ): void {
+  // A delete is final: the quotes of its replies lose author and text whatever order the events came in.
+  changeQuotes(queryClient, event.orgId, event.conversationId, event.messageId, deletedQuote);
   changeMessage(queryClient, event.orgId, event.conversationId, event.messageId, (current) =>
     event.versionSeq > versionOf(current)
       ? tombstoneOf(current, event.versionSeq, now().toISOString())
@@ -154,6 +243,7 @@ export function deleteMessageOptimistically(
     result.original = current;
     return tombstoneOf(current, versionOf(current), now().toISOString());
   });
+  if (result.original) changeQuotes(queryClient, orgId, conversationId, messageId, deletedQuote);
   return result.original;
 }
 
@@ -164,9 +254,22 @@ export function restoreMessage(
   conversationId: string,
   original: Message,
 ): void {
-  changeMessage(queryClient, orgId, conversationId, original.id, (current) =>
+  const restored = changeMessage(queryClient, orgId, conversationId, original.id, (current) =>
     current.deletedAt && versionOf(current) === versionOf(original) ? original : undefined,
   );
+  // The replies' quotes were turned into deleted ones with it: they show the original again.
+  if (restored) {
+    changeQuotes(queryClient, orgId, conversationId, original.id, (quote) =>
+      quote.deleted
+        ? {
+            messageId: original.id,
+            deleted: false,
+            authorAccountId: original.authorAccountId,
+            text: truncateQuote(original.text),
+          }
+        : undefined,
+    );
+  }
 }
 
 /**

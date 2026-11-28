@@ -14,10 +14,10 @@ import { Alert, Button, Icon, SoonButton, Spinner, Status } from '@backroom/ui';
 import { CellSignInPendingError, CellSignInPrompt, CellUnavailableError, useAuth } from '@/features/auth';
 import { config } from '@/config';
 import { useLocale, useTranslate } from '@/shared/locale';
-import { useMessagingApiFactory, type Cell, type Channel, type MessagingApi } from './api';
+import { useMessagingApiFactory, type Cell, type Channel, type Message, type MessagingApi } from './api';
 import { ChannelMark } from './channel-mark';
 import { ChannelSidebar, type ChannelsState } from './channel-sidebar';
-import { Composer } from './composer';
+import { Composer, type ComposerHandle } from './composer';
 import { isConversationGone } from './conversation-errors';
 import { CreateChannelDialog } from './create-channel-dialog';
 import { DeleteMessageDialog } from './delete-message-dialog';
@@ -31,6 +31,8 @@ import { isMessageDeleted, messageChangeErrorText } from './message-errors';
 import { MessageList, type MessageEditing, type MessageListHandle, type Row } from './message-list';
 import { editableBlocks, type Block } from './rich-text/blocks';
 import { rowKey } from './row-key';
+import type { ReplyTarget } from './reply-target';
+import { truncateQuote } from './text';
 import { messages } from './messages';
 import { PreviewBar } from './preview-bar';
 import { NewMessageAnnouncer } from './new-message-announcer';
@@ -102,6 +104,15 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
   const selected = chosen ?? first;
   const selectedId = selected?.id;
   const pending = usePendingMessages(api, orgId);
+  // The message each conversation's next one replies to; it stays while the person looks at another conversation.
+  const [replyTargets, setReplyTargets] = useState<Readonly<Record<string, ReplyTarget>>>({});
+  const setReplyTarget = useCallback((channelId: string, target: ReplyTarget | undefined) => {
+    setReplyTargets((current) => {
+      if (current[channelId] === target) return current;
+      if (target) return { ...current, [channelId]: target };
+      return Object.fromEntries(Object.entries(current).filter(([id]) => id !== channelId));
+    });
+  }, []);
   const { user } = useAuth();
   const selectedRef = useRef(selectedId);
   useLayoutEffect(() => {
@@ -117,6 +128,11 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
       setDropped(conversationId);
       setChosen((current) => (current?.id === conversationId ? undefined : current));
       setInfoFor((current) => (current === conversationId ? undefined : current));
+      // What was being written in it is gone with it.
+      setReplyTargets((current) => {
+        if (!(conversationId in current)) return current;
+        return Object.fromEntries(Object.entries(current).filter(([id]) => id !== conversationId));
+      });
     },
     [lostAccess],
   );
@@ -142,6 +158,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
     ownAccountId: user.accountId,
     detailedId: infoFor,
     onRemoved: drop,
+    onMessageDeleted: pending.markOriginalDeleted,
   });
   const { clearActivity } = live;
   const select = useCallback(
@@ -209,6 +226,8 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
               channel={selected}
               joined={channelIds.includes(selected.id)}
               pending={pending}
+              replyTarget={replyTargets[selected.id]}
+              onReplyTargetChange={setReplyTarget}
               otherNames={otherNames}
               infoOpen={infoFor === selected.id}
               onInfoOpenChange={(open) => {
@@ -296,6 +315,8 @@ function ChannelView({
   channel,
   joined,
   pending,
+  replyTarget,
+  onReplyTargetChange,
   otherNames,
   infoOpen,
   onInfoOpenChange,
@@ -308,6 +329,9 @@ function ChannelView({
   /** The channel is in the person's own list (the sidebar). */
   joined: boolean;
   pending: ReturnType<typeof usePendingMessages>;
+  /** The message the next one replies to, if the person chose one. */
+  replyTarget: ReplyTarget | undefined;
+  onReplyTargetChange: (channelId: string, target: ReplyTarget | undefined) => void;
   /** Names of the other channels the person can see. */
   otherNames: readonly string[];
   infoOpen: boolean;
@@ -431,7 +455,10 @@ function ChannelView({
     fetchNextPage: fetchMembers,
   } = members;
   const unknownAuthor = confirmed.some(
-    (message) => !message.deletedAt && !names.has(message.authorAccountId),
+    (message) =>
+      !message.deletedAt &&
+      (!names.has(message.authorAccountId) ||
+        (message.replyTo?.authorAccountId != null && !names.has(message.replyTo.authorAccountId))),
   );
   useEffect(() => {
     if (
@@ -452,7 +479,7 @@ function ChannelView({
   const loadNewer = useCallback(() => {
     void fetchNewer();
   }, [fetchNewer]);
-  const { retry: retryMessage, discard: discardMessage } = pending;
+  const { retry: retryMessage, discard: discardMessage, markOriginalDeleted } = pending;
   const retry = useCallback(
     (clientMessageId: string) => {
       retryMessage(channel.id, clientMessageId);
@@ -565,6 +592,8 @@ function ChannelView({
         // A read that finished in between may have brought the message back: it is deleted.
         await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channel.id) });
         deleteMessageOptimistically(queryClient, orgId, channel.id, messageId);
+        // Unsent and just-sent replies to it must not keep its author and text either.
+        markOriginalDeleted(messageId);
       } catch (error) {
         if (isMessageDeleted(error)) return;
         if (original) restoreMessage(queryClient, orgId, channel.id, original);
@@ -573,7 +602,7 @@ function ChannelView({
         setChangeError(messageChangeErrorText(error, t, locale));
       }
     },
-    [api, orgId, channel.id, queryClient, t, locale],
+    [api, orgId, channel.id, queryClient, t, locale, markOriginalDeleted],
   );
   const editing = useMemo<MessageEditing | undefined>(
     () =>
@@ -596,6 +625,70 @@ function ChannelView({
     );
     if (newest && editableBlocks(newest.blocks, newest.text) !== null) startEdit(newest.id);
   }, [query.hasPreviousPage, ownAccountId, confirmed, startEdit]);
+
+  // A delete can be learned without a live event (a read, a catch-up, a refused edit): unsent and just-sent replies
+  // to a message that is a tombstone in the loaded list must forget its author and text all the same.
+  const quotedIds = pendingHere.flatMap((item) => [
+    item.replyTo?.messageId,
+    item.message?.replyTo?.messageId,
+  ]);
+  const deletedQuotedIds = confirmed
+    .filter((message) => message.deletedAt && quotedIds.includes(message.id))
+    .map((message) => message.id)
+    .join(',');
+  useEffect(() => {
+    for (const id of deletedQuotedIds === '' ? [] : deletedQuotedIds.split(',')) markOriginalDeleted(id);
+  }, [deletedQuotedIds, markOriginalDeleted]);
+
+  // Replying with a quote (Phase 2 step 9): off without its flag, and only where there is a composer to write in.
+  const composerShown = !archived && !previewing && stateKnown;
+  const replyEnabled = config.messageReplyEnabled && composerShown;
+  const composerRef = useRef<ComposerHandle>(null);
+  // The target holds only the original's id: its author and text are read from the loaded list when the bar is drawn,
+  // so an edit shows in the bar and a deleted original never stays in it.
+  const original = useMemo(
+    () => (replyTarget ? rows.find((row) => row.message?.id === replyTarget.messageId)?.message : undefined),
+    [replyTarget, rows],
+  );
+  // An original that is not in the loaded list (or is a tombstone) ends the reply quietly, once the list is there.
+  // Known limit: this also happens when the page that held the original is evicted (`maxPages`) or when a reset
+  // reloads only the newest page; the person then picks the message again.
+  const targetGone =
+    replyTarget !== undefined && query.data !== undefined && (!original || Boolean(original.deletedAt));
+  // A send that the server refused because its original is gone ends the reply to that original too.
+  const targetRefused =
+    replyTarget !== undefined &&
+    pendingHere.some(
+      (item) =>
+        item.status === 'failed' &&
+        item.replyTo?.messageId === replyTarget.messageId &&
+        (item.code === 'messaging.reply_invalid' || item.code === 'messaging.message_reply_unavailable'),
+    );
+  const dropTarget = targetGone || targetRefused;
+  useEffect(() => {
+    if (dropTarget) onReplyTargetChange(channel.id, undefined);
+  }, [dropTarget, onReplyTargetChange, channel.id]);
+  const activeReply = replyEnabled && !dropTarget && original ? original : undefined;
+  // The composer takes the focus once the bar is drawn: each request (a number) asks for it once.
+  const [focusRequest, setFocusRequest] = useState(0);
+  useEffect(() => {
+    if (focusRequest > 0) composerRef.current?.focus();
+  }, [focusRequest]);
+  const startReply = useCallback(
+    (target: Message) => {
+      onReplyTargetChange(channel.id, { messageId: target.id });
+      setFocusRequest((count) => count + 1);
+    },
+    [onReplyTargetChange, channel.id],
+  );
+  const cancelReply = useCallback(() => {
+    onReplyTargetChange(channel.id, undefined);
+    setFocusRequest((count) => count + 1);
+  }, [onReplyTargetChange, channel.id]);
+  const replyBar = activeReply && {
+    name: activeReply.authorAccountId === ownAccountId ? user.name : authorName(activeReply.authorAccountId),
+    text: truncateQuote(activeReply.text),
+  };
 
   return (
     <>
@@ -658,6 +751,7 @@ function ChannelView({
             onJoin={join}
             editing={editing}
             editingId={activeEditingId}
+            onReply={replyEnabled ? startReply : undefined}
             ref={listRef}
           />
           <NewMessageAnnouncer
@@ -706,8 +800,22 @@ function ChannelView({
           focusOnMount={joinedFromBar}
           channelName={name}
           onEditLast={editEnabled ? editNewest : undefined}
+          reply={replyBar}
+          onCancelReply={cancelReply}
+          ref={composerRef}
           onSend={(text, blocks) => {
-            pending.send(channel.id, text, blocks);
+            pending.send(
+              channel.id,
+              text,
+              blocks,
+              activeReply && {
+                messageId: activeReply.id,
+                deleted: false,
+                authorAccountId: activeReply.authorAccountId,
+                text: truncateQuote(activeReply.text),
+              },
+            );
+            if (activeReply) onReplyTargetChange(channel.id, undefined);
           }}
         />
       ) : null}

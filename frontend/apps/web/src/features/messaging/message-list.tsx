@@ -7,6 +7,7 @@ import {
   useId,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type FocusEvent,
@@ -22,6 +23,7 @@ import type { Message } from './api';
 import { messages } from './messages';
 import type { PendingMessage } from './pending-messages';
 import { isRefusedContent, refusalKey } from './send-errors';
+import { QuoteLine } from './message-quote';
 import { MessageBody } from './rich-text/message-blocks';
 import { editableBlocks, type Block } from './rich-text/blocks';
 
@@ -74,6 +76,8 @@ const FOLLOW_DISTANCE = 80;
 /** Earlier messages are asked for once the oldest drawn row is this close to the top of the list. */
 const LOAD_EARLIER_WITHIN = 3;
 const ROW_KEY_ATTRIBUTE = 'data-row-key';
+/** How long the original of a quote stays highlighted after a jump to it. */
+const FLASH_MS = 1600;
 
 /**
  * The messages of a channel, oldest first, virtualized (TanStack Virtual): only the rows near the view are in the
@@ -98,6 +102,7 @@ export function MessageList({
   onJoin,
   editing,
   editingId,
+  onReply,
   ref,
 }: {
   channelName: string;
@@ -123,6 +128,8 @@ export function MessageList({
   editing?: MessageEditing | undefined;
   /** The message being edited in place, if any; kept apart from `editing` so the rows stay memoized. */
   editingId?: string | undefined;
+  /** Replies to a message (the action bar's button); absent without replying: no button. */
+  onReply?: ((message: Message) => void) | undefined;
   ref?: Ref<MessageListHandle>;
 }) {
   const t = useTranslate(messages);
@@ -265,6 +272,42 @@ export function MessageList({
         }
       },
     }),
+    [virtualizer],
+  );
+  // The messages that are in the list: a quote can go to its original only when it is one of them.
+  const loadedIds = useMemo(
+    () => new Set(rows.flatMap((row) => (row.message ? [row.message.id] : []))),
+    [rows],
+  );
+  const [flashId, setFlashId] = useState<string>();
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(
+    () => () => {
+      clearTimeout(flashTimer.current);
+    },
+    [],
+  );
+  /** Goes to the original of a quote and marks it for a moment; the keyboard's focus follows. */
+  const jump = useCallback(
+    (messageId: string, keyboard: boolean) => {
+      const at = rowsRef.current.findIndex((row) => row.message?.id === messageId);
+      const key = rowsRef.current[at]?.key;
+      if (key === undefined) return;
+      // Going to the row is a move away from the end: the list must not snap back to following new messages.
+      following.current = false;
+      virtualizer.scrollToIndex(at, { align: 'center' });
+      clearTimeout(flashTimer.current);
+      setFlashId(messageId);
+      flashTimer.current = setTimeout(() => {
+        setFlashId(undefined);
+      }, FLASH_MS);
+      if (!keyboard) return;
+      setActiveKey(key);
+      focusedIndex.current = at;
+      const element = rowElement(key);
+      if (element) element.focus({ preventScroll: true });
+      else pendingFocus.current = key;
+    },
     [virtualizer],
   );
   const onLogFocus = (event: FocusEvent<HTMLElement>) => {
@@ -415,6 +458,14 @@ export function MessageList({
                 onJoin={onJoin}
                 editing={editing}
                 isEditing={editingId !== undefined && row.message?.id === editingId}
+                onReply={onReply}
+                onJump={jump}
+                quoteLoaded={
+                  row.message?.replyTo !== undefined &&
+                  row.message.replyTo !== null &&
+                  loadedIds.has(row.message.replyTo.messageId)
+                }
+                flash={flashId !== undefined && row.message?.id === flashId}
               />
             </li>
           );
@@ -450,9 +501,12 @@ const MESSAGE_ACTIONS: readonly {
 function MessageActions({
   message,
   editing,
+  onReply,
 }: {
   message: Message | undefined;
   editing: MessageEditing | undefined;
+  /** Replies to this message: the reply button works. */
+  onReply: (() => void) | undefined;
 }) {
   const t = useTranslate(messages);
   const entries: MenuEntry[] = [];
@@ -491,6 +545,10 @@ function MessageActions({
             placement="auto"
             entries={entries}
           />
+        ) : action.key === 'reply' && onReply ? (
+          <button key={action.key} type="button" aria-label={t('reply')} title={t('reply')} onClick={onReply}>
+            <Icon name={action.icon} size={16} />
+          </button>
         ) : (
           <SoonButton key={action.key} label={t(action.key)} soon={t('soon')}>
             <Icon name={action.icon} size={16} />
@@ -515,6 +573,10 @@ const MessageRow = memo(function MessageRow({
   onJoin,
   editing,
   isEditing,
+  onReply,
+  onJump,
+  quoteLoaded,
+  flash,
 }: {
   row: Row;
   /** The list's one tab stop (roving tabindex); the other rows are reached by the arrow keys. */
@@ -533,6 +595,12 @@ const MessageRow = memo(function MessageRow({
   editing: MessageEditing | undefined;
   /** This row's message is the one being edited. */
   isEditing: boolean;
+  onReply: ((message: Message) => void) | undefined;
+  onJump: (messageId: string, keyboard: boolean) => void;
+  /** The original of this row's quote is in the list. */
+  quoteLoaded: boolean;
+  /** This row is the original the person just jumped to. */
+  flash: boolean;
 }) {
   const now = new Date();
   const [hovered, setHovered] = useState(false);
@@ -554,6 +622,10 @@ const MessageRow = memo(function MessageRow({
   const deleted = Boolean(message?.deletedAt);
   const editingMessage = editing && message && isEditing ? message : undefined;
   const editingThis = editingMessage !== undefined;
+  const quote = pending?.replyTo ?? message?.replyTo ?? undefined;
+  const quoteAuthor = quote?.authorAccountId ?? '';
+  // Confirmed and not deleted: any message can be replied to (an unsent one has no id yet).
+  const replyTarget = onReply && message && !deleted ? message : undefined;
   // Own, confirmed and not deleted: the only messages that can be edited or deleted here.
   const manageable =
     editing !== undefined &&
@@ -621,7 +693,10 @@ const MessageRow = memo(function MessageRow({
   return (
     <div
       ref={rowRef}
-      className={pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message'}
+      className={
+        (pending?.status === 'failed' ? 'bm-message bm-message--failed' : 'bm-message') +
+        (flash ? ' bm-message--flash' : '')
+      }
       role="article"
       aria-labelledby={headId}
       aria-posinset={position}
@@ -673,10 +748,26 @@ const MessageRow = memo(function MessageRow({
         <MessageActions
           message={manageable ? message : undefined}
           editing={manageable ? editing : undefined}
+          onReply={
+            replyTarget && onReply
+              ? () => {
+                  onReply(replyTarget);
+                }
+              : undefined
+          }
         />
       )}
       <Avatar name={name} toneKey={authorId} shape="square" size="lg" />
       <div className="bm-message__body">
+        {quote && (
+          <QuoteLine
+            quote={quote}
+            authorId={quoteAuthor}
+            name={quoteAuthor !== '' && quoteAuthor === ownAccountId ? ownName : authorName(quoteAuthor)}
+            canJump={quoteLoaded}
+            onJump={onJump}
+          />
+        )}
         <p className="bm-message__head" id={headId}>
           <b>{name}</b>{' '}
           <time className="ph-muted" dateTime={createdAt}>

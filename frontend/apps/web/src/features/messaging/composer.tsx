@@ -3,10 +3,12 @@ import {
   lazy,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
   type SubmitEvent,
 } from 'react';
 import { Icon, SoonButton, Toolbar, type IconName } from '@backroom/ui';
@@ -77,6 +79,15 @@ const FORMATS: readonly (readonly { key: SoonKey; icon?: IconName; text?: string
   ],
 ];
 
+/** Stands for the name inside the translated text of the reply bar. */
+const NAME_MARK = '\u0001';
+
+/** What the composer's owner can ask of it. */
+export type ComposerHandle = { focus: () => void };
+
+/** The message being replied to, as the bar above the composer shows it. */
+export type ReplyBar = { name: string; text: string };
+
 /**
  * docs/design: Main, the composer: the formatting toolbar, the text and a bar with the add menu, formatting, emoji,
  * mention and file buttons (all for Phase 2), the keyboard hint and the send button.
@@ -89,6 +100,9 @@ export function Composer({
   onSend,
   focusOnMount = false,
   onEditLast,
+  reply,
+  onCancelReply,
+  ref,
 }: {
   channelName: string;
   /** Takes keyboard focus when it appears: it replaces the control that had it (the bar that offers to join). */
@@ -97,12 +111,24 @@ export function Composer({
   onSend: (text: string, blocks?: Block[]) => void;
   /** ArrowUp in the empty rich text field: edit the person's newest message (absent without message editing). */
   onEditLast?: (() => void) | undefined;
+  /** The message the next one replies to: a bar above the field says so (docs/design: Main, `.rbar`). */
+  reply?: ReplyBar | undefined;
+  /** The close button and Escape in the field end the reply. */
+  onCancelReply?: (() => void) | undefined;
+  ref?: Ref<ComposerHandle>;
 }) {
   const t = useTranslate(messages);
   const counterId = useId();
   const hintId = useId();
+  const replyId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const richRef = useRef<RichFieldHandle>(null);
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      if (config.richTextEnabled) richRef.current?.focus();
+      else inputRef.current?.focus();
+    },
+  }));
   const rich = config.richTextEnabled;
   const [value, setValue] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -142,10 +168,17 @@ export function Composer({
     if (event.key === 'Enter' && !event.shiftKey && !isComposingKey(event.nativeEvent)) {
       event.preventDefault();
       submit();
+    } else if (event.key === 'Escape' && reply && onCancelReply) {
+      event.preventDefault();
+      onCancelReply();
     }
   };
 
   const showCounter = remaining <= COUNTER_FROM_REMAINING || tooLarge || tooManyLinks;
+  // The reply bar is part of the field's description, so focusing the field says whom it replies to.
+  const describedBy = [reply ? replyId : '', hintId, showCounter ? counterId : ''].filter(Boolean).join(' ');
+  // The bar's words come as one text with the name in it: the name is set in bold, wherever the language puts it.
+  const replyParts = reply ? t('replyingTo', { name: NAME_MARK }).split(NAME_MARK) : [];
   const soon = t('soon');
   const passive = (key: SoonKey, content: ReactNode, className?: string) => (
     <SoonButton key={key} label={t(key)} soon={soon} className={className}>
@@ -160,19 +193,42 @@ export function Composer({
         submit();
       }}
     >
+      {reply && (
+        <div className="bm-replybar">
+          <Icon name="reply" size={14} />
+          {/* The field is described by this text only, not by the close button. */}
+          <span id={replyId} className="bm-replybar__what">
+            <span>
+              {replyParts[0]}
+              <b>{reply.name}</b>
+              {replyParts[1]}
+            </span>
+            <span className="bm-replybar__text">· {reply.text}</span>
+          </span>
+          <button
+            type="button"
+            aria-label={t('cancelReply')}
+            title={t('cancelReply')}
+            onClick={onCancelReply}
+          >
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      )}
       {rich ? (
         <Suspense fallback={<RichFieldPlaceholder />}>
           <RichField
             ref={richRef}
             label={t('composerLabel', { name: channelName })}
             placeholder={t('composerPlaceholder', { name: channelName })}
-            describedBy={showCounter ? `${hintId} ${counterId}` : hintId}
+            describedBy={describedBy}
             invalid={over}
             onChange={(next: RichValue) => {
               setBlocks(next.blocks);
             }}
             onSubmit={submit}
             {...(onEditLast ? { onArrowUpWhenEmpty: onEditLast } : {})}
+            {...(reply && onCancelReply ? { onCancel: onCancelReply } : {})}
           />
         </Suspense>
       ) : (
@@ -200,7 +256,7 @@ export function Composer({
             ref={inputRef}
             className="bm-composer__input"
             aria-label={t('composerLabel', { name: channelName })}
-            aria-describedby={showCounter ? `${hintId} ${counterId}` : hintId}
+            aria-describedby={describedBy}
             aria-invalid={over ? true : undefined}
             placeholder={t('composerPlaceholder', { name: channelName })}
             rows={1}

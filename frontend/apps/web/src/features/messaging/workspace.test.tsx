@@ -657,7 +657,7 @@ describe('Races and isolation', () => {
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
 
-  it('ChannelSwitch_KeepsEachChannelsUnsentMessagesAndDraftApart', async () => {
+  it('ChannelSwitch_KeepsEachChannelsUnsentMessagesApartAndDoesNotLeakTheDraft', async () => {
     serveCell({ counts: { [GENERAL.id]: 2, [RANDOM.id]: 2 } });
     servePost(() => HttpResponse.json({ code: 'server.unexpected', traceId: 't' }, { status: 500 }));
     renderWorkspace();

@@ -41,6 +41,16 @@ export const MAX_ADDED_MEMBERS = 50;
 export type ChannelPage = { channels: Channel[]; next: string | null };
 /** One page of the person's own conversations (their open memberships). */
 export type ConversationPage = { conversations: Channel[]; next: string | null };
+/**
+ * What a reply shows of the message it quotes (docs/contracts/phase-2.md, flow 2): a live original has its author and
+ * its text (at most 200 characters); a deleted one only `deleted: true`, with no author and no text.
+ */
+export type MessageQuote = {
+  messageId: string;
+  deleted: boolean;
+  authorAccountId?: string | null | undefined;
+  text?: string | null | undefined;
+};
 export type Message = {
   id: string;
   /** The channel's sequence number: messages are ordered and paged by it, never by id or time. */
@@ -64,6 +74,8 @@ export type Message = {
    * `text` are then empty strings, and `blocks` is missing.
    */
   deletedAt?: string | null | undefined;
+  /** The quote of a reply; missing on a message that is not a reply (and on a tombstone). */
+  replyTo?: MessageQuote | null | undefined;
 };
 
 /** A message as the server sends it: a tombstone has null instead of its content. */
@@ -73,9 +85,20 @@ type WireMessage = Omit<Message, 'clientMessageId' | 'authorAccountId' | 'text'>
   text: string | null;
 };
 
+/** A deleted original keeps no author and no text, whatever else the quote carries. */
+export function readQuote(quote: MessageQuote): MessageQuote {
+  if (quote.deleted) return { messageId: quote.messageId, deleted: true };
+  return {
+    messageId: quote.messageId,
+    deleted: false,
+    authorAccountId: quote.authorAccountId ?? '',
+    text: quote.text ?? '',
+  };
+}
+
 /** Reads a message of the wire into ours: a tombstone loses everything but its place, whatever else it carries. */
 export function readMessage(raw: WireMessage): Message {
-  if (!raw.deletedAt) return raw as Message;
+  if (!raw.deletedAt) return (raw.replyTo ? { ...raw, replyTo: readQuote(raw.replyTo) } : raw) as Message;
   return {
     id: raw.id,
     seq: raw.seq,
@@ -155,7 +178,7 @@ export interface MessagingApi {
   sendMessage: (
     orgId: string,
     conversationId: string,
-    input: { clientMessageId: string; text: string; blocks?: Block[] },
+    input: { clientMessageId: string; text: string; blocks?: Block[]; replyToMessageId?: string },
   ) => Promise<Message>;
   /**
    * Replaces the content of the person's own message (`PATCH /messages/{id}`); answers the changed message. The

@@ -68,7 +68,8 @@ const noop = () => undefined;
 // eslint-disable-next-line react-refresh/only-export-components -- a test page: the whole page reloads on a change
 function Page() {
   const [rows, setRows] = useState(initialRows);
-  const [editingId, setEditingId] = useState<string>();
+  // ?edit=<id> opens the editor on that row from the start (for the tests of the editor frame).
+  const [editingId, setEditingId] = useState(new URLSearchParams(location.search).get('edit') ?? undefined);
   const [deleting, setDeleting] = useState<string>();
   const focusEditorFor = useRef<string>(undefined);
   const refocusId = useRef<string>(undefined);

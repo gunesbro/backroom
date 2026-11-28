@@ -497,18 +497,23 @@
   opacity: 0.7;
 }
 
-/* Composer. */
-.bm-composer {
-  flex: none;
+/* Composer. The frame of the text field (toolbar and input) is shared with the field of a message being edited. */
+.bm-composer,
+.bm-edit__field {
   display: flex;
   flex-direction: column;
-  margin: 0 var(--ph-space-20) var(--ph-space-16);
   border: 1px solid var(--ph-line);
   border-radius: var(--ph-radius-xl);
   background: var(--ph-panel);
 }
 
-.bm-composer:focus-within {
+.bm-composer {
+  flex: none;
+  margin: 0 var(--ph-space-20) var(--ph-space-16);
+}
+
+.bm-composer:focus-within,
+.bm-edit__field:focus-within {
   border-color: var(--ph-focus-border);
   outline: 1px solid var(--ph-focus-border);
   box-shadow: var(--ph-focus);
@@ -1010,4 +1015,148 @@ ol.bm-rt-list {
 .ph-button.bm-delete {
   border-color: var(--ph-danger);
   color: var(--ph-danger);
+}
+
+/* The working reply button of the action bar (the others are still passive). */
+.bm-actions button:not([aria-disabled]):hover {
+  background: var(--ph-hover);
+  color: var(--ph-ink);
+}
+
+/* The quote above a reply (docs/design: Main, .quote). */
+.bm-quote {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-6);
+  max-width: 520px;
+  margin: 0 0 var(--ph-space-4);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ph-muted);
+  text-align: start;
+}
+
+.bm-quote b {
+  flex: none;
+  font-weight: 600;
+  color: var(--ph-ink);
+}
+
+.bm-quote .ph-avatar {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  font-size: 7px;
+}
+
+.bm-quote__line {
+  flex: none;
+  width: 22px;
+  height: 10px;
+  margin-top: var(--ph-space-8);
+  border-top: 2px solid var(--ph-line);
+  border-left: 2px solid var(--ph-line);
+  border-top-left-radius: var(--ph-radius-sm);
+}
+
+.bm-quote__text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bm-quote--deleted {
+  font-style: italic;
+}
+
+.bm-quote--link {
+  cursor: pointer;
+}
+
+.bm-quote--link:hover .bm-quote__text {
+  color: var(--ph-ink);
+}
+
+.bm-quote--link:focus-visible {
+  outline: 2px solid var(--ph-accent);
+  outline-offset: 2px;
+  border-radius: var(--ph-radius-sm);
+}
+
+/* The original a quote was followed to: marked for a moment, still (no fade) when motion is reduced. */
+.bm-message--flash {
+  animation: bm-flash 1.6s ease-out;
+}
+
+@keyframes bm-flash {
+  from {
+    background: var(--ph-accent-soft);
+  }
+
+  to {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bm-message--flash {
+    animation: none;
+    background: var(--ph-accent-soft);
+  }
+}
+
+/* The bar above the composer's field that says whom the next message replies to (docs/design: Main, .rbar). */
+.bm-replybar {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-8);
+  padding: var(--ph-space-8) var(--ph-space-10) var(--ph-space-8) var(--ph-space-12);
+  border-bottom: 1px solid var(--ph-line);
+  border-radius: var(--ph-radius-lg) var(--ph-radius-lg) 0 0;
+  background: var(--ph-sunken);
+  font-size: 12px;
+  color: var(--ph-muted);
+}
+
+.bm-replybar b {
+  color: var(--ph-ink);
+}
+
+.bm-replybar__what {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: var(--ph-space-4);
+}
+
+.bm-replybar__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bm-replybar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ph-radius-sm);
+  background: none;
+  color: var(--ph-muted);
+}
+
+.bm-replybar button:hover {
+  background: var(--ph-hover);
+  color: var(--ph-ink);
 }
