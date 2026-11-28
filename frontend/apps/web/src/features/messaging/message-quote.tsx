@@ -27,9 +27,9 @@ export function QuoteLine({
   const t = useTranslate(messages);
   if (quote.deleted) {
     return (
-      <p className="bm-quote bm-quote--deleted">
-        <span className="bm-quote__line" aria-hidden="true" />
-        <span className="bm-quote__text">{t('messageDeleted')}</span>
+      <p className="bm-reply-quote bm-reply-quote--deleted">
+        <span className="bm-reply-quote__line" aria-hidden="true" />
+        <span className="bm-reply-quote__text">{t('messageDeleted')}</span>
       </p>
     );
   }
@@ -37,17 +37,17 @@ export function QuoteLine({
   const text = quote.text ?? '';
   const content = (
     <>
-      <span className="bm-quote__line" aria-hidden="true" />
+      <span className="bm-reply-quote__line" aria-hidden="true" />
       <Avatar name={name} toneKey={authorId} size="sm" />
       <b>{name}</b>
-      <span className="bm-quote__text">{text}</span>
+      <span className="bm-reply-quote__text">{text}</span>
     </>
   );
-  if (!canJump) return <p className="bm-quote">{content}</p>;
+  if (!canJump) return <p className="bm-reply-quote">{content}</p>;
   return (
     <button
       type="button"
-      className="bm-quote bm-quote--link"
+      className="bm-reply-quote bm-reply-quote--link"
       aria-label={t('repliedMessage', { name, text })}
       onClick={(event) => {
         // A click made by the keyboard (Enter, Space) has no pointer position.

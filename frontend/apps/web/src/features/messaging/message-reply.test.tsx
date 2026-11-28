@@ -224,7 +224,7 @@ async function openLog(channel = 'general') {
 const rowOf = (log: HTMLElement, text: string) =>
   within(log)
     .getAllByText(text)
-    .find((element) => !element.closest('.bm-quote'))
+    .find((element) => !element.closest('.bm-reply-quote'))
     ?.closest<HTMLElement>('[role="article"]') as HTMLElement;
 
 /** Puts the pointer over a row and returns queries within it (its action bar is then built). */
@@ -533,8 +533,8 @@ describe('Quotes', () => {
 
     expect(within(row).getByText('This message was deleted')).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: /Replied message/ })).toBeNull();
-    expect(row.querySelector('.bm-quote .ph-avatar')).toBeNull();
-    expect(row.querySelector('.bm-quote b')).toBeNull();
+    expect(row.querySelector('.bm-reply-quote .ph-avatar')).toBeNull();
+    expect(row.querySelector('.bm-reply-quote b')).toBeNull();
   });
 
   it('Quote_DeletedButCarryingAuthorAndText_ShowsNeither', async () => {
@@ -544,7 +544,7 @@ describe('Quotes', () => {
     const log = await openLog();
 
     expect(within(log).queryByText('secret')).toBeNull();
-    expect(rowOf(log, 'message 5').querySelector('.bm-quote b')).toBeNull();
+    expect(rowOf(log, 'message 5').querySelector('.bm-reply-quote b')).toBeNull();
   });
 
   it('Quote_WhenTheOriginalIsNotLoaded_IsTextNotAButton', async () => {
@@ -668,7 +668,7 @@ describe('Quotes', () => {
     await within(log).findByText('live reply');
     const row = rowOf(log, 'live reply');
     expect(within(row).getByText('This message was deleted')).toBeInTheDocument();
-    expect(row.querySelector('.bm-quote b')).toBeNull();
+    expect(row.querySelector('.bm-reply-quote b')).toBeNull();
   });
 
   it('Quote_WhenTheFlagIsOff_IsStillDrawn', async () => {
@@ -701,7 +701,7 @@ describe('Deleted originals', () => {
     await waitFor(() => {
       expect(within(row).getByText('This message was deleted')).toBeInTheDocument();
     });
-    expect(row.querySelector('.bm-quote b')).toBeNull();
+    expect(row.querySelector('.bm-reply-quote b')).toBeNull();
     expect(within(row).queryByText('message 3')).toBeNull();
   });
 
@@ -719,7 +719,7 @@ describe('Deleted originals', () => {
     await within(log).findByText(GONE_TEXT);
     const row = rowOf(log, 'my answer');
     expect(within(row).getByText('This message was deleted')).toBeInTheDocument();
-    expect(row.querySelector('.bm-quote b')).toBeNull();
+    expect(row.querySelector('.bm-reply-quote b')).toBeNull();
     expect(within(row).queryByText('message 3')).toBeNull();
   });
 
@@ -759,7 +759,7 @@ describe('Deleted originals', () => {
       expect(within(rowOf(log, 'my answer')).getByText('This message was deleted')).toBeInTheDocument();
     });
     const row = rowOf(log, 'my answer');
-    expect(row.querySelector('.bm-quote b')).toBeNull();
+    expect(row.querySelector('.bm-reply-quote b')).toBeNull();
     expect(within(row).queryByText('message 3')).toBeNull();
   });
 

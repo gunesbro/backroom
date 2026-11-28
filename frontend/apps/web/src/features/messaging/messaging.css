@@ -1024,7 +1024,7 @@ ol.bm-rt-list {
 }
 
 /* The quote above a reply (docs/design: Main, .quote). */
-.bm-quote {
+.bm-reply-quote {
   display: flex;
   align-items: center;
   gap: var(--ph-space-6);
@@ -1039,20 +1039,20 @@ ol.bm-rt-list {
   text-align: start;
 }
 
-.bm-quote b {
+.bm-reply-quote b {
   flex: none;
   font-weight: 600;
   color: var(--ph-ink);
 }
 
-.bm-quote .ph-avatar {
+.bm-reply-quote .ph-avatar {
   flex: none;
   width: 16px;
   height: 16px;
   font-size: 7px;
 }
 
-.bm-quote__line {
+.bm-reply-quote__line {
   flex: none;
   width: 22px;
   height: 10px;
@@ -1062,26 +1062,26 @@ ol.bm-rt-list {
   border-top-left-radius: var(--ph-radius-sm);
 }
 
-.bm-quote__text {
+.bm-reply-quote__text {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.bm-quote--deleted {
+.bm-reply-quote--deleted {
   font-style: italic;
 }
 
-.bm-quote--link {
+.bm-reply-quote--link {
   cursor: pointer;
 }
 
-.bm-quote--link:hover .bm-quote__text {
+.bm-reply-quote--link:hover .bm-reply-quote__text {
   color: var(--ph-ink);
 }
 
-.bm-quote--link:focus-visible {
+.bm-reply-quote--link:focus-visible {
   outline: 2px solid var(--ph-accent);
   outline-offset: 2px;
   border-radius: var(--ph-radius-sm);
