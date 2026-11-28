@@ -85,6 +85,7 @@ createRoot(root).render(
           authorName={(id) => NAMES[id] ?? 'Someone'}
           ownAccountId={AUTHORS[new URLSearchParams(location.search).has('own') ? 1 : 0]}
           editing={editing}
+          editingId={new URLSearchParams(location.search).get('edit') ?? undefined}
           ownName="Alice"
           locale="en"
           onRetry={noop}

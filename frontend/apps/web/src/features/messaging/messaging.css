@@ -497,18 +497,23 @@
   opacity: 0.7;
 }
 
-/* Composer. */
-.bm-composer {
-  flex: none;
+/* Composer. The frame of the text field (toolbar and input) is shared with the field of a message being edited. */
+.bm-composer,
+.bm-edit__field {
   display: flex;
   flex-direction: column;
-  margin: 0 var(--ph-space-20) var(--ph-space-16);
   border: 1px solid var(--ph-line);
   border-radius: var(--ph-radius-xl);
   background: var(--ph-panel);
 }
 
-.bm-composer:focus-within {
+.bm-composer {
+  flex: none;
+  margin: 0 var(--ph-space-20) var(--ph-space-16);
+}
+
+.bm-composer:focus-within,
+.bm-edit__field:focus-within {
   border-color: var(--ph-focus-border);
   outline: 1px solid var(--ph-focus-border);
   box-shadow: var(--ph-focus);

@@ -130,3 +130,27 @@ test('MessageActions_WhenTheRowAboveIsFocused_TheBarOfTheHoveredRowStaysOnTop', 
   );
   expect(inside).toBe(true);
 });
+
+// The field of a message being edited has the composer's frame: a visible border against the row and the focus ring.
+test('MessageEditor_WhenOpenedInPlace_FieldHasAVisibleFrameAndTheFocusRing', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/e2e/message-list.html?own=last&edit=m-199');
+  const field = page.locator('.bm-edit__field');
+  await expect(field).toBeVisible();
+
+  const frame = await field.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      width: Number.parseFloat(style.borderTopWidth),
+      color: style.borderTopColor,
+      rowBackground: getComputedStyle(element.closest('.bm-message') ?? document.body).backgroundColor,
+    };
+  });
+  expect(frame.width).toBeGreaterThanOrEqual(1);
+  expect(frame.color).not.toBe(frame.rowBackground);
+
+  const unfocused = await field.evaluate((element) => getComputedStyle(element).outlineStyle);
+  expect(unfocused).toBe('none');
+  await page.getByRole('textbox', { name: 'Edit message' }).focus();
+  await expect(field).toHaveCSS('outline-style', 'solid');
+});
