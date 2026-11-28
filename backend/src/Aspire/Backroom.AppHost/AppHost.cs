@@ -111,6 +111,8 @@ for (var i = 0; i < cells.Count; i++)
         .WithEnvironment("Features__MessageEdit", "true")
         // Reply with quote (docs/contracts/phase-2.md, flow 2; step 9): behind a flag; on in development.
         .WithEnvironment("Features__MessageReply", "true")
+        // Typing indicator (docs/contracts/phase-2.md, flow 2; step 10): the hub method is behind a flag; on in development.
+        .WithEnvironment("Features__Typing", "true")
         .WithWebOrigins()
         .WithEnvironment("Authentication__Authority", authority)
         // Live events: the SignalR backplane and the member-removal channel (docs/contracts/phase-1.md, "Live events"),

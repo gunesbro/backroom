@@ -29,6 +29,7 @@ internal sealed partial class RealtimeHub(
     IOrganizationMembershipCheck membership,
     IPresenceTracker presence,
     IConversationReadAccess conversations,
+    TypingThrottle typing,
     OrganizationContext organization,
     IUnitOfWork unitOfWork,
     IOptions<RealtimeOptions> options,
@@ -149,12 +150,100 @@ internal sealed partial class RealtimeHub(
     }
 
     /// <summary>
+    /// The client says the person is typing in a conversation (docs/contracts/phase-2.md, flow 2 "Typing"): delivered as
+    /// <c>UserTyping</c> to the conversation's group except this connection, never stored. The caller must be allowed to post
+    /// (<c>IConversationReadAccess.CanPostAsync</c>); every refusal is <see cref="NotFound"/>. Threads arrive in step 12, so a
+    /// <paramref name="threadId"/> is refused until then. At most one delivered event per account and conversation per
+    /// <see cref="RealtimeOptions.TypingInterval"/>; extra calls are dropped silently (the throttle is checked before the access check).
+    /// </summary>
+    public Task Typing(Guid orgId, Guid conversationId, Guid? threadId) => TypingAsync(orgId, conversationId, threadId);
+
+    /// <summary>
     /// Replaces the connection's watch set (docs/contracts/phase-2.md, "Live events"): the connection joins the presence groups of
     /// <paramref name="accountIds"/> in the organization and leaves those it no longer watches. The caller must be an active member
     /// (else <see cref="NotFound"/>, as for a subscription); people who are not active members there are left out without a word, so the
     /// answer tells nothing about them. At most <see cref="RealtimeOptions.MaxWatchedPerConnection"/> ids; an empty list clears the set.
     /// </summary>
     public Task WatchPresence(Guid orgId, Guid[] accountIds) => WatchPresenceAsync(orgId, accountIds);
+
+    private async Task TypingAsync(Guid orgId, Guid conversationId, Guid? threadId)
+    {
+        if (!options.Value.TypingEnabled || threadId is not null)
+        {
+            throw new HubException(NotFound);
+        }
+
+        ValidateIds(orgId, conversationId);
+        var state = Current();
+        if (typing.IsThrottled(state.AccountId, conversationId))
+        {
+            RealtimeTelemetry.DroppedTyping.Add(1);
+            return;
+        }
+
+        var cancellationToken = Context.ConnectionAborted;
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            // An access check is a database transaction, so checked calls count like subscribe calls: a client that keeps asking is cut off.
+            if (!state.TryCountCall(timeProvider.GetUtcNow(), options.Value.SubscribeWindow, options.Value.MaxSubscribeCallsPerWindow))
+            {
+                RealtimeTelemetry.RejectedTyping.Add(1, new KeyValuePair<string, object?>("reason", "rate_limited"));
+                Context.Abort();
+                throw new HubException(RateLimited);
+            }
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+
+        if (!await CheckAccessAsync(state.AccountId, orgId, conversationId, post: true, cancellationToken))
+        {
+            RealtimeTelemetry.RejectedTyping.Add(1, new KeyValuePair<string, object?>("reason", "not_found"));
+            await state.Gate.WaitAsync(cancellationToken);
+            try
+            {
+                if (state.CountRefusal() >= options.Value.MaxRefusedSubscribesPerConnection)
+                {
+                    Context.Abort();
+                    throw new HubException(TooManyRefusals);
+                }
+            }
+            finally
+            {
+                state.Gate.Release();
+            }
+
+            throw new HubException(NotFound);
+        }
+
+        // Another connection of the account may have taken the slot while the check ran.
+        if (!typing.TryAcquire(state.AccountId, conversationId))
+        {
+            RealtimeTelemetry.DroppedTyping.Add(1);
+            return;
+        }
+
+        var tag = new KeyValuePair<string, object?>("event", Contracts.LiveEventNames.UserTyping);
+        try
+        {
+            await Clients.OthersInGroup(GroupNames.Conversation(options.Value.CellId, orgId, conversationId))
+                .SendAsync(Contracts.LiveEventNames.UserTyping, new Contracts.UserTypingPayload(orgId, conversationId, null, state.AccountId), cancellationToken);
+            RealtimeTelemetry.Publishes.Add(1, tag);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+#pragma warning disable CA1031 // Typing is best effort: a backplane failure must not fail the call.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            RealtimeTelemetry.PublishFailures.Add(1, tag, new KeyValuePair<string, object?>("reason", "error"));
+            LogTypingFailed(logger, exception.GetType().Name, orgId);
+        }
+    }
 
     private async Task WatchPresenceAsync(Guid orgId, Guid[] accountIds)
     {
@@ -335,7 +424,7 @@ internal sealed partial class RealtimeHub(
                 throw new HubException(SubscriptionLimit);
             }
 
-            if (!await MayJoinAsync(state.AccountId, organizationId, conversationId, cancellationToken))
+            if (!await CheckAccessAsync(state.AccountId, organizationId, conversationId, post: false, cancellationToken))
             {
                 RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "not_found"));
                 if (state.CountRefusal() >= options.Value.MaxRefusedSubscribesPerConnection)
@@ -426,14 +515,17 @@ internal sealed partial class RealtimeHub(
 
     // The organization comes from the argument, and is accepted only after the membership check, like a request's route
     // value; row-level security limits everything the transaction reads to it.
-    private async Task<bool> MayJoinAsync(Guid accountId, Guid organizationId, Guid? conversationId, CancellationToken cancellationToken)
+    private async Task<bool> CheckAccessAsync(Guid accountId, Guid organizationId, Guid? conversationId, bool post, CancellationToken cancellationToken)
     {
         try
         {
             organization.Enter(organizationId);
             await unitOfWork.BeginAsync(cancellationToken);
             var allowed = await membership.IsActiveMemberAsync(accountId, cancellationToken)
-                && (conversationId is not { } conversation || await conversations.CanReadAsync(organizationId, conversation, accountId, cancellationToken));
+                && (conversationId is not { } conversation
+                    || await (post
+                        ? conversations.CanPostAsync(organizationId, conversation, accountId, cancellationToken)
+                        : conversations.CanReadAsync(organizationId, conversation, accountId, cancellationToken)));
             await unitOfWork.CommitAsync(cancellationToken);
             return allowed;
         }
@@ -488,6 +580,9 @@ internal sealed partial class RealtimeHub(
 
     [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Leaving the groups of a failed subscription failed ({ExceptionType}); the connection is closed.")]
     private static partial void LogRollbackFailed(ILogger logger, string exceptionType);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Warning, Message = "Sending a typing event failed ({ExceptionType}) in organization {OrganizationId}.")]
+    private static partial void LogTypingFailed(ILogger logger, string exceptionType, Guid organizationId);
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "The subscription check failed ({ExceptionType}) in organization {OrganizationId}.")]
     private static partial void LogCheckFailed(ILogger logger, string exceptionType, Guid organizationId);

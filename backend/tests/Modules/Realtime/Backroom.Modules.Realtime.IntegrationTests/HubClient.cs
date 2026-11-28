@@ -24,6 +24,7 @@ internal sealed class HubClient : IAsyncDisposable
     private readonly Channel<ConversationUpdatedPayload> _conversations = Channel.CreateUnbounded<ConversationUpdatedPayload>();
     private readonly Channel<MembershipChangedPayload> _memberships = Channel.CreateUnbounded<MembershipChangedPayload>();
     private readonly Channel<FileRejectedPayload> _fileRejected = Channel.CreateUnbounded<FileRejectedPayload>();
+    private readonly Channel<UserTypingPayload> _typing = Channel.CreateUnbounded<UserTypingPayload>();
     private readonly Channel<string> _probes = Channel.CreateUnbounded<string>();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -38,6 +39,7 @@ internal sealed class HubClient : IAsyncDisposable
         connection.On<ConversationUpdatedPayload>(LiveEventNames.ConversationUpdated, payload => _conversations.Writer.TryWrite(payload));
         connection.On<MembershipChangedPayload>(LiveEventNames.MembershipChanged, payload => _memberships.Writer.TryWrite(payload));
         connection.On<FileRejectedPayload>(LiveEventNames.FileRejected, payload => _fileRejected.Writer.TryWrite(payload));
+        connection.On<UserTypingPayload>(LiveEventNames.UserTyping, payload => _typing.Writer.TryWrite(payload));
         connection.On<string>(ProbeEvent, payload => _probes.Writer.TryWrite(payload));
         connection.Closed += _ =>
         {
@@ -126,6 +128,12 @@ internal sealed class HubClient : IAsyncDisposable
     public Task<FileRejectedPayload> NextFileRejectedAsync() => ReadAsync(_fileRejected.Reader);
 
     public bool HasUnreadFileRejected => _fileRejected.Reader.TryPeek(out _);
+
+    public Task TypingAsync(Guid organizationId, Guid conversationId, Guid? threadId = null) => _connection.InvokeAsync("Typing", organizationId, conversationId, threadId);
+
+    public Task<UserTypingPayload> NextTypingAsync() => ReadAsync(_typing.Reader);
+
+    public bool HasUnreadTyping => _typing.Reader.TryPeek(out _);
 
     public Task<string> NextProbeAsync() => ReadAsync(_probes.Reader);
 
