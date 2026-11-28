@@ -26,8 +26,14 @@ let requested: string[] = [];
 
 const server = setupServer();
 
-beforeAll(() => {
+beforeAll(async () => {
   server.listen({ onUnhandledFrame: 'error' });
+  // The workspace loads these on first use; load them once here so no test's wait includes a cold module load.
+  await Promise.all([
+    import('./rich-text/rich-field'),
+    import('./message-editor'),
+    import('./channel-info-dialog'),
+  ]);
   // jsdom has no layout: the log is 400 px tall, a row 40 px, and scrollTop can be set.
   const tops = new WeakMap<Element, number>();
   const isLog = (element: Element) => element.getAttribute('role') === 'feed';
