@@ -266,6 +266,17 @@ async function askToDelete(log: HTMLElement, text: string) {
 
 const byKey = (log: HTMLElement, key: string) => log.querySelector<HTMLElement>(`[data-row-key="${key}"]`);
 
+describe('Message menu placement', () => {
+  it('Menu_InJsdomWithoutLayout_DefaultsBelow', async () => {
+    renderWorkspace(fakeApi());
+    const log = await openLog();
+    const articles = within(log).getAllByRole('article');
+    const last = articles[articles.length - 1] as HTMLElement;
+    await openMenu(last);
+    expect(within(last).getByRole('menu').closest('.ph-menu')).toHaveClass('ph-menu--below');
+  });
+});
+
 describe('Focus around deleting', () => {
   it('Delete_CancelledWithTheButton_FocusesTheRow', async () => {
     renderWorkspace(fakeApi());
