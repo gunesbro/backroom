@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { createRef } from 'react';
 import { $getSelection, type LexicalEditor } from 'lexical';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionStatus, RealtimeClient, RealtimeEventName, RealtimeEvents } from '@backroom/realtime';
@@ -8,7 +9,9 @@ import { ApiError } from '@/shared/http';
 import { LocaleProvider } from '@/shared/locale-provider';
 import { fakeAuthClient } from '@/testing/fakes';
 import { MessagingApiContext, type Message, type MessagingApi } from './api';
-import { MessageList, type MessageEditing, type Row } from './message-list';
+import { MessageList, type MessageEditing, type MessageListHandle, type Row } from './message-list';
+import { messagesKey } from './queries';
+import { $writeBlocks } from './rich-text/lexical-blocks';
 import { RealtimeContext } from './realtime-context';
 import type { Block } from './rich-text/blocks';
 import { forgetSeqs } from './seq-memory';
@@ -154,6 +157,12 @@ beforeAll(async () => {
         return isLog(this) ? Number.parseInt(this.querySelector('ol')?.style.height ?? '0', 10) : 0;
       },
     },
+    scrollTo: {
+      configurable: true,
+      value: function (this: HTMLElement, options: { top?: number }) {
+        tops.set(this, options.top ?? 0);
+      },
+    },
     scrollTop: {
       configurable: true,
       get: function (this: HTMLElement) {
@@ -189,6 +198,26 @@ function renderWorkspace(api: MessagingApi, realtime: RealtimeClient = fakeRealt
       </QueryClientProvider>
     </LocaleProvider>,
   );
+  return { queryClient };
+}
+
+async function startEditing(log: HTMLElement, text: string) {
+  const row = rowOf(log, text);
+  await openMenu(row);
+  fireEvent.click(within(row).getByRole('menuitem', { name: 'Edit message' }));
+  const input = await screen.findByRole<WithEditor>('textbox', { name: 'Edit message' });
+  const editor = input.__lexicalEditor as LexicalEditor;
+  const write = (blocks: Block[]) => {
+    act(() => {
+      editor.update(
+        () => {
+          $writeBlocks(blocks);
+        },
+        { discrete: true },
+      );
+    });
+  };
+  return { input, write };
 }
 
 async function openLog() {
@@ -288,6 +317,7 @@ describe('Focus around deleting', () => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
     expect(byKey(log, key)).toHaveTextContent('message 2');
+    expect(byKey(log, key)).toHaveFocus();
     await waitFor(() => {
       expect(vi.mocked(api.listMessages).mock.calls.length).toBeGreaterThan(reads);
     });
@@ -324,6 +354,97 @@ describe('Focus around deleting', () => {
     fireEvent.click(within(alert.parentElement as HTMLElement).getByRole('button', { name: 'Close' }));
 
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('Saving an edit', () => {
+  it('Save_InFlight_BlocksCancelEscapeAndStartingAnotherEdit_ThenClosesOnTheAnswer', async () => {
+    let answer: (message: Message) => void = () => undefined;
+    const editMessage = vi.fn(
+      () =>
+        new Promise<Message>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    renderWorkspace(fakeApi({ editMessage }));
+    const log = await openLog();
+    const { input, write } = await startEditing(log, 'message 2');
+    write(paragraph('new'));
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect(editMessage).toHaveBeenCalledTimes(1);
+    });
+
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    // ArrowUp would open the newest own message (4) in another editor, and so close this one.
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message #general' }), { key: 'ArrowUp' });
+    await settle();
+    expect(screen.getAllByRole('textbox', { name: 'Edit message' })).toHaveLength(1);
+    expect(input).toBeInTheDocument();
+
+    await act(async () => {
+      answer({ ...message(2), text: 'new', blocks: paragraph('new'), versionSeq: 20 });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull();
+    });
+    expect(within(log).getByText('new')).toBeInTheDocument();
+  });
+
+  it('Edit_WhenEmpty_TheFieldAndSaveAreDescribedByTheHint', async () => {
+    renderWorkspace(fakeApi());
+    const log = await openLog();
+    const { input, write } = await startEditing(log, 'message 2');
+
+    write([]);
+
+    const hint = await screen.findByText('A message needs some text. To remove it, delete it instead.');
+    expect(hint.id).not.toBe('');
+    expect(input.getAttribute('aria-describedby')?.split(' ')).toContain(hint.id);
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute('aria-describedby', hint.id);
+  });
+});
+
+describe('Deleting and reading', () => {
+  it('Delete_ARefetchRunningWhenTheDeleteAnswers_DoesNotBringTheMessageBack', async () => {
+    const holder: { queryClient?: QueryClient } = {};
+    let reads = 0;
+    const page = () => ({ messages: [4, 3, 2, 1].map(message), next: null });
+    const api = fakeApi({
+      listMessages: vi.fn(() => {
+        reads += 1;
+        return reads === 1
+          ? Promise.resolve(page())
+          : new Promise<ReturnType<typeof page>>((resolve) =>
+              setTimeout(() => {
+                resolve(page());
+              }, 40),
+            );
+      }),
+      deleteMessage: vi.fn(() => {
+        // A read starts, with the message still in it, and is running when the answer comes.
+        void holder.queryClient?.refetchQueries({ queryKey: messagesKey(ORG, GENERAL.id) });
+        return Promise.resolve();
+      }),
+    });
+    holder.queryClient = renderWorkspace(api).queryClient;
+    const log = await openLog();
+    await askToDelete(log, 'message 2');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    await waitFor(() => {
+      expect(api.deleteMessage).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    expect(within(log).getByText('This message was deleted')).toBeInTheDocument();
+    expect(within(log).queryByText('message 2')).toBeNull();
   });
 });
 
@@ -405,6 +526,67 @@ describe('MessageList editing rules', () => {
     const more = await hover(rowOf(log, 'message 2')).findByRole('button', { name: 'More' });
 
     expect(more).not.toHaveAttribute('aria-haspopup', 'menu');
+  });
+
+  it('EditingRow_OutsideTheVirtualRange_IsScrolledToAndStaysDrawn', async () => {
+    const many: Row[] = Array.from({ length: 100 }, (_, index) => ({
+      key: `k${String(index + 1)}`,
+      message: message(index + 1),
+    }));
+    const view = render(list({ rows: many, editing: editing(false) }));
+    const log = await screen.findByRole('feed');
+    // Following the newest message: the list is at its end, far from the first row.
+    expect(log.scrollTop).toBeGreaterThan(1000);
+    fireEvent.scroll(log);
+    await settle();
+    expect(within(log).queryByText('message 1')).toBeNull();
+
+    view.rerender(list({ rows: many, editing: editing(false), editingId: 'm-1' }));
+
+    // The list scrolls to the row (the browser then reports the scroll, which jsdom does not).
+    await waitFor(() => {
+      expect(log.scrollTop).toBe(0);
+    });
+    fireEvent.scroll(log);
+    await screen.findByRole('textbox', { name: 'Edit message' });
+    // Scrolled away again: the row being edited is still drawn.
+    log.scrollTop = 3000;
+    fireEvent.scroll(log);
+    await settle();
+    expect(screen.getByRole('textbox', { name: 'Edit message' })).toBeInTheDocument();
+  });
+
+  it('FocusRow_ForARowThatIsGone_FocusesTheListsTabStop', async () => {
+    const handle = createRef<MessageListHandle>();
+    render(
+      <LocaleProvider locale="en">
+        <MessageList
+          ref={handle}
+          channelName="general"
+          rows={rows()}
+          hasEarlier={false}
+          loadingEarlier={false}
+          onLoadEarlier={vi.fn()}
+          hasNewer={false}
+          loadingNewer={false}
+          onLoadNewer={vi.fn()}
+          authorName={() => 'Veli'}
+          ownAccountId={OWN_ID}
+          ownName="Alice"
+          locale="en"
+          onRetry={vi.fn()}
+          onDiscard={vi.fn()}
+          onJoin={vi.fn()}
+        />
+      </LocaleProvider>,
+    );
+    const log = await screen.findByRole('feed');
+
+    act(() => {
+      handle.current?.focusRow('no-such-row');
+    });
+
+    expect(rowOf(log, 'message 2')).toHaveFocus();
   });
 
   it('Editor_StartedByThePerson_TakesTheFocus', async () => {

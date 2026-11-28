@@ -28,7 +28,7 @@ import {
   restoreMessage,
 } from './live-cache';
 import { isMessageDeleted, messageChangeErrorText } from './message-errors';
-import { MessageList, type MessageEditing, type Row } from './message-list';
+import { MessageList, type MessageEditing, type MessageListHandle, type Row } from './message-list';
 import { editableBlocks, type Block } from './rich-text/blocks';
 import { rowKey } from './row-key';
 import { messages } from './messages';
@@ -377,9 +377,11 @@ function ChannelView({
     if (refused) void refetchDetail();
   }, [refused, refetchDetail]);
   const confirmed = useMemo(() => oldestFirst(query.data), [query.data]);
-  // The key a message had while it was a whole message: its tombstone keeps it, so the row is not drawn anew (and
-  // loses focus) when the message is deleted. Kept here, not in the cache: a tombstone holds no author or client id.
-  const [rowKeys] = useState(() => new Map<string, string>());
+  // The key each message had in the last committed list: its tombstone keeps it, so the row is not drawn anew (and
+  // loses focus) when the message is deleted. Kept here, not in the cache, because a tombstone holds no author or
+  // client id. It is state, written only from committed rows (a render that React discards changes nothing), and
+  // render only reads it.
+  const [rowKeys, setRowKeys] = useState<ReadonlyMap<string, string>>(() => new Map());
   const rows = useMemo<Row[]>(() => {
     const keys = rowKeys;
     const known = new Set(confirmed.map((message) => message.id));
@@ -399,16 +401,22 @@ function ChannelView({
         pending: item,
       }));
     const confirmedRows = confirmed.map((message) => {
-      const remembered = keys.get(message.id);
-      if (message.deletedAt) return { key: remembered ?? message.id, message };
-      const key = rowKey(message);
-      keys.set(message.id, key);
-      return { key, message };
+      if (message.deletedAt) return { key: keys.get(message.id) ?? message.id, message };
+      return { key: rowKey(message), message };
     });
-    // Only the messages in the list are remembered.
-    for (const id of keys.keys()) if (!known.has(id)) keys.delete(id);
     return [...confirmedRows, ...overlay, ...unsent];
   }, [confirmed, pendingHere, query.hasPreviousPage, ownAccountId, rowKeys]);
+  // Remember what was committed: only the messages in the list, and only when something changed.
+  useLayoutEffect(() => {
+    // Recording what React committed is the point of this effect; it sets state only when the keys changed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRowKeys((current) => {
+      const next = new Map<string, string>();
+      for (const row of rows) if (row.message) next.set(row.message.id, row.key);
+      const same = next.size === current.size && [...next].every(([id, key]) => current.get(id) === key);
+      return same ? current : next;
+    });
+  }, [rows]);
 
   // Confirmed messages leave the pending list once a fetched page has them.
   const { prune } = pending;
@@ -488,7 +496,10 @@ function ChannelView({
       : undefined;
   /** The editor just started by the person takes the focus once; one drawn again later does not. */
   const focusEditorFor = useRef<string>(undefined);
+  /** An edit is being saved: its editor stays (it shows the answer's error) until the answer comes. */
+  const saving = useRef(false);
   const startEdit = useCallback((messageId: string) => {
+    if (saving.current) return;
     focusEditorFor.current = messageId;
     setEditingId(messageId);
   }, []);
@@ -499,6 +510,7 @@ function ChannelView({
   }, []);
   /** The message the delete dialog was opened for: its row takes the focus when the dialog closes. */
   const refocusId = useRef<string>(undefined);
+  const listRef = useRef<MessageListHandle>(null);
   const askToDelete = useCallback((messageId: string) => {
     refocusId.current = messageId;
     setDeleting(messageId);
@@ -507,19 +519,16 @@ function ChannelView({
     if (deleting !== undefined) return;
     const id = refocusId.current;
     refocusId.current = undefined;
-    const key = id === undefined ? undefined : rowKeys.get(id);
-    // The dialog's own return of focus aims at the button that opened it, which is gone with the action bar.
-    if (key !== undefined) {
-      document
-        .querySelector<HTMLElement>(`[data-row-key="${CSS.escape(key)}"]`)
-        ?.focus({ preventScroll: true });
-    }
+    // The dialog's own return of focus aims at the button that opened it, which is gone with the action bar: the
+    // list puts the focus on the row (scrolling to it if needed), or on its own tab stop if the row is gone.
+    if (id !== undefined) listRef.current?.focusRow(rowKeys.get(id) ?? id);
   }, [deleting, rowKeys]);
   const cancelEdit = useCallback(() => {
     setEditingId(undefined);
   }, []);
   const saveEdit = useCallback(
     async (messageId: string, blocks: Block[]): Promise<string | undefined> => {
+      saving.current = true;
       try {
         const edited = await api.editMessage(orgId, messageId, blocks);
         // A fetch that started before the answer could return the old content and overwrite it.
@@ -538,6 +547,8 @@ function ChannelView({
         }
 
         return messageChangeErrorText(error, t, locale);
+      } finally {
+        saving.current = false;
       }
     },
     [api, orgId, channel.id, queryClient, t, locale],
@@ -552,6 +563,7 @@ function ChannelView({
       try {
         await api.deleteMessage(orgId, messageId);
         // A read that finished in between may have brought the message back: it is deleted.
+        await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channel.id) });
         deleteMessageOptimistically(queryClient, orgId, channel.id, messageId);
       } catch (error) {
         if (isMessageDeleted(error)) return;
@@ -646,6 +658,7 @@ function ChannelView({
             onJoin={join}
             editing={editing}
             editingId={activeEditingId}
+            ref={listRef}
           />
           <NewMessageAnnouncer
             rows={rows}

@@ -5,11 +5,13 @@ import {
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
   type FocusEvent,
   type KeyboardEvent,
+  type Ref,
 } from 'react';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
@@ -41,6 +43,15 @@ export type MessageEditing = {
    * (its row scrolled out and back) must not take it.
    */
   takeFocus: (messageId: string) => boolean;
+};
+
+/** What the owner of the list can ask of it. */
+export type MessageListHandle = {
+  /**
+   * Puts the focus on the row with this key, scrolling to it if it is not drawn. A key that is not in the list puts
+   * it on the list's own tab stop instead.
+   */
+  focusRow: (key: string) => void;
 };
 
 export type Row =
@@ -87,6 +98,7 @@ export function MessageList({
   onJoin,
   editing,
   editingId,
+  ref,
 }: {
   channelName: string;
   rows: readonly Row[];
@@ -111,6 +123,7 @@ export function MessageList({
   editing?: MessageEditing | undefined;
   /** The message being edited in place, if any; kept apart from `editing` so the rows stay memoized. */
   editingId?: string | undefined;
+  ref?: Ref<MessageListHandle>;
 }) {
   const t = useTranslate(messages);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -157,7 +170,10 @@ export function MessageList({
   useEffect(() => {
     if (editingId === undefined) return;
     const at = rowsRef.current.findIndex((row) => row.message?.id === editingId);
-    if (at >= 0) virtualizer.scrollToIndex(at);
+    if (at < 0) return;
+    // Going to the row is a move away from the end: the list must not snap back to following new messages.
+    following.current = false;
+    virtualizer.scrollToIndex(at);
   }, [editingId, virtualizer]);
 
   /** The row at the top of the view, as the anchor to keep still when rows are added or dropped above it. */
@@ -229,6 +245,28 @@ export function MessageList({
       element.focus({ preventScroll: true });
     }
   }, [items]);
+  const tabStopRef = useRef(tabStopKey);
+  tabStopRef.current = tabStopKey;
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusRow: (key) => {
+        const present = rowsRef.current.some((row) => row.key === key);
+        const target = present ? key : tabStopRef.current;
+        const at = target === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === target);
+        if (target === undefined || at < 0) return;
+        const element = rowElement(target);
+        if (element) {
+          element.focus({ preventScroll: true });
+        } else {
+          // Not drawn: scroll it in; the focus follows once it is (as for the arrow keys).
+          virtualizer.scrollToIndex(at);
+          pendingFocus.current = target;
+        }
+      },
+    }),
+    [virtualizer],
+  );
   const onLogFocus = (event: FocusEvent<HTMLElement>) => {
     const key = event.target.closest(`[${ROW_KEY_ATTRIBUTE}]`)?.getAttribute(ROW_KEY_ATTRIBUTE);
     focusedKey.current = key ?? undefined;
