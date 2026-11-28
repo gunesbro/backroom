@@ -10,6 +10,8 @@ export default defineConfig({
           name: 'tooling',
           include: ['eslint-rules/**/*.test.ts', 'tooling/**/*.test.ts'],
           environment: 'node',
+          // The default 5 s is too short for tests that read the whole emoji image set on a busy machine.
+          testTimeout: 15_000,
         },
       },
     ],
