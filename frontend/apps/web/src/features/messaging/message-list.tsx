@@ -165,6 +165,21 @@ export function MessageList({
     farNow.current = next;
     setFar(next);
   }, []);
+  // A smooth scroll to the end started by "Jump to latest" is under way: the list keeps following until it arrives (or
+  // the person takes over with the wheel or a touch), so a message that comes meanwhile is followed too.
+  const scrollingToEnd = useRef(false);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    // A resize moves the threshold (and the end) without a scroll event.
+    const observer = new ResizeObserver(() => {
+      updateFar(element);
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [updateFar]);
   // Loading earlier messages waits until the list has been scrolled to its end once.
   const armed = useRef(false);
   // The row a jump scrolls to, until the rows in view (the visible range, not the rows kept drawn for focus or editing)
@@ -517,13 +532,24 @@ export function MessageList({
         onKeyDown={onRowKeyDown}
         onFocus={onLogFocus}
         onBlur={onLogBlur}
+        onWheel={() => {
+          scrollingToEnd.current = false;
+        }}
+        onTouchStart={() => {
+          scrollingToEnd.current = false;
+        }}
         onScroll={(event) => {
           const element = event.currentTarget;
           // A scroll event says where the list really is: the drawn rows are right from now on.
           settleKey.current = undefined;
           previous.current = { rows, ...anchorAt(element.scrollTop) };
-          following.current =
-            !detached && element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_DISTANCE;
+          const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
+          if (scrollingToEnd.current && !detached) {
+            following.current = true;
+            if (distance < 2) scrollingToEnd.current = false;
+          } else {
+            following.current = !detached && distance < FOLLOW_DISTANCE;
+          }
           if (element.scrollTop > 0 || following.current) armed.current = true;
           updateFar(element);
         }}
@@ -581,7 +607,7 @@ export function MessageList({
           })}
         </ol>
       </div>
-      {(detached || far) && (
+      {((detached && onJumpToLatest) || far) && (
         // After the log in the page, so Tab reaches it between the messages and the composer; it floats over the
         // log's foot. Its focus goes to the newest message once it has done its work (and is gone).
         <div className="bm-latest">
@@ -591,16 +617,22 @@ export function MessageList({
             onClick={(event) => {
               const hadFocus = event.currentTarget === document.activeElement;
               if (detached) {
+                if (!onJumpToLatest) return;
                 followNext.current = true;
                 focusLatest.current = hadFocus;
-                onJumpToLatest?.();
+                onJumpToLatest();
                 return;
               }
               // Still the newest view: scroll to its end and follow again; the focus goes to the newest message.
               const last = rows.at(-1);
               if (!last) return;
               following.current = true;
-              if (hadFocus) pendingFocus.current = last.key;
+              scrollingToEnd.current = true;
+              if (hadFocus) {
+                const lastElement = rowElement(last.key);
+                if (lastElement) lastElement.focus({ preventScroll: true });
+                else pendingFocus.current = last.key;
+              }
               const reduced =
                 typeof window.matchMedia === 'function' &&
                 window.matchMedia('(prefers-reduced-motion: reduce)').matches;
