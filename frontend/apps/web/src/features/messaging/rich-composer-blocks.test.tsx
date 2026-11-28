@@ -24,19 +24,6 @@ vi.mock('@/config', async (importOriginal) => {
   return { config: { ...original.config, richTextEnabled: true } };
 });
 
-// jsdom has no layout: after an undo the editor asks where the caret is, to scroll it into view.
-Range.prototype.getBoundingClientRect = () => ({
-  x: 0,
-  y: 0,
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  width: 0,
-  height: 0,
-  toJSON: () => ({}),
-});
-
 type WithEditor = HTMLElement & { __lexicalEditor?: LexicalEditor };
 
 function text(value: string): TextNode {

@@ -171,6 +171,11 @@ type Key =
   | 'deleteConfirm'
   | 'messageGone'
   | 'editEmpty'
+  | 'replyingTo'
+  | 'cancelReply'
+  | 'repliedMessage'
+  | 'replyGone'
+  | 'replyUnavailable'
   | 'membersWindow';
 
 export type MessageKey = Key;
@@ -351,6 +356,11 @@ export const messages: Messages<Key> = {
     deleteConfirm: 'Delete',
     messageGone: 'This message no longer exists.',
     editEmpty: 'A message needs some text. To remove it, delete it instead.',
+    replyingTo: 'Replying to {name}',
+    cancelReply: 'Cancel reply',
+    repliedMessage: 'Replied message: {name}: {text}',
+    replyGone: 'The message you replied to was deleted or no longer exists. Your message was not sent.',
+    replyUnavailable: 'Replying to a message is not available yet. Your message was not sent.',
     membersWindow: 'Showing the last {count} members loaded.',
   },
   tr: {
@@ -528,6 +538,11 @@ export const messages: Messages<Key> = {
     deleteConfirm: 'Sil',
     messageGone: 'Bu mesaj artık yok.',
     editEmpty: 'Mesajda metin olmalı. Kaldırmak için mesajı sil.',
+    replyingTo: '{name} kişisine yanıt veriyorsun',
+    cancelReply: 'Yanıtı iptal et',
+    repliedMessage: 'Yanıtlanan mesaj: {name}: {text}',
+    replyGone: 'Yanıt verdiğin mesaj silindi ya da artık yok. Mesajın gönderilmedi.',
+    replyUnavailable: 'Mesaja yanıt verme henüz kullanılamıyor. Mesajın gönderilmedi.',
     membersWindow: 'Yüklenen son {count} üye gösteriliyor.',
   },
 };

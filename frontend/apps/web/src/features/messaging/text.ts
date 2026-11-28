@@ -33,3 +33,23 @@ function trim(text: string): string {
 export function normalizeMessageText(raw: string): string {
   return trim(raw).normalize('NFC').replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
+
+/** The longest text of a quote, in UTF-16 characters (the server cuts a quoted text there). */
+export const MAX_QUOTE_LENGTH = 200;
+
+const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' });
+
+/**
+ * At most `MAX_QUOTE_LENGTH` UTF-16 characters, cut back to a character boundary (never inside a surrogate pair or a
+ * combining sequence), as the server cuts the quote it sends. Used where the client builds a quote itself.
+ */
+export function truncateQuote(text: string): string {
+  if (text.length <= MAX_QUOTE_LENGTH) return text;
+  let end = 0;
+  for (const { segment } of graphemes.segment(text)) {
+    if (end + segment.length > MAX_QUOTE_LENGTH) break;
+    end += segment.length;
+  }
+
+  return text.slice(0, end);
+}

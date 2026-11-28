@@ -233,7 +233,14 @@ export function RichField({
       editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
     },
     focus: () => {
-      editorRef.current?.focus(undefined, { defaultSelection: 'rootEnd' });
+      const editor = editorRef.current;
+      if (!editor) return;
+      // The element takes the focus first, and Lexical puts the caret at the end after it: an editor with nothing in
+      // it has no selection that would bring the focus along, and the other way round the caret would be left at the
+      // start of the content by the element's own focus.
+      const root = editor.getRootElement();
+      if (root && !root.contains(document.activeElement)) root.focus({ preventScroll: true });
+      editor.focus(undefined, { defaultSelection: 'rootEnd' });
     },
   }));
 

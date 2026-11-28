@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { forgetSeqs, lastSeenSeq, rememberSeq } from './seq-memory';
-import { normalizeMessageText } from './text';
+import { normalizeMessageText, truncateQuote } from './text';
 
 describe('normalizeMessageText', () => {
   it('NormalizeMessageText_WithLineEndingsAndSpaces_MatchesTheServer', () => {
@@ -57,5 +57,23 @@ describe('normalizeMessageText trimming', () => {
     // JavaScript's trim() removes U+FEFF; .NET's Trim() does not, so the count must not either.
     expect(normalizeMessageText('\uFEFFa\uFEFF')).toBe('\uFEFFa\uFEFF');
     expect('\uFEFFa\uFEFF'.trim()).toBe('a');
+  });
+});
+
+describe('truncateQuote', () => {
+  it('TruncateQuote_ShortText_IsUnchanged', () => {
+    expect(truncateQuote('hello')).toBe('hello');
+  });
+
+  it('TruncateQuote_LongText_CutsAtTwoHundredCharacters', () => {
+    expect(truncateQuote('a'.repeat(250))).toBe('a'.repeat(200));
+  });
+
+  it('TruncateQuote_CutPointInsideASurrogatePair_CutsBeforeIt', () => {
+    expect(truncateQuote(`${'a'.repeat(199)}😀tail`)).toBe('a'.repeat(199));
+  });
+
+  it('TruncateQuote_CutPointInsideACombiningSequence_CutsBeforeIt', () => {
+    expect(truncateQuote(`${'a'.repeat(199)}e\u0301tail`)).toBe('a'.repeat(199));
   });
 });
