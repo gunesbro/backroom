@@ -1196,9 +1196,14 @@ ol.bm-rt-list {
 }
 
 /* A short notice under the log (an original that cannot be shown). */
-.bm-notice {
+.bm-jump-notice {
   margin: 0;
   padding: var(--ph-space-8) var(--ph-space-20);
   font-size: 13px;
   color: var(--ph-muted);
+}
+
+/* Mounted empty (a live region), it takes no room until it has something to say. */
+.bm-jump-notice:empty {
+  padding: 0;
 }

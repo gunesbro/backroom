@@ -10,6 +10,7 @@ import { LocaleProvider } from '@/shared/locale-provider';
 import { fakeAuthClient } from '@/testing/fakes';
 import { createMessagingApi, MessagingApiContext } from './api';
 import { RealtimeContext } from './realtime-context';
+import { messagesKey, type MessagePages } from './queries';
 import { forgetSeqs } from './seq-memory';
 import { Workspace } from './workspace';
 
@@ -66,6 +67,10 @@ type Cell = {
   deleted: Set<number>;
   /** What the around read answers instead of the messages, if anything. */
   aroundStatus?: { status: number; code: string };
+  /** Held until this settles: the answer to the next around read (its body is made when the request comes). */
+  holdAround?: Promise<void> | undefined;
+  /** Held until this settles: the answer to the next after read. */
+  holdAfter?: Promise<void> | undefined;
   /** What a read with an epoch answers instead of the messages, if anything. */
   epochStatus?: { status: number; code: string };
 };
@@ -88,6 +93,13 @@ function wire(seq: number): Wire {
   }
 
   const base = message(seq);
+  // Message 105 (in the window around 100) replies to message 30, outside that window.
+  if (seq === 105) {
+    return {
+      ...base,
+      replyTo: { messageId: 'm-30', deleted: false, authorAccountId: OTHER_ID, text: 'message 30' },
+    };
+  }
   return seq === cell.count
     ? {
         ...base,
@@ -129,7 +141,7 @@ function serveCell() {
         role: 'member',
       }),
     ),
-    http.get(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, ({ request, params }) => {
+    http.get(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, async ({ request, params }) => {
       if (params.channelId === RANDOM.id) {
         return HttpResponse.json({
           items: [{ ...message(1), id: 'r-1', text: 'random message' }],
@@ -152,13 +164,17 @@ function serveCell() {
         const newer = Math.min(cell.count - anchor, limit - 1 - older);
         const seqs: number[] = [];
         for (let seq = anchor + newer; seq >= anchor - older; seq -= 1) seqs.push(seq);
-        return HttpResponse.json({
+        const body = {
           items: seqs.map(wire),
           before: anchor - older > 1 ? anchor - older : null,
           after: anchor + newer < cell.count ? anchor + newer : null,
           anchor: { id: around, seq: anchor },
           epoch: EPOCH,
-        });
+        };
+        const hold = cell.holdAround;
+        cell.holdAround = undefined;
+        await hold;
+        return HttpResponse.json(body);
       }
 
       if (query.has('epoch') && cell.epochStatus) return problem(cell.epochStatus);
@@ -168,11 +184,15 @@ function serveCell() {
         const seqs: number[] = [];
         for (let seq = Number(after) + 1; seq <= cell.count && seqs.length < limit; seq += 1) seqs.push(seq);
         const last = seqs.at(-1);
-        return HttpResponse.json({
+        const body = {
           items: seqs.map(wire),
           next: last !== undefined && last < cell.count ? last : null,
           epoch: EPOCH,
-        });
+        };
+        const hold = cell.holdAfter;
+        cell.holdAfter = undefined;
+        await hold;
+        return HttpResponse.json(body);
       }
 
       const before = query.get('before');
@@ -187,6 +207,7 @@ function serveCell() {
 
 function fakeRealtime() {
   const listeners = new Map<RealtimeEventName, ((payload: never) => void)[]>();
+  const statusListeners: ((status: ConnectionStatus, reconnected: boolean) => void)[] = [];
   const client = {
     start: vi.fn(),
     stop: vi.fn(() => Promise.resolve()),
@@ -200,11 +221,20 @@ function fakeRealtime() {
       listeners.set(event, [...(listeners.get(event) ?? []), listener]);
       return () => undefined;
     },
-    onStatus: () => () => undefined,
+    onStatus: (listener: (status: ConnectionStatus, reconnected: boolean) => void) => {
+      statusListeners.push(listener);
+      return () => undefined;
+    },
     status: (): ConnectionStatus => 'connected',
   };
   return {
     client: client as unknown as RealtimeClient,
+    /** The connection came back after it was lost. */
+    reconnect: () => {
+      act(() => {
+        for (const listener of statusListeners) listener('connected', true);
+      });
+    },
     emit: <K extends RealtimeEventName>(event: K, payload: RealtimeEvents[K]) => {
       act(() => {
         for (const listener of listeners.get(event) ?? []) listener(payload as never);
@@ -298,7 +328,7 @@ async function openLog() {
     expect(within(log).queryAllByRole('article').length).toBeGreaterThan(0);
   });
   fireEvent.scroll(log);
-  await within(log).findByText('message 160');
+  await within(log).findByText(`message ${String(cell.count)}`);
   return log;
 }
 
@@ -316,6 +346,26 @@ async function findInLog(log: HTMLElement, text: string) {
     fireEvent.scroll(log);
     return within(log).getByText(text);
   });
+}
+
+/** Rows (not quotes) that say this text. */
+const rowsSaying = (log: HTMLElement, text: string) =>
+  within(log)
+    .queryAllByText(text)
+    .filter((element) => !element.closest('.bm-reply-quote'));
+
+/** Lets what a request or an event started finish, so a negative check cannot pass just because it ran early. */
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+
+function deferred() {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 const latestButton = () => screen.queryByRole('button', { name: 'Jump to latest' });
@@ -408,8 +458,8 @@ describe('Jump to an original that is not loaded', () => {
 
     scrollLog(log, 'end');
     await within(log).findByText('message 126');
-    const after = reads('after').at(-1);
-    expect(after?.searchParams.get('after')).toBe('125');
+    const after = reads('after').find((url) => url.searchParams.get('after') === '125');
+    expect(after).toBeDefined();
     expect(after?.searchParams.get('epoch')).toBe(EPOCH);
   });
 
@@ -423,11 +473,13 @@ describe('Jump to an original that is not loaded', () => {
       expect(reads('after')).toHaveLength(1);
     });
 
-    // The read after 125 reached the newest message: the button goes, and nothing else was read to get there.
+    // The read after 125 reached the newest message: the button goes; one read after the newest fills the gap.
     await waitFor(() => {
       expect(latestButton()).toBeNull();
     });
-    expect(reads('after')).toHaveLength(1);
+    await waitFor(() => {
+      expect(reads('after').map((url) => url.searchParams.get('after'))).toEqual(['125', '160']);
+    });
 
     // Attached again: a live message joins the list as usual.
     realtime.emit('MessagePosted', {
@@ -573,6 +625,245 @@ describe('Jump to an original that is not loaded', () => {
     expect(latestButton()).toBeNull();
     // The newest messages were read again, not drawn from the dropped window.
     expect(requested.filter((url) => url.search === '?limit=50')).toHaveLength(2);
+  });
+
+  it('Jump_AnsweredAfterTheChannelWasLeft_DoesNotBringTheWindowBack', async () => {
+    const hold = deferred();
+    cell.holdAround = hold.promise;
+    renderWorkspace();
+    const log = await openLog();
+    fireEvent.click(within(log).getByRole('button', { name: QUOTE_NAME }));
+    await waitFor(() => {
+      expect(reads('around')).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'random' }));
+    const random = await screen.findByRole('feed', { name: 'Messages in #random' });
+    await within(random).findByText('random message');
+    hold.resolve();
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'general' }));
+
+    const again = await openLog();
+    expect(latestButton()).toBeNull();
+    expect(rowsSaying(again, 'message 100')).toHaveLength(0);
+  });
+
+  it('Jump_AnsweredAfterJumpToLatest_DoesNotReplaceTheNewestMessages', async () => {
+    renderWorkspace();
+    const log = await jumpToOriginal();
+    const hold = deferred();
+    cell.holdAround = hold.promise;
+    // A second jump from the window (message 105 quotes message 30), still on its way when the person goes back.
+    fireEvent.click(within(log).getByRole('button', { name: 'Replied message: Veli Yılmaz: message 30' }));
+    await waitFor(() => {
+      expect(reads('around')).toHaveLength(2);
+    });
+
+    fireEvent.click(latestButton() as HTMLElement);
+    await waitFor(() => {
+      expect(latestButton()).toBeNull();
+    });
+    hold.resolve();
+    await settle();
+
+    expect(latestButton()).toBeNull();
+    expect(rowsSaying(log, 'message 30')).toHaveLength(0);
+    expect(await findInLog(log, 'message 160')).toBeInTheDocument();
+  });
+
+  it('Jump_AnsweredAfterASend_DoesNotReplaceTheNewestMessages', async () => {
+    server.use(
+      http.post(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, async ({ request }) => {
+        const body = (await request.json()) as { clientMessageId: string; text: string };
+        return HttpResponse.json(
+          {
+            ...message(161),
+            clientMessageId: body.clientMessageId,
+            authorAccountId: OWN_ID,
+            text: body.text,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    const hold = deferred();
+    cell.holdAround = hold.promise;
+    renderWorkspace();
+    const log = await openLog();
+    fireEvent.click(within(log).getByRole('button', { name: QUOTE_NAME }));
+    await waitFor(() => {
+      expect(reads('around')).toHaveLength(1);
+    });
+
+    const field = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Message #general' });
+    act(() => {
+      field.focus();
+    });
+    fireEvent.change(field, { target: { value: 'hello' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    hold.resolve();
+    await settle();
+
+    expect(latestButton()).toBeNull();
+    expect(rowsSaying(log, 'message 100')).toHaveLength(0);
+    expect(within(log).getByText('message 160')).toBeInTheDocument();
+  });
+
+  it('Attach_WhenALiveMessageCameDuringTheAttachingRead_ReadsItAfterwards', async () => {
+    const realtime = fakeRealtime();
+    renderWorkspace(realtime.client);
+    const log = await jumpToOriginal();
+    const hold = deferred();
+    cell.holdAfter = hold.promise;
+
+    scrollLog(log, 'end');
+    await waitFor(() => {
+      expect(reads('after')).toHaveLength(1);
+    });
+    // Posted while the read that attaches the view is on its way: the detached view does not take it.
+    cell.count = 161;
+    realtime.emit('MessagePosted', {
+      orgId: ORG,
+      channelId: GENERAL.id,
+      message: {
+        id: 'm-161',
+        seq: 161,
+        clientMessageId: '00000000-0000-4000-8000-000000000161',
+        authorAccountId: OTHER_ID,
+        text: 'message 161',
+        createdAt: '2026-11-22T10:00:00Z',
+      },
+    });
+    hold.resolve();
+
+    await waitFor(() => {
+      expect(latestButton()).toBeNull();
+    });
+    await waitFor(() => {
+      expect(reads('after').map((url) => url.searchParams.get('after'))).toEqual(['125', '160']);
+    });
+    scrollLog(log, 'end');
+    expect(await findInLog(log, 'message 161')).toBeInTheDocument();
+  });
+
+  it('Jump_WhenTheReadFails_ShowsTheGenericNotice', async () => {
+    cell.aroundStatus = { status: 500, code: 'server.unexpected' };
+    renderWorkspace();
+    const log = await openLog();
+
+    fireEvent.click(within(log).getByRole('button', { name: QUOTE_NAME }));
+
+    expect(await screen.findByText('Something went wrong. Try again.')).toBeInTheDocument();
+    expect(latestButton()).toBeNull();
+  });
+
+  it('JumpNotice_IsALiveRegionInThePageBeforeItHasText', async () => {
+    cell.aroundStatus = { status: 404, code: 'messaging.message_not_found' };
+    renderWorkspace();
+    const log = await openLog();
+    const region = document.querySelector('.bm-jump-notice[role="status"]');
+    expect(region).toBeEmptyDOMElement();
+
+    fireEvent.click(within(log).getByRole('button', { name: QUOTE_NAME }));
+
+    await waitFor(() => {
+      expect(region).toHaveTextContent('This message can no longer be shown.');
+    });
+    expect(document.querySelector('.bm-jump-notice[role="status"]')).toBe(region);
+  });
+
+  it('ReplyTarget_WhileDetachedWithoutItsOriginal_KeepsItsBarAndIsSent', async () => {
+    const sent: { replyToMessageId?: string }[] = [];
+    server.use(
+      http.post(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, async ({ request }) => {
+        const body = (await request.json()) as {
+          clientMessageId: string;
+          text: string;
+          replyToMessageId?: string;
+        };
+        sent.push(body);
+        return HttpResponse.json(
+          {
+            ...message(161),
+            clientMessageId: body.clientMessageId,
+            authorAccountId: OWN_ID,
+            text: body.text,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    renderWorkspace();
+    const log = await openLog();
+    const reply = rowOf(log, 'message 159');
+    fireEvent.pointerEnter(reply, { pointerType: 'mouse' });
+    fireEvent.click(within(reply).getByRole('button', { name: 'Reply' }));
+    expect(document.querySelector('.bm-replybar')).toHaveTextContent('Veli Yılmaz');
+
+    fireEvent.click(within(log).getByRole('button', { name: QUOTE_NAME }));
+    await waitFor(() => {
+      expect(rowOf(log, 'message 100')).toHaveFocus();
+    });
+
+    // Message 159 is not in the window: the bar stays, with the name and no excerpt.
+    const bar = document.querySelector('.bm-replybar');
+    expect(bar).toHaveTextContent('Veli Yılmaz');
+    expect(bar?.querySelector('.bm-replybar__text')).toBeNull();
+
+    const field = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Message #general' });
+    act(() => {
+      field.focus();
+    });
+    fireEvent.change(field, { target: { value: 'hello' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(sent).toHaveLength(1);
+    });
+    expect(sent[0]?.replyToMessageId).toBe('m-159');
+  });
+
+  it('Refetch_OfAWindowWithNewerPagesAboveIt_KeepsOneContiguousRun', async () => {
+    cell.count = 300;
+    const queryClient = renderWorkspace();
+    const log = await jumpToOriginal();
+    scrollLog(log, 'end');
+    await within(log).findByText('message 126');
+
+    requested = [];
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: messagesKey(ORG, GENERAL.id) });
+    });
+
+    // Rebuilt from its first page (after 125), then the page below it, both with the window's epoch.
+    expect(requested.map((url) => url.search)).toEqual([
+      '?limit=50&after=125&epoch=e1',
+      '?limit=50&before=126&epoch=e1',
+    ]);
+    const data = queryClient.getQueryData<MessagePages>(messagesKey(ORG, GENERAL.id));
+    const seqs = data?.pages.flatMap((page) => page.messages.map(({ seq }) => seq)) ?? [];
+    expect(seqs[0]).toBe(175);
+    expect(seqs.at(-1)).toBe(76);
+    seqs.slice(1).forEach((seq, index) => {
+      expect(seq).toBe((seqs[index] ?? 0) - 1);
+    });
+    expect(latestButton()).toBeVisible();
+  });
+
+  it('Reconnect_WhileDetached_ReadsTheWindowAgainWhereItIs', async () => {
+    const realtime = fakeRealtime();
+    renderWorkspace(realtime.client);
+    const log = await jumpToOriginal();
+
+    realtime.reconnect();
+
+    await waitFor(() => {
+      expect(reads('around')).toHaveLength(2);
+    });
+    expect(latestButton()).toBeVisible();
+    expect(rowsSaying(log, 'message 100')).toHaveLength(1);
+    expect(requested.filter((url) => url.search === '?limit=50')).toHaveLength(1);
   });
 
   it('Quote_WhenTheFlagIsOff_IsTextAndNothingIsRead', async () => {

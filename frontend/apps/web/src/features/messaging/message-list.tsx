@@ -80,6 +80,8 @@ const LOAD_EARLIER_WITHIN = 3;
 const ROW_KEY_ATTRIBUTE = 'data-row-key';
 /** How long the original of a quote stays highlighted after a jump to it. */
 const FLASH_MS = 1600;
+/** How long a jump waits for its scroll to report before the list may load pages again without it. */
+const SETTLE_MS = 500;
 
 /**
  * The messages of a channel, oldest first, virtualized (TanStack Virtual): only the rows near the view are in the
@@ -155,6 +157,9 @@ export function MessageList({
   const armed = useRef(false);
   // A jump has just moved the view and its scroll has not landed yet: the drawn range is stale.
   const settling = useRef(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Counts the jumps whose scroll was given up on: the loading checks run again then.
+  const [settled, setSettled] = useState(0);
   // The row at the top of the view after the last change, and where it was: rows added or dropped above it move it.
   const previous = useRef<{ rows: readonly Row[]; anchor?: { key: string; start: number } }>({ rows });
 
@@ -328,6 +333,7 @@ export function MessageList({
   useEffect(
     () => () => {
       clearTimeout(flashTimer.current);
+      clearTimeout(settleTimer.current);
     },
     [],
   );
@@ -355,10 +361,21 @@ export function MessageList({
       }
       // Going to the row is a move away from the end: the list must not snap back to following new messages.
       following.current = false;
+      const from = scrollRef.current?.scrollTop ?? 0;
+      const target = virtualizer.getOffsetForIndex(at, 'center')?.[0];
       virtualizer.scrollToIndex(at, { align: 'center' });
       // The rows drawn until the scroll lands are those of the old position (the end, or the top): they must not ask
-      // for newer or earlier pages. The next scroll event (the jump's own) lets them ask again.
-      settling.current = true;
+      // for newer or earlier pages. The next scroll event (the jump's own) lets them ask again; a scroll that does not
+      // move (the row is already there) has none, and a scroll that never reports is given up after a moment.
+      clearTimeout(settleTimer.current);
+      settling.current = target !== undefined && Math.abs(target - from) >= 1;
+      if (settling.current) {
+        settleTimer.current = setTimeout(() => {
+          settling.current = false;
+          clearTimeout(settleTimer.current);
+          setSettled((count) => count + 1);
+        }, SETTLE_MS);
+      }
       clearTimeout(flashTimer.current);
       setFlashId(messageId);
       flashTimer.current = setTimeout(() => {
@@ -462,7 +479,7 @@ export function MessageList({
     ) {
       onLoadEarlier();
     }
-  }, [firstIndex, hasEarlier, loadingEarlier, onLoadEarlier]);
+  }, [firstIndex, hasEarlier, loadingEarlier, onLoadEarlier, settled]);
   useEffect(() => {
     if (
       armed.current &&
@@ -474,7 +491,7 @@ export function MessageList({
     ) {
       onLoadNewer();
     }
-  }, [lastIndex, rows.length, hasNewer, loadingNewer, onLoadNewer]);
+  }, [lastIndex, rows.length, hasNewer, loadingNewer, onLoadNewer, settled]);
 
   return (
     <>
