@@ -146,7 +146,7 @@ public sealed class MessageReplyRaceAndReadTests(PostgresDatabase database, Keyc
     }
 
     [Fact]
-    public async Task Reply_ThatAlsoMentionsTheOriginalAuthor_GetsTheMentionNotAQuotedReplyItemAsync()
+    public async Task Reply_ThatAlsoMentionsTheOriginalAuthor_StillGetsTheQuotedReplyItemUntilTheMentionFeedExistsAsync()
     {
         var (organizationId, channelId, bob, original) = await BobsMessageAsync("quoted");
 
@@ -160,7 +160,7 @@ public sealed class MessageReplyRaceAndReadTests(PostgresDatabase database, Keyc
             });
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        (await OutboxAsync(organizationId)).Should().NotContain(entry => entry.Type == ActivityAdded.EventType);
+        (await OutboxAsync(organizationId)).Should().ContainSingle(entry => entry.Type == ActivityAdded.EventType, "no mention feed producer exists yet");
         (await QuerySingleAsync("SELECT count(*) FROM messaging.message_mentions WHERE account_id = $1", bob)).Should().Equal(1L);
     }
 

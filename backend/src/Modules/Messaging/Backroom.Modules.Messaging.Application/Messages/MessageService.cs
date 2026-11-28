@@ -263,8 +263,8 @@ internal sealed partial class MessageService(
 
         // The quoted message's author is told (docs/contracts/phase-2.md, flow 2): not when replying to oneself, and only if they can still read the
         // conversation. Ids only; Notifications applies the person's settings and the read check again.
-        // A person who is also mentioned in the reply gets the mention, not a second item for the quote.
-        if (quotedAuthor is { } author && author != authorAccountId && !mentionedReaders.Contains(author)
+        // No mention feed producer exists yet, so a mentioned author still gets this item; once it does (step 13), the mention wins and this is skipped for them.
+        if (quotedAuthor is { } author && author != authorAccountId
             && (await conversations.FilterReadersAsync(organizationId, conversationId, [author], cancellationToken)).Count > 0)
         {
             await outbox.AddAsync(
