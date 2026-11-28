@@ -160,6 +160,17 @@ type Key =
   | 'open'
   | 'openChannel'
   | 'sendArchived'
+  | 'editMessage'
+  | 'deleteMessage'
+  | 'saveEdit'
+  | 'edited'
+  | 'messageDeleted'
+  | 'editHint'
+  | 'deleteTitle'
+  | 'deleteBody'
+  | 'deleteConfirm'
+  | 'messageGone'
+  | 'editEmpty'
   | 'membersWindow';
 
 export type MessageKey = Key;
@@ -329,6 +340,17 @@ export const messages: Messages<Key> = {
     open: 'Open',
     openChannel: 'Open {name}',
     sendArchived: 'This channel is archived. The message was not sent.',
+    editMessage: 'Edit message',
+    deleteMessage: 'Delete message',
+    saveEdit: 'Save',
+    edited: 'edited',
+    messageDeleted: 'This message was deleted',
+    editHint: 'Enter saves, Esc cancels',
+    deleteTitle: 'Delete this message?',
+    deleteBody: "The message is deleted for everyone. This can't be undone.",
+    deleteConfirm: 'Delete',
+    messageGone: 'This message no longer exists.',
+    editEmpty: 'A message needs some text. To remove it, delete it instead.',
     membersWindow: 'Showing the last {count} members loaded.',
   },
   tr: {
@@ -495,6 +517,17 @@ export const messages: Messages<Key> = {
     open: 'Aç',
     openChannel: '{name} kanalını aç',
     sendArchived: 'Bu kanal arşivlendi. Mesaj gönderilmedi.',
+    editMessage: 'Mesajı düzenle',
+    deleteMessage: 'Mesajı sil',
+    saveEdit: 'Kaydet',
+    edited: 'düzenlendi',
+    messageDeleted: 'Bu mesaj silindi',
+    editHint: 'Enter kaydeder, Esc iptal eder',
+    deleteTitle: 'Mesaj silinsin mi?',
+    deleteBody: 'Mesaj herkes için silinir. Bu işlem geri alınamaz.',
+    deleteConfirm: 'Sil',
+    messageGone: 'Bu mesaj artık yok.',
+    editEmpty: 'Mesajda metin olmalı. Kaldırmak için mesajı sil.',
     membersWindow: 'Yüklenen son {count} üye gösteriliyor.',
   },
 };

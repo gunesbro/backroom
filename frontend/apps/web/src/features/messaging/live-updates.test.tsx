@@ -45,6 +45,8 @@ function fakeRealtime() {
     PresenceChanged: [],
     MembershipChanged: [],
     ConversationUpdated: [],
+    MessageEdited: [],
+    MessageDeleted: [],
   };
   const statusListeners: ((status: ConnectionStatus, reconnected: boolean) => void)[] = [];
   let status: ConnectionStatus = 'stopped';
@@ -131,6 +133,8 @@ function fakeApi(count = 3, extra: Partial<MessagingApi> = {}) {
       return Promise.resolve({ messages: seqs.map((seq) => message(seq)), next: null });
     }),
     sendMessage: vi.fn(),
+    editMessage: vi.fn(),
+    deleteMessage: vi.fn(),
     listMembers: () =>
       Promise.resolve({
         members: [

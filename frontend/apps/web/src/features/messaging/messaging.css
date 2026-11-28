@@ -951,3 +951,50 @@ ol.bm-rt-list {
     forced-color-adjust: none;
   }
 }
+
+/* The menu of the "more" button on the person's own message: opens under the bar, to its left. */
+.bm-actions .ph-menu.bm-actions__menu {
+  right: 0;
+  left: auto;
+  width: max-content;
+  min-width: 200px;
+}
+
+/* A deleted message keeps its place and says so, quietly (ADR 0011). */
+.bm-tombstone {
+  margin: 0;
+  padding-left: calc(36px + var(--ph-space-10));
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ph-muted);
+}
+
+.bm-message--deleted:hover,
+.bm-message--deleted:focus-within {
+  background: none;
+}
+
+/* A message being edited in place. */
+.bm-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ph-space-6);
+}
+
+.bm-edit__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ph-space-8);
+}
+
+.bm-edit__buttons {
+  display: flex;
+  gap: var(--ph-space-8);
+  margin-left: auto;
+}
+
+.ph-button.bm-delete {
+  border-color: var(--ph-danger);
+  color: var(--ph-danger);
+}

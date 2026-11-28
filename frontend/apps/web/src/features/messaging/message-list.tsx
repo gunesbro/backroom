@@ -1,17 +1,21 @@
 import {
+  Suspense,
+  lazy,
   memo,
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
   type FocusEvent,
   type KeyboardEvent,
+  type Ref,
 } from 'react';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { formatMessageDay, formatMessageTime, type Locale } from '@backroom/i18n';
-import { Avatar, Icon, SoonButton, type IconName } from '@backroom/ui';
+import { Avatar, Icon, MenuButton, SoonButton, type IconName, type MenuEntry } from '@backroom/ui';
 import { config } from '@/config';
 import { useTranslate } from '@/shared/locale';
 import type { Message } from './api';
@@ -19,9 +23,45 @@ import { messages } from './messages';
 import type { PendingMessage } from './pending-messages';
 import { isRefusedContent, refusalKey } from './send-errors';
 import { MessageBody } from './rich-text/message-blocks';
+import { editableBlocks, type Block } from './rich-text/blocks';
+
+/** The editor and Lexical load as their own chunk, only when a message is edited. */
+const MessageEditor = lazy(() =>
+  import('./message-editor').then(({ MessageEditor: editor }) => ({ default: editor })),
+);
+
+/** What the list can do with the person's own messages (edit and delete, Phase 2 step 9); absent: nothing. */
+export type MessageEditing = {
+  start: (messageId: string) => void;
+  cancel: () => void;
+  /** Saves the new content; answers an error text to show, or nothing when it went through. */
+  save: (messageId: string, blocks: Block[]) => Promise<string | undefined>;
+  /** Asks for confirmation, then deletes the message. */
+  remove: (messageId: string) => void;
+  /**
+   * True once for the editor the person just started: it takes the keyboard focus. An editor that is drawn again
+   * (its row scrolled out and back) must not take it.
+   */
+  takeFocus: (messageId: string) => boolean;
+};
+
+/** What the owner of the list can ask of it. */
+export type MessageListHandle = {
+  /**
+   * Puts the focus on the row with this key, scrolling to it if it is not drawn. A key that is not in the list puts
+   * it on the list's own tab stop instead.
+   */
+  focusRow: (key: string) => void;
+};
 
 export type Row =
-  | { key: string; message: Message; pending?: undefined }
+  | {
+      key: string;
+      message: Message;
+      pending?: undefined;
+      /** Confirmed but not in a fetched page yet (the pending overlay): it cannot be edited or deleted yet. */
+      overlay?: boolean;
+    }
   | { key: string; message?: undefined; pending: PendingMessage };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -56,6 +96,9 @@ export function MessageList({
   onRetry,
   onDiscard,
   onJoin,
+  editing,
+  editingId,
+  ref,
 }: {
   channelName: string;
   rows: readonly Row[];
@@ -77,6 +120,10 @@ export function MessageList({
   onDiscard: (clientMessageId: string) => void;
   /** Joins the channel and then sends the failed message again. */
   onJoin: (clientMessageId: string) => void;
+  editing?: MessageEditing | undefined;
+  /** The message being edited in place, if any; kept apart from `editing` so the rows stay memoized. */
+  editingId?: string | undefined;
+  ref?: Ref<MessageListHandle>;
 }) {
   const t = useTranslate(messages);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -94,12 +141,18 @@ export function MessageList({
   const previousRows = useRef<readonly Row[]>(rows);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+  const editingIdRef = useRef(editingId);
+  editingIdRef.current = editingId;
   const rangeExtractor = useCallback((range: Range) => {
     const indexes = defaultRangeExtractor(range);
+    // The row that holds focus and the row being edited stay drawn, whatever the scroll position.
     const focused = focusedKey.current;
-    const at = focused === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === focused);
-    if (at < 0 || indexes.includes(at)) return indexes;
-    return [...indexes, at].sort((a, b) => a - b);
+    const editing = editingIdRef.current;
+    const keep = [
+      focused === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === focused),
+      editing === undefined ? -1 : rowsRef.current.findIndex((row) => row.message?.id === editing),
+    ].filter((at) => at >= 0 && !indexes.includes(at));
+    return keep.length === 0 ? indexes : [...indexes, ...keep].sort((a, b) => a - b);
   }, []);
 
   // The virtualizer is used only in this component and its functions are not passed to memoized children.
@@ -113,6 +166,15 @@ export function MessageList({
     rangeExtractor,
   });
   const total = virtualizer.getTotalSize();
+  // An edit started from elsewhere (ArrowUp in the composer) may be for a row far from the view: bring it in.
+  useEffect(() => {
+    if (editingId === undefined) return;
+    const at = rowsRef.current.findIndex((row) => row.message?.id === editingId);
+    if (at < 0) return;
+    // Going to the row is a move away from the end: the list must not snap back to following new messages.
+    following.current = false;
+    virtualizer.scrollToIndex(at);
+  }, [editingId, virtualizer]);
 
   /** The row at the top of the view, as the anchor to keep still when rows are added or dropped above it. */
   const anchorAt = useCallback(
@@ -183,6 +245,28 @@ export function MessageList({
       element.focus({ preventScroll: true });
     }
   }, [items]);
+  const tabStopRef = useRef(tabStopKey);
+  tabStopRef.current = tabStopKey;
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusRow: (key) => {
+        const present = rowsRef.current.some((row) => row.key === key);
+        const target = present ? key : tabStopRef.current;
+        const at = target === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === target);
+        if (target === undefined || at < 0) return;
+        const element = rowElement(target);
+        if (element) {
+          element.focus({ preventScroll: true });
+        } else {
+          // Not drawn: scroll it in; the focus follows once it is (as for the arrow keys).
+          virtualizer.scrollToIndex(at);
+          pendingFocus.current = target;
+        }
+      },
+    }),
+    [virtualizer],
+  );
   const onLogFocus = (event: FocusEvent<HTMLElement>) => {
     const key = event.target.closest(`[${ROW_KEY_ATTRIBUTE}]`)?.getAttribute(ROW_KEY_ATTRIBUTE);
     focusedKey.current = key ?? undefined;
@@ -329,6 +413,8 @@ export function MessageList({
                 onRetry={onRetry}
                 onDiscard={onDiscard}
                 onJoin={onJoin}
+                editing={editing}
+                isEditing={editingId !== undefined && row.message?.id === editingId}
               />
             </li>
           );
@@ -356,19 +442,60 @@ const MESSAGE_ACTIONS: readonly {
 ];
 
 /**
- * Shown over the message under the pointer, with focus inside or tapped; every action is for a later phase. It is
- * built only for that one row, so a long list does not carry six buttons per message. Tab from the row reaches the
- * buttons and Escape returns to the row.
+ * Shown over the message under the pointer, with focus inside or tapped; the actions of later phases are passive. It
+ * is built only for that one row, so a long list does not carry six buttons per message. Tab from the row reaches the
+ * buttons and Escape returns to the row. On the person's own message the "more" button opens a menu with edit and
+ * delete (the message is parsed for editing only now, for this one row).
  */
-function MessageActions() {
+function MessageActions({
+  message,
+  editing,
+}: {
+  message: Message | undefined;
+  editing: MessageEditing | undefined;
+}) {
   const t = useTranslate(messages);
+  const entries: MenuEntry[] = [];
+  if (editing && message) {
+    if (editableBlocks(message.blocks, message.text) !== null) {
+      entries.push({
+        kind: 'item',
+        id: 'edit',
+        label: t('editMessage'),
+        onSelect: () => {
+          editing.start(message.id);
+        },
+      });
+    }
+
+    entries.push({
+      kind: 'item',
+      id: 'delete',
+      label: t('deleteMessage'),
+      danger: true,
+      onSelect: () => {
+        editing.remove(message.id);
+      },
+    });
+  }
+
   return (
     <div className="bm-actions">
-      {MESSAGE_ACTIONS.map((action) => (
-        <SoonButton key={action.key} label={t(action.key)} soon={t('soon')}>
-          <Icon name={action.icon} size={16} />
-        </SoonButton>
-      ))}
+      {MESSAGE_ACTIONS.map((action) =>
+        action.key === 'more' && entries.length > 0 ? (
+          <MenuButton
+            key={action.key}
+            label={t(action.key)}
+            button={<Icon name={action.icon} size={16} />}
+            menuClassName="bm-actions__menu"
+            entries={entries}
+          />
+        ) : (
+          <SoonButton key={action.key} label={t(action.key)} soon={t('soon')}>
+            <Icon name={action.icon} size={16} />
+          </SoonButton>
+        ),
+      )}
     </div>
   );
 }
@@ -385,6 +512,8 @@ const MessageRow = memo(function MessageRow({
   onRetry,
   onDiscard,
   onJoin,
+  editing,
+  isEditing,
 }: {
   row: Row;
   /** The list's one tab stop (roving tabindex); the other rows are reached by the arrow keys. */
@@ -400,6 +529,9 @@ const MessageRow = memo(function MessageRow({
   onRetry: (clientMessageId: string) => void;
   onDiscard: (clientMessageId: string) => void;
   onJoin: (clientMessageId: string) => void;
+  editing: MessageEditing | undefined;
+  /** This row's message is the one being edited. */
+  isEditing: boolean;
 }) {
   const now = new Date();
   const [hovered, setHovered] = useState(false);
@@ -418,6 +550,49 @@ const MessageRow = memo(function MessageRow({
   const name = mine ? ownName : authorName(authorId);
   const createdAt = pending?.createdAt ?? message?.createdAt ?? '';
   const text = pending?.text ?? message?.text ?? '';
+  const deleted = Boolean(message?.deletedAt);
+  const editingMessage = editing && message && isEditing ? message : undefined;
+  const editingThis = editingMessage !== undefined;
+  // Own, confirmed and not deleted: the only messages that can be edited or deleted here.
+  const manageable =
+    editing !== undefined &&
+    message !== undefined &&
+    !row.overlay &&
+    !deleted &&
+    ownAccountId !== undefined &&
+    message.authorAccountId === ownAccountId;
+  // The row takes the focus back when its editor closes.
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (wasEditing.current && !editingThis) {
+      // The editor that had the focus is gone: the row takes it, unless the person has moved on.
+      const active = document.activeElement;
+      if (active === null || active === document.body || rowRef.current?.contains(active)) {
+        rowRef.current?.focus({ preventScroll: true });
+      }
+    }
+    wasEditing.current = editingThis;
+  }, [editingThis]);
+  if (message && deleted) {
+    // A tombstone (ADR 0011): its place stays, with no author, avatar or actions.
+    return (
+      <div
+        ref={rowRef}
+        className="bm-message bm-message--deleted"
+        role="article"
+        aria-labelledby={headId}
+        aria-posinset={position}
+        aria-setsize={-1}
+        data-row-key={row.key}
+        tabIndex={tabStop ? 0 : -1}
+      >
+        <p className="bm-tombstone" id={headId}>
+          {t('messageDeleted')}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={rowRef}
@@ -458,14 +633,23 @@ const MessageRow = memo(function MessageRow({
         if (event.key !== 'Escape') return;
         setTapped(false);
         // From inside the action bar back to the row; Escape elsewhere is left alone.
-        if ((event.target as HTMLElement).closest('.bm-actions')) {
+        // The open menu closes itself first (and returns to its button); the next Escape returns to the row.
+        if (
+          (event.target as HTMLElement).closest('.bm-actions') &&
+          !(event.target as HTMLElement).closest('[role="menu"]')
+        ) {
           event.preventDefault();
           event.stopPropagation();
           rowRef.current?.focus({ preventScroll: true });
         }
       }}
     >
-      {(hovered || focused || tapped) && !pending && <MessageActions />}
+      {(hovered || focused || tapped) && !pending && !editingThis && (
+        <MessageActions
+          message={manageable ? message : undefined}
+          editing={manageable ? editing : undefined}
+        />
+      )}
       <Avatar name={name} toneKey={authorId} shape="square" size="lg" />
       <div className="bm-message__body">
         <p className="bm-message__head" id={headId}>
@@ -473,9 +657,19 @@ const MessageRow = memo(function MessageRow({
           <time className="ph-muted" dateTime={createdAt}>
             {formatMessageTime(new Date(createdAt), locale, now)}
           </time>
+          {message?.editedAt && <span className="ph-muted"> · {t('edited')}</span>}
         </p>
         {/* Plain text, never markup: React escapes it; line breaks are kept by the style. */}
-        {config.richTextEnabled ? (
+        {editing && editingMessage ? (
+          <Suspense fallback={<p className="bm-text bm-text--sending">{text}</p>}>
+            <MessageEditor
+              initial={editableBlocks(editingMessage.blocks, text) ?? []}
+              onSave={(blocks) => editing.save(editingMessage.id, blocks)}
+              onCancel={editing.cancel}
+              takeFocus={() => editing.takeFocus(editingMessage.id)}
+            />
+          </Suspense>
+        ) : config.richTextEnabled ? (
           <MessageBody
             blocks={pending?.blocks ?? message?.blocks}
             text={text}

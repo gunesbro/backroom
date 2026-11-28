@@ -7,6 +7,7 @@ import {
   derivedMentionNames,
   hrefFromInput,
   mergeRuns,
+  editableBlocks,
   parseBlocks,
   safeHref,
   type Block,
@@ -235,5 +236,29 @@ describe('derivedMentionNames boundaries', () => {
 
     expect(derivedMentionNames(adjacent ?? [], '@Ann Bob').size).toBe(0);
     expect(derivedMentionNames(missing ?? [], '@Ann says hi').size).toBe(0);
+  });
+});
+
+describe('editableBlocks', () => {
+  it('EditableBlocks_OfRichBlocks_AreTheSameBlocks', () => {
+    const blocks = [
+      { type: 'paragraph', children: [{ type: 'text', text: 'hi', marks: [{ type: 'bold' }] }] },
+      { type: 'bulleted_list', children: [{ type: 'list_item', children: [{ type: 'text', text: 'one' }] }] },
+    ];
+
+    expect(editableBlocks(blocks, 'hi\none')).toEqual(blocks);
+  });
+
+  it('EditableBlocks_WithAMention_AreNull', () => {
+    const blocks = [{ type: 'paragraph', children: [{ type: 'mention', accountId: 'a' }] }];
+
+    expect(editableBlocks(blocks, '@Veli')).toBeNull();
+  });
+
+  it('EditableBlocks_WithoutBlocks_AreOneParagraphOfTheText', () => {
+    expect(editableBlocks(undefined, 'older message')).toEqual([
+      { type: 'paragraph', children: [{ type: 'text', text: 'older message' }] },
+    ]);
+    expect(editableBlocks(null, '')).toBeNull();
   });
 });

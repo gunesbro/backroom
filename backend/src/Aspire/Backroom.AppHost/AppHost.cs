@@ -107,6 +107,8 @@ for (var i = 0; i < cells.Count; i++)
         .WithEnvironment("Features__Notifications", "true")
         // Rich text (docs/contracts/phase-2.md, flow 2): the server accepts blocks; on in development.
         .WithEnvironment("Features__RichText", "true")
+        // Edit and delete (docs/contracts/phase-2.md, flow 2; step 9): behind a flag; on in development.
+        .WithEnvironment("Features__MessageEdit", "true")
         .WithWebOrigins()
         .WithEnvironment("Authentication__Authority", authority)
         // Live events: the SignalR backplane and the member-removal channel (docs/contracts/phase-1.md, "Live events"),

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Block } from './rich-text/blocks';
 import { allowsLoopbackHttpCells, CellAddressError, cellOrigin, createMessagingApi } from './api';
 
 afterEach(() => {
@@ -232,5 +233,73 @@ describe('createMessagingApi conversation routes', () => {
     await api.listConversations('o', 'c0', undefined, { archived: true });
 
     expect(sent(fetchSpy).url).toBe(`${base}/conversations?limit=50&archived=true&after=c0`);
+  });
+});
+
+describe('createMessagingApi edit and delete', () => {
+  const api = createMessagingApi('https://cell.example.test', () => Promise.resolve('t'));
+  const base = 'https://cell.example.test/api/v1/orgs/o';
+  const blocks: Block[] = [{ type: 'paragraph', children: [{ type: 'text', text: 'new' }] }];
+
+  it('EditMessage_PatchesTheMessageWithTheBlocksAndReadsTheAnswer', async () => {
+    const fetchSpy = answer({
+      ...message(1),
+      versionSeq: 7,
+      editedAt: '2026-11-22T10:05:00Z',
+      deletedAt: null,
+      epoch: 'e1',
+    });
+
+    const edited = await api.editMessage('o', 'm 1', blocks);
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(`${base}/messages/m%201`);
+    expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe('PATCH');
+    expect(JSON.parse(fetchSpy.mock.calls[0]?.[1]?.body as string)).toEqual({ blocks });
+    expect(edited.versionSeq).toBe(7);
+    expect(edited.editedAt).toBe('2026-11-22T10:05:00Z');
+  });
+
+  it('DeleteMessage_SendsDeleteToTheMessageRoute', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+
+    await api.deleteMessage('o', 'm1');
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(`${base}/messages/m1`);
+    expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe('DELETE');
+  });
+
+  it('ListMessages_WithATombstone_KeepsOnlyItsPlace', async () => {
+    answer({
+      items: [
+        {
+          id: 'm2',
+          seq: 2,
+          versionSeq: 9,
+          clientMessageId: null,
+          authorAccountId: null,
+          text: null,
+          blocks: null,
+          createdAt: '2026-11-22T10:00:00Z',
+          deletedAt: '2026-11-22T10:06:00Z',
+          editedAt: null,
+        },
+      ],
+      next: null,
+    });
+
+    const page = await api.listMessages('o', 'c', undefined);
+
+    expect(page.messages).toEqual([
+      {
+        id: 'm2',
+        seq: 2,
+        versionSeq: 9,
+        createdAt: '2026-11-22T10:00:00Z',
+        deletedAt: '2026-11-22T10:06:00Z',
+        clientMessageId: '',
+        authorAccountId: '',
+        text: '',
+      },
+    ]);
   });
 });

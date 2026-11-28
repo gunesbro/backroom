@@ -88,12 +88,15 @@ export function Composer({
   channelName,
   onSend,
   focusOnMount = false,
+  onEditLast,
 }: {
   channelName: string;
   /** Takes keyboard focus when it appears: it replaces the control that had it (the bar that offers to join). */
   focusOnMount?: boolean;
   /** Gets the normalized text and, with the rich text editor, the blocks. */
   onSend: (text: string, blocks?: Block[]) => void;
+  /** ArrowUp in the empty rich text field: edit the person's newest message (absent without message editing). */
+  onEditLast?: (() => void) | undefined;
 }) {
   const t = useTranslate(messages);
   const counterId = useId();
@@ -169,6 +172,7 @@ export function Composer({
               setBlocks(next.blocks);
             }}
             onSubmit={submit}
+            {...(onEditLast ? { onArrowUpWhenEmpty: onEditLast } : {})}
           />
         </Suspense>
       ) : (

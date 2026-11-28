@@ -15,6 +15,8 @@ import { useActivityReporting } from '@/features/presence';
 import {
   applyConversationUpdated,
   applyLiveMessage,
+  applyMessageDeleted,
+  applyMessageEdited,
   catchUpChannel,
   forgetConversation,
   noteChannelCreated,
@@ -194,6 +196,12 @@ export function useLiveUpdates({
         if (channelId !== current.selectedId && message.authorAccountId !== current.ownAccountId) {
           setActivity((previous) => (previous.has(channelId) ? previous : new Set(previous).add(channelId)));
         }
+      }),
+      client.on('MessageEdited', (event) => {
+        if (event.orgId === latest.current.orgId) applyMessageEdited(queryClient, event);
+      }),
+      client.on('MessageDeleted', (event) => {
+        if (event.orgId === latest.current.orgId) applyMessageDeleted(queryClient, event);
       }),
       client.on('ChannelCreated', ({ orgId: eventOrg }) => {
         if (eventOrg === latest.current.orgId) noteChannelCreated(queryClient, eventOrg);

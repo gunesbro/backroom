@@ -308,3 +308,35 @@ export function derivedMentionNames(
   }
   return names;
 }
+
+/**
+ * The blocks of a received message as the editor can hold them, for editing it. Null when the message has a mention:
+ * the composer cannot write mentions yet, so editing would turn them into plain text. A message without blocks (older
+ * than the rich text) becomes one paragraph of its text.
+ */
+export function editableBlocks(value: unknown, text: string): Block[] | null {
+  const parsed = parseBlocks(value);
+  if (!parsed) {
+    return text === '' ? null : [{ type: 'paragraph', children: [{ type: 'text', text }] }];
+  }
+
+  const blocks: Block[] = [];
+  for (const block of parsed) {
+    if (block.type === 'bulleted_list' || block.type === 'numbered_list') {
+      const items: ListItem[] = [];
+      for (const item of block.children) {
+        const children = item.children.filter((run): run is TextNode => run.type === 'text');
+        if (children.length !== item.children.length) return null;
+        items.push({ type: 'list_item', children });
+      }
+
+      blocks.push({ type: block.type, children: items });
+    } else {
+      const children = block.children.filter((run): run is TextNode => run.type === 'text');
+      if (children.length !== block.children.length) return null;
+      blocks.push({ type: block.type, children });
+    }
+  }
+
+  return blocks;
+}

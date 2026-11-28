@@ -29,6 +29,7 @@ import {
   KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
+  KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
   PASTE_COMMAND,
   TextNode,
@@ -183,6 +184,9 @@ export function RichField({
   invalid,
   onChange,
   onSubmit,
+  initialBlocks,
+  onCancel,
+  onArrowUpWhenEmpty,
   ref,
 }: {
   label: string;
@@ -191,6 +195,15 @@ export function RichField({
   invalid: boolean;
   onChange: (value: RichValue) => void;
   onSubmit: () => void;
+  /**
+   * The content to start with (editing a message). It is read once, when the editor is made; the field then reports
+   * its own canonical form through `onChange` once, so an unchanged edit can be told from a changed one.
+   */
+  initialBlocks?: readonly Block[];
+  /** Escape pressed in the editor (editing a message); without it Escape is left alone. */
+  onCancel?: () => void;
+  /** ArrowUp pressed in an empty editor (the composer: edit the newest own message). */
+  onArrowUpWhenEmpty?: () => void;
   ref?: Ref<RichFieldHandle>;
 }) {
   const t = useTranslate(messages);
@@ -204,10 +217,11 @@ export function RichField({
   const [linkValue, setLinkValue] = useState('');
   const [linkInvalid, setLinkInvalid] = useState(false);
   // Callbacks change on every render of the parent; the editor is created once.
-  const callbacks = useRef({ onChange, onSubmit });
+  const callbacks = useRef({ onChange, onSubmit, onCancel, onArrowUpWhenEmpty });
   useEffect(() => {
-    callbacks.current = { onChange, onSubmit };
+    callbacks.current = { onChange, onSubmit, onCancel, onArrowUpWhenEmpty };
   });
+  const initial = useRef(initialBlocks);
 
   useImperativeHandle(ref, () => ({
     clear: () => {
@@ -253,10 +267,15 @@ export function RichField({
     element.setAttribute('contenteditable', editor.isEditable() ? 'true' : 'false');
     editor.update(
       () => {
-        $writeBlocks([]);
+        $writeBlocks(initial.current ?? []);
       },
       { discrete: true },
     );
+    if (initial.current) {
+      const canonical = editor.getEditorState().read($readBlocks);
+      setEmpty(editor.getEditorState().read($isPristine));
+      callbacks.current.onChange({ blocks: canonical });
+    }
     const insertLine = () => {
       $insertLine();
       return true;
@@ -331,12 +350,28 @@ export function RichField({
           (event) => {
             // Only the plain key: with a modifier it selects, jumps or belongs to the system.
             if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return false;
+            if (command === KEY_ARROW_UP_COMMAND && callbacks.current.onArrowUpWhenEmpty && $isPristine()) {
+              event.preventDefault();
+              callbacks.current.onArrowUpWhenEmpty();
+              return true;
+            }
             if (!$leaveCodeBlock(command === KEY_ARROW_DOWN_COMMAND ? 'down' : 'up')) return false;
             event.preventDefault();
             return true;
           },
           COMMAND_PRIORITY_HIGH,
         ),
+      ),
+      editor.registerCommand(
+        KEY_ESCAPE_COMMAND,
+        (event) => {
+          const cancel = callbacks.current.onCancel;
+          if (!cancel) return false;
+          event.preventDefault();
+          cancel();
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
       ),
       editor.registerCommand(
         KEY_DOWN_COMMAND,
