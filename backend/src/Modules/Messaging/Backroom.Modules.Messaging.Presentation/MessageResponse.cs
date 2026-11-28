@@ -18,4 +18,5 @@ public sealed record MessageResponse(
     [property: JsonConverter(typeof(RawJsonConverter))] string? Blocks,
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeletedAt,
-    DateTimeOffset? EditedAt = null);
+    DateTimeOffset? EditedAt = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MessageQuoteResponse? ReplyTo = null);

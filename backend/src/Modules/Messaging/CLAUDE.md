@@ -11,7 +11,7 @@ Contracts: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (f
 
 ## Owns
 
-- Schema `messaging`: `conversations` (Phase 1 `channels`), `conversation_members`, `messages`, `message_mentions`, `message_links`, `outbox`. No table is added by private channels (step 7).
+- Schema `messaging`: `conversations` (Phase 1 `channels`), `conversation_members`, `messages` (with `reply_to_message_id`), `message_mentions`, `message_links`, `outbox`. No table is added by private channels (step 7).
 
 ## Publishes / depends on
 
@@ -105,5 +105,18 @@ Contracts: [docs/contracts/phase-1.md](../../../../docs/contracts/phase-1.md) (f
 - Rate limits (`MessageChangeRateLimitPolicy`): 30 edits and, separately, 30 deletes per account, organization and minute, `429 messaging.rate_limited` with `Retry-After`; in memory per instance, refused requests count. The host registers them with `AddMessagingEndpoints`.
 - Reads and the send answer carry `editedAt` (null for a message never edited and for tombstones).
 - New permission `messages.remove-others-public` (Owner, Admin) lives in Permissions (migration `AddMessagePermissions`).
-- Not done here: reply with quote (a later PR), the web UI, the Notifications consumer that must drop inbox items of a deleted message (`message-deleted.v1` is not consumed yet; previews already skip deleted messages), Files' consumer for attachments.
+- Not done here: the web UI, the Notifications consumer that must drop inbox items of a deleted message (`message-deleted.v1` is not consumed yet; previews already skip deleted messages), Files' consumer for attachments.
 - Delete details: moderators may delete in archived public channels too (moderation must work in archives). A non-member author can delete only while they can read the conversation (a public channel); after leaving a private channel or a DM they get `404`. Follow-up for the personal data erasure work (account deletion and export phase): an erasure path that does not depend on current membership.
+
+## Phase 2 step 9: reply with quote (server)
+
+- Flag `Features:MessageReply` (off by default, read once at start, `MessageReply`): off, a send with `replyToMessageId` is `403 messaging.message_reply_unavailable` and stores nothing (never stripped). Not in the contract's flag list; removed when the web renders quotes.
+- `POST .../messages { ..., replyToMessageId? }`: the original must exist in the same conversation and not be deleted, else `400 messaging.reply_invalid` with `reason` `reply.not_found` (unknown, another conversation and an unreadable one all give this same answer, so nothing reveals that a message exists elsewhere), `reply.deleted` or `reply.id` (empty id). The sender already reads the conversation, so a message of it is readable by them. An idempotent repeat is answered before the quote is checked.
+- Migration `20261128120000_AddReplyToMessage`: `messages.reply_to_message_id uuid` NULL, no foreign key and no index (see the migration: a tombstone keeps its row, a foreign key would need an index to make a hard delete cheap, and nothing reads replies by their original in Phase 2); `messages_reply_to_check` (not itself, not on a tombstone). A delete clears the column of the deleted message.
+- Reads (history, `after`, `before`, `changed_after`, the send answer, the edit answer) carry `replyTo { messageId, authorAccountId, text, deleted }` on a reply and omit it otherwise. `text` is the original's derived text cut at 200 UTF-16 characters on a text element boundary (`MessageQuote.MaxTextLength`). A deleted original (or a vanished row) gives `{ messageId, deleted: true }` only: no author, no text. The quote is read at read time, so an edit or delete of the original shows on the next read of every reply. Mechanism: one `LEFT JOIN messaging.messages q ON q.id = m.reply_to_message_id` in the page statement (primary key lookup, at most one per row of the page, no extra statement, no N+1).
+- Live: `MessagePosted` and `MessagePosted.v2` carry `replyTo` (`LiveQuote`: `messageId`, `authorAccountId?`, `text?`, `deleted`), a snapshot of the post time. No new live event: clients already get `MessageEdited` and `MessageDeleted` for the original (same conversation group) and update the quote from them, or read again.
+- Mention and quote: while no mention feed producer exists, the quoted author gets `quoted_reply` even when the reply also mentions them; once the feed writer (step 13) produces `mention`, the mention wins and `quoted_reply` is skipped for that recipient.
+- Race: the quote is read before and again after the conversation row lock (a delete takes the same lock), so a delete that commits in between refuses the send with `reply.deleted` and the request rolls back: nothing stored, announced or notified.
+- Notification: in the send transaction an `messaging.activity-added.v1` outbox row (`kind quoted_reply`, the new message, actor the sender, the original's author) is written when the author is not the sender and can still read the conversation (`FilterReadersAsync`). Notifications' `ActivityAddedHandler` already decides delivery (settings, do not disturb, read check). This is the first producer of `ActivityAdded`; the `message-posted.v1` extension (`reply_to_author_account_id`) belongs to the feed writer and is not added here.
+- No foreign key and no index on `reply_to_message_id` is accepted for now; a "replies to X" view (reply counts, jump to replies) needs an index on it.
+- Not done: replies in threads and `alsoSendToChannel` (step 13), quotes of forwarded messages, a hidden message under plan limits (`historyBoundary`), the web UI. Tests: `MessageReplyTests`, `MessageReplyFlagTests`.

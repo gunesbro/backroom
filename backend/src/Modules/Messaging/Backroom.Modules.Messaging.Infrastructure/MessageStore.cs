@@ -9,39 +9,47 @@ namespace Backroom.Modules.Messaging.Infrastructure;
 /// <summary>Messages; row-level security limits every statement to the entered organization.</summary>
 internal sealed class MessageStore(DatabaseSession session) : IMessageStore
 {
-    private const string Columns = "id, seq, version_seq, client_message_id, author_account_id, text, created_at, deleted_at, blocks, edited_at";
+    // The quote of a reply comes with the page: one LEFT JOIN by primary key on the original (at most one row per message of the page, no
+    // second statement, no N+1). q.id is null when the original row is gone, which reads as a deleted original. left() bounds what is read
+    // (code points; the quote is then cut to its length in characters).
+    private const string Columns = "m.id, m.seq, m.version_seq, m.client_message_id, m.author_account_id, m.text, m.created_at, m.deleted_at, m.blocks, m.edited_at, m.reply_to_message_id, q.id, q.deleted_at, q.author_account_id, left(q.text, 400)";
+
+    private const string QuoteJoin = "LEFT JOIN messaging.messages q ON q.id = m.reply_to_message_id";
 
     // A new message's latest change is its creation: version_seq starts as seq. The blocks come back as the database holds them
     // (jsonb keeps no key order or spacing), so the answer to a send is the same as every later read.
     private const string AddSql = """
-        INSERT INTO messaging.messages (id, org_id, conversation_id, seq, version_seq, author_account_id, client_message_id, text, blocks, created_at)
-        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9)
+        INSERT INTO messaging.messages (id, org_id, conversation_id, seq, version_seq, author_account_id, client_message_id, text, blocks, created_at, reply_to_message_id)
+        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (conversation_id, author_account_id, client_message_id) DO NOTHING
         RETURNING blocks
         """;
 
     private const string FindSql = $"""
         SELECT {Columns}
-        FROM messaging.messages
-        WHERE conversation_id = $1 AND author_account_id = $2 AND client_message_id = $3
+        FROM messaging.messages m
+        {QuoteJoin}
+        WHERE m.conversation_id = $1 AND m.author_account_id = $2 AND m.client_message_id = $3
         """;
 
     // History: newest first, by sequence number (commit order), tombstones included (they keep their place). Served by
     // the unique index (conversation_id, seq) read backwards.
     private const string ListBeforeSql = $"""
         SELECT {Columns}
-        FROM messaging.messages
-        WHERE conversation_id = $1 AND seq < $2
-        ORDER BY seq DESC
+        FROM messaging.messages m
+        {QuoteJoin}
+        WHERE m.conversation_id = $1 AND m.seq < $2
+        ORDER BY m.seq DESC
         LIMIT $3
         """;
 
     // Forward paging by seq: oldest first.
     private const string ListAfterSql = $"""
         SELECT {Columns}
-        FROM messaging.messages
-        WHERE conversation_id = $1 AND seq > $2
-        ORDER BY seq
+        FROM messaging.messages m
+        {QuoteJoin}
+        WHERE m.conversation_id = $1 AND m.seq > $2
+        ORDER BY m.seq
         LIMIT $3
         """;
 
@@ -49,9 +57,10 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
     // changes. Served by messages_conversation_version_seq_idx.
     private const string ListChangedAfterSql = $"""
         SELECT {Columns}
-        FROM messaging.messages
-        WHERE conversation_id = $1 AND version_seq > $2
-        ORDER BY version_seq
+        FROM messaging.messages m
+        {QuoteJoin}
+        WHERE m.conversation_id = $1 AND m.version_seq > $2
+        ORDER BY m.version_seq
         LIMIT $3
         """;
 
@@ -70,12 +79,19 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
 
     private const string HeadSql = "SELECT conversation_id, author_account_id, deleted_at IS NOT NULL FROM messaging.messages WHERE id = $1";
 
+    private const string QuoteSourceSql = "SELECT conversation_id, author_account_id, deleted_at IS NOT NULL, left(text, 400) FROM messaging.messages WHERE id = $1";
+
     // The content and the version change together; a deleted message is never edited (the check constraint would refuse it too).
+    // The update runs in a CTE so the answer carries the quote like every read (the quoted original is another row, unchanged here).
     private const string EditSql = $"""
-        UPDATE messaging.messages
-        SET text = $2, blocks = $3, version_seq = $4, edited_at = $5
-        WHERE id = $1 AND deleted_at IS NULL
-        RETURNING {Columns}
+        WITH m AS (
+            UPDATE messaging.messages
+            SET text = $2, blocks = $3, version_seq = $4, edited_at = $5
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING *)
+        SELECT {Columns}
+        FROM m
+        {QuoteJoin}
         """;
 
     private const string DeleteMentionsSql = "DELETE FROM messaging.message_mentions WHERE message_id = $1 RETURNING account_id";
@@ -88,7 +104,7 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         WITH erased_mentions AS (DELETE FROM messaging.message_mentions WHERE message_id = $1),
              erased_links AS (DELETE FROM messaging.message_links WHERE message_id = $1)
         UPDATE messaging.messages
-        SET text = NULL, blocks = NULL, edited_at = NULL, version_seq = $2, deleted_at = $3
+        SET text = NULL, blocks = NULL, edited_at = NULL, reply_to_message_id = NULL, version_seq = $2, deleted_at = $3
         WHERE id = $1 AND deleted_at IS NULL
         """;
 
@@ -110,6 +126,7 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = message.Text });
         command.Parameters.Add(new NpgsqlParameter<string> { NpgsqlDbType = NpgsqlDbType.Jsonb, TypedValue = message.Blocks });
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = message.CreatedAt });
+        command.Parameters.Add(new NpgsqlParameter<Guid?> { TypedValue = message.ReplyToMessageId });
         return await command.ExecuteScalarAsync(cancellationToken) as string;
     }
 
@@ -191,6 +208,20 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
             : null;
     }
 
+    public async Task<QuoteSource?> FindQuoteSourceAsync(Guid messageId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(QuoteSourceSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var deleted = reader.GetBoolean(2);
+        return new QuoteSource(reader.GetGuid(0), reader.GetGuid(1), deleted, deleted || reader.IsDBNull(3) ? null : reader.GetString(3));
+    }
+
     public async Task<MessageEntry?> EditAsync(Guid messageId, long versionSeq, string text, string blocks, DateTimeOffset editedAt, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(EditSql, session.Connection, session.Transaction);
@@ -248,6 +279,20 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         return found;
     }
 
+    // A reply (reply_to_message_id set) quotes its original: a live one with author and text, a deleted one or one whose row is gone with its id only.
+    private static MessageQuote? ReadQuote(NpgsqlDataReader reader)
+    {
+        if (reader.IsDBNull(10))
+        {
+            return null;
+        }
+
+        var originalId = reader.GetGuid(10);
+        return reader.IsDBNull(11) || !reader.IsDBNull(12) || reader.IsDBNull(14)
+            ? MessageQuote.OfDeleted(originalId)
+            : MessageQuote.Of(originalId, reader.GetGuid(13), reader.GetString(14));
+    }
+
     // A tombstone never carries content, whatever the row holds (the check constraint keeps it empty as well).
     private static MessageEntry Read(NpgsqlDataReader reader)
     {
@@ -262,6 +307,7 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
             deletedAt is null && !reader.IsDBNull(8) ? reader.GetString(8) : null,
             reader.GetFieldValue<DateTimeOffset>(6),
             deletedAt,
-            deletedAt is null && !reader.IsDBNull(9) ? reader.GetFieldValue<DateTimeOffset>(9) : null);
+            deletedAt is null && !reader.IsDBNull(9) ? reader.GetFieldValue<DateTimeOffset>(9) : null,
+            deletedAt is null ? ReadQuote(reader) : null);
     }
 }

@@ -33,6 +33,9 @@ internal interface IMessageStore
     /// <summary>The message's conversation, author and whether it is deleted, or <see langword="null"/> if the organization has no message with that id.</summary>
     Task<MessageHead?> FindHeadAsync(Guid messageId, CancellationToken cancellationToken);
 
+    /// <summary>The message a reply would quote (conversation, author, deleted, text up to 400 characters), or <see langword="null"/> if the organization has none.</summary>
+    Task<QuoteSource?> FindQuoteSourceAsync(Guid messageId, CancellationToken cancellationToken);
+
     /// <summary>
     /// Rewrites the content of a message that is not deleted: text, blocks, <c>version_seq</c> and <c>edited_at</c>. Returns the
     /// message as stored, or <see langword="null"/> if it is deleted. The caller holds the conversation row lock.

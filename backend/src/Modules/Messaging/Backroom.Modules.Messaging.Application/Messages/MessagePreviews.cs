@@ -1,4 +1,3 @@
-using System.Globalization;
 using Backroom.Modules.Messaging.Application.Conversations;
 using Backroom.Modules.Messaging.Contracts;
 
@@ -31,34 +30,10 @@ internal sealed class MessagePreviews(IMessageStore messages, IConversationStore
 
             if (allowed)
             {
-                result[message.Id] = Truncate(message.Text, maxLength);
+                result[message.Id] = MessageQuote.Truncate(message.Text, maxLength);
             }
         }
 
         return result;
-    }
-
-    /// <summary>At most <paramref name="maxLength"/> UTF-16 characters, cut back to a text element boundary (never inside a surrogate pair or a combining sequence).</summary>
-    private static string Truncate(string text, int maxLength)
-    {
-        if (text.Length <= maxLength)
-        {
-            return text;
-        }
-
-        var end = 0;
-        var enumerator = StringInfo.GetTextElementEnumerator(text);
-        while (enumerator.MoveNext())
-        {
-            var next = enumerator.ElementIndex + ((string)enumerator.Current).Length;
-            if (next > maxLength)
-            {
-                break;
-            }
-
-            end = next;
-        }
-
-        return text[..end];
     }
 }

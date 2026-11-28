@@ -7,4 +7,4 @@ namespace Backroom.Modules.Messaging.Presentation;
 /// schema; the server validates them and derives the text, so a <c>Text</c> sent along is not read) or plain
 /// <c>Text</c> (the server derives the blocks).
 /// </summary>
-public sealed record SendMessageRequest(Guid? ClientMessageId, string? Text, JsonElement? Blocks);
+public sealed record SendMessageRequest(Guid? ClientMessageId, string? Text, JsonElement? Blocks, Guid? ReplyToMessageId = null);

@@ -15,4 +15,5 @@ public sealed record LiveMessage(
     [property: Key("authorAccountId")] Guid AuthorAccountId,
     [property: Key("text")] string Text,
     [property: Key("createdAt")] DateTimeOffset CreatedAt,
-    [property: Key("blocks")] IReadOnlyList<object>? Blocks = null);
+    [property: Key("blocks")] IReadOnlyList<object>? Blocks = null,
+    [property: Key("replyTo")] LiveQuote? ReplyTo = null);

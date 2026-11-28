@@ -41,6 +41,7 @@ internal sealed partial class MessageService(
     MessageSync sync,
     RichText richText,
     MessageEdit messageEdit,
+    MessageReply messageReply,
     IOrganizationPermissionCheck permissions,
     IMemberNames memberNames,
     TimeProvider timeProvider,
@@ -65,6 +66,12 @@ internal sealed partial class MessageService(
     public static readonly Error MessageInvalid =
         Error.Validation("messaging.message_invalid", "The message needs a client message id and valid text or blocks of 1 to 4000 characters; the reason names what was refused.");
 
+    public static readonly Error ReplyUnavailable =
+        Error.Forbidden("messaging.message_reply_unavailable", "Replying with a quote is not available yet.");
+
+    public static readonly Error ReplyInvalid =
+        Error.Validation("messaging.reply_invalid", "A reply must quote an existing message of the same conversation that is not deleted; the reason names what was refused.");
+
     public static readonly Error PageInvalid =
         Error.Validation("messaging.page_invalid", "Use only one of before, after and changed_after, a cursor of 0 or more, and a page size between 1 and 100.");
 
@@ -81,12 +88,23 @@ internal sealed partial class MessageService(
     /// plain <paramref name="text"/> (the blocks are derived: one paragraph).
     /// </summary>
     public async Task<Result<SentMessage>> SendAsync(
-        Guid authorAccountId, Guid conversationId, Guid? clientMessageId, string? text, JsonElement? blocks, CancellationToken cancellationToken)
+        Guid authorAccountId, Guid conversationId, Guid? clientMessageId, string? text, JsonElement? blocks, Guid? replyToMessageId, CancellationToken cancellationToken)
     {
         var organizationId = OrganizationId;
         if (clientMessageId is not { } clientId || clientId == Guid.Empty)
         {
             return MessageInvalid.WithReason("client_message_id");
+        }
+
+        // A reply is never stripped to a plain message: with the flag off the whole send is refused.
+        if (replyToMessageId is not null && !messageReply.Enabled)
+        {
+            return ReplyUnavailable;
+        }
+
+        if (replyToMessageId == Guid.Empty)
+        {
+            return ReplyInvalid.WithReason("reply.id");
         }
 
         // Everything that needs no data is checked first. Blocks are a closed schema: nothing is dropped silently.
@@ -140,6 +158,23 @@ internal sealed partial class MessageService(
             return new SentMessage(stored, Created: false, epoch);
         }
 
+        // The quoted message (docs/contracts/phase-2.md, flow 2): one read, after the repeat check so a retry still gets its stored message
+        // although the original was deleted meanwhile. The sender reads this conversation (checked above), so a message of the same
+        // conversation shows them nothing new; one of another conversation or an unknown one answers the same, never revealing it exists.
+        MessageQuote? quote = null;
+        Guid? quotedAuthor = null;
+        if (replyToMessageId is { } replyId)
+        {
+            var (refusal, resolved) = await ResolveQuoteAsync(replyId, conversationId, cancellationToken);
+            if (refusal is not null)
+            {
+                return refusal;
+            }
+
+            quote = resolved;
+            quotedAuthor = resolved!.AuthorAccountId;
+        }
+
         // Mentions (docs/contracts/phase-2.md, flow 2): every mentioned account must be an active member, whose name
         // goes into the derived text. A mention row is written only for those who can read the conversation, so a
         // person mentioned in a conversation they are not in gets nothing from it. Both reads run before the row lock.
@@ -171,7 +206,22 @@ internal sealed partial class MessageService(
             return ConversationNotFound;
         }
 
-        var message = new NewMessage(ids.NewId(), organizationId, conversationId, seq, authorAccountId, clientId, prepared, MessageBlocks.ToJson(parsed.Blocks), now);
+        // A delete takes this same row lock, so a delete that committed between the first read and the lock is visible now: read again.
+        // A refusal rolls the whole request back (the endpoint rolls back on an error), so last_message_seq does not move and nothing is
+        // announced or notified for a deleted original; the quote of the answer, of the live event and of the notification is the fresh one.
+        if (replyToMessageId is { } lockedReplyId)
+        {
+            var (refusal, resolved) = await ResolveQuoteAsync(lockedReplyId, conversationId, cancellationToken);
+            if (refusal is not null)
+            {
+                return refusal;
+            }
+
+            quote = resolved;
+            quotedAuthor = resolved!.AuthorAccountId;
+        }
+
+        var message = new NewMessage(ids.NewId(), organizationId, conversationId, seq, authorAccountId, clientId, prepared, MessageBlocks.ToJson(parsed.Blocks), now, replyToMessageId);
         if (await messages.AddAsync(message, cancellationToken) is not { } storedBlocks)
         {
             // Another send of the same client message id committed between the check above and the lock; the first stays
@@ -202,17 +252,28 @@ internal sealed partial class MessageService(
             liveEvents.Add(new MessagePostedV2Payload(
                 organizationId,
                 conversationId,
-                new LiveMessageV2(message.Id, seq, seq, TextKind, clientId, authorAccountId, MessageBlocks.ToLive(parsed.Blocks), prepared, now),
+                new LiveMessageV2(message.Id, seq, seq, TextKind, clientId, authorAccountId, MessageBlocks.ToLive(parsed.Blocks), prepared, now, ToLive(quote)),
                 seq,
                 epoch));
         }
         else
         {
-            liveEvents.Add(new MessagePostedPayload(organizationId, conversationId, new LiveMessage(message.Id, seq, clientId, authorAccountId, prepared, now, sentBlocks ? MessageBlocks.ToLive(parsed.Blocks) : null)));
+            liveEvents.Add(new MessagePostedPayload(organizationId, conversationId, new LiveMessage(message.Id, seq, clientId, authorAccountId, prepared, now, sentBlocks ? MessageBlocks.ToLive(parsed.Blocks) : null, ToLive(quote))));
+        }
+
+        // The quoted message's author is told (docs/contracts/phase-2.md, flow 2): not when replying to oneself, and only if they can still read the
+        // conversation. Ids only; Notifications applies the person's settings and the read check again.
+        // No mention feed producer exists yet, so a mentioned author still gets this item; once it does (step 13), the mention wins and this is skipped for them.
+        if (quotedAuthor is { } author && author != authorAccountId
+            && (await conversations.FilterReadersAsync(organizationId, conversationId, [author], cancellationToken)).Count > 0)
+        {
+            await outbox.AddAsync(
+                new ActivityAdded(ids.NewId(), organizationId, now, ActivityKinds.QuotedReply, conversationId, message.Id, authorAccountId, [author]),
+                cancellationToken);
         }
 
         LogPosted(logger, message.Id, conversationId, organizationId, authorAccountId);
-        return new SentMessage(new MessageEntry(message.Id, seq, seq, clientId, authorAccountId, prepared, storedBlocks, now, DeletedAt: null), Created: true, epoch);
+        return new SentMessage(new MessageEntry(message.Id, seq, seq, clientId, authorAccountId, prepared, storedBlocks, now, DeletedAt: null, ReplyTo: quote), Created: true, epoch);
     }
 
     /// <summary>
@@ -274,6 +335,22 @@ internal sealed partial class MessageService(
             ? new MessagePage([.. found.Take(pageSize)], found[pageSize - 1].Seq, current)
             : new MessagePage(found, null, current);
     }
+
+    private async Task<(Error? Refusal, MessageQuote? Quote)> ResolveQuoteAsync(Guid replyId, Guid conversationId, CancellationToken cancellationToken)
+    {
+        var source = await messages.FindQuoteSourceAsync(replyId, cancellationToken);
+        if (source is null || source.ConversationId != conversationId)
+        {
+            return (ReplyInvalid.WithReason("reply.not_found"), null);
+        }
+
+        return source.Deleted
+            ? (ReplyInvalid.WithReason("reply.deleted"), null)
+            : (null, MessageQuote.Of(replyId, source.AuthorAccountId, source.Text ?? string.Empty));
+    }
+
+    private static LiveQuote? ToLive(MessageQuote? quote) =>
+        quote is null ? null : new LiveQuote(quote.MessageId, quote.AuthorAccountId, quote.Text, quote.Deleted);
 
     private async ValueTask<string?> EpochAsync(CancellationToken cancellationToken) =>
         await cellEpoch.ConfirmedEpochAsync(cancellationToken) is { } epoch ? epoch.ToString(CultureInfo.InvariantCulture) : null;

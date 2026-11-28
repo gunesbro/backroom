@@ -14,4 +14,5 @@ public sealed record SentMessageResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeletedAt,
     DateTimeOffset? EditedAt,
-    string Epoch);
+    string Epoch,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MessageQuoteResponse? ReplyTo = null);
