@@ -28,7 +28,7 @@ public sealed class WebOriginsCorsTests
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         response.Headers.GetValues("Access-Control-Allow-Origin").Should().ContainSingle().Which.Should().Be(Allowed);
-        response.Headers.GetValues("Access-Control-Allow-Methods").Single().Should().Contain("GET").And.Contain("PUT").And.Contain("DELETE").And.NotContain("PATCH");
+        response.Headers.GetValues("Access-Control-Allow-Methods").Single().Should().Contain("GET").And.Contain("PUT").And.Contain("PATCH").And.Contain("DELETE");
         response.Headers.GetValues("Vary").Should().Contain("Origin");
         response.Headers.GetValues("Access-Control-Allow-Headers").Single().Should().ContainEquivalentOf("authorization");
         response.Headers.GetValues("Access-Control-Max-Age").Should().ContainSingle().Which.Should().Be("600");
