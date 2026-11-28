@@ -5,6 +5,8 @@ const REFUSED_CODES: ReadonlySet<string> = new Set([
   'messaging.message_invalid',
   'messaging.mention_invalid',
   'messaging.mention_limit',
+  'messaging.reply_invalid',
+  'messaging.message_reply_unavailable',
 ]);
 
 /** The server refused the content itself: sending it again unchanged cannot work. */
@@ -18,6 +20,10 @@ export function isRefusedContent(code: string | undefined): boolean {
  */
 export function refusalKey(code: string, reason: string | undefined): MessageKey {
   if (code === 'messaging.mention_limit') return 'errorMentionLimit';
+  if (code === 'messaging.message_reply_unavailable') return 'replyUnavailable';
+  if (code === 'messaging.reply_invalid') {
+    return reason === 'reply.deleted' || reason === 'reply.not_found' ? 'replyGone' : 'messageInvalid';
+  }
   if (code === 'messaging.mention_invalid') {
     return reason === 'group_mentions_unavailable' ? 'errorGroupMention' : 'errorMention';
   }

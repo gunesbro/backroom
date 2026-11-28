@@ -14,10 +14,10 @@ import { Alert, Button, Icon, SoonButton, Spinner, Status } from '@backroom/ui';
 import { CellSignInPendingError, CellSignInPrompt, CellUnavailableError, useAuth } from '@/features/auth';
 import { config } from '@/config';
 import { useLocale, useTranslate } from '@/shared/locale';
-import { useMessagingApiFactory, type Cell, type Channel, type MessagingApi } from './api';
+import { useMessagingApiFactory, type Cell, type Channel, type Message, type MessagingApi } from './api';
 import { ChannelMark } from './channel-mark';
 import { ChannelSidebar, type ChannelsState } from './channel-sidebar';
-import { Composer } from './composer';
+import { Composer, type ComposerHandle } from './composer';
 import { isConversationGone } from './conversation-errors';
 import { CreateChannelDialog } from './create-channel-dialog';
 import { DeleteMessageDialog } from './delete-message-dialog';
@@ -31,6 +31,8 @@ import { isMessageDeleted, messageChangeErrorText } from './message-errors';
 import { MessageList, type MessageEditing, type MessageListHandle, type Row } from './message-list';
 import { editableBlocks, type Block } from './rich-text/blocks';
 import { rowKey } from './row-key';
+import type { ReplyTarget } from './reply-target';
+import { truncateQuote } from './text';
 import { messages } from './messages';
 import { PreviewBar } from './preview-bar';
 import { NewMessageAnnouncer } from './new-message-announcer';
@@ -102,6 +104,15 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
   const selected = chosen ?? first;
   const selectedId = selected?.id;
   const pending = usePendingMessages(api, orgId);
+  // The message each conversation's next one replies to; it stays while the person looks at another conversation.
+  const [replyTargets, setReplyTargets] = useState<Readonly<Record<string, ReplyTarget>>>({});
+  const setReplyTarget = useCallback((channelId: string, target: ReplyTarget | undefined) => {
+    setReplyTargets((current) => {
+      if (current[channelId] === target) return current;
+      if (target) return { ...current, [channelId]: target };
+      return Object.fromEntries(Object.entries(current).filter(([id]) => id !== channelId));
+    });
+  }, []);
   const { user } = useAuth();
   const selectedRef = useRef(selectedId);
   useLayoutEffect(() => {
@@ -209,6 +220,8 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
               channel={selected}
               joined={channelIds.includes(selected.id)}
               pending={pending}
+              replyTarget={replyTargets[selected.id]}
+              onReplyTargetChange={setReplyTarget}
               otherNames={otherNames}
               infoOpen={infoFor === selected.id}
               onInfoOpenChange={(open) => {
@@ -296,6 +309,8 @@ function ChannelView({
   channel,
   joined,
   pending,
+  replyTarget,
+  onReplyTargetChange,
   otherNames,
   infoOpen,
   onInfoOpenChange,
@@ -308,6 +323,9 @@ function ChannelView({
   /** The channel is in the person's own list (the sidebar). */
   joined: boolean;
   pending: ReturnType<typeof usePendingMessages>;
+  /** The message the next one replies to, if the person chose one. */
+  replyTarget: ReplyTarget | undefined;
+  onReplyTargetChange: (channelId: string, target: ReplyTarget | undefined) => void;
   /** Names of the other channels the person can see. */
   otherNames: readonly string[];
   infoOpen: boolean;
@@ -431,7 +449,10 @@ function ChannelView({
     fetchNextPage: fetchMembers,
   } = members;
   const unknownAuthor = confirmed.some(
-    (message) => !message.deletedAt && !names.has(message.authorAccountId),
+    (message) =>
+      !message.deletedAt &&
+      (!names.has(message.authorAccountId) ||
+        (message.replyTo?.authorAccountId != null && !names.has(message.replyTo.authorAccountId))),
   );
   useEffect(() => {
     if (
@@ -597,6 +618,53 @@ function ChannelView({
     if (newest && editableBlocks(newest.blocks, newest.text) !== null) startEdit(newest.id);
   }, [query.hasPreviousPage, ownAccountId, confirmed, startEdit]);
 
+  // Replying with a quote (Phase 2 step 9): off without its flag, and only where there is a composer to write in.
+  const composerShown = !archived && !previewing && stateKnown;
+  const replyEnabled = config.messageReplyEnabled && composerShown;
+  const composerRef = useRef<ComposerHandle>(null);
+  // A target whose message was deleted meanwhile (by a live event) is dropped quietly.
+  const targetDeleted =
+    replyTarget !== undefined &&
+    confirmed.some((message) => message.id === replyTarget.messageId && message.deletedAt);
+  // A send that the server refused because its original is gone ends the reply to that original too.
+  const targetRefused =
+    replyTarget !== undefined &&
+    pendingHere.some(
+      (item) =>
+        item.status === 'failed' &&
+        item.replyTo?.messageId === replyTarget.messageId &&
+        (item.code === 'messaging.reply_invalid' || item.code === 'messaging.message_reply_unavailable'),
+    );
+  const dropTarget = targetDeleted || targetRefused;
+  useEffect(() => {
+    if (dropTarget) onReplyTargetChange(channel.id, undefined);
+  }, [dropTarget, onReplyTargetChange, channel.id]);
+  const activeReply = replyEnabled && !dropTarget ? replyTarget : undefined;
+  // The composer takes the focus once the bar is drawn: each request (a number) asks for it once.
+  const [focusRequest, setFocusRequest] = useState(0);
+  useEffect(() => {
+    if (focusRequest > 0) composerRef.current?.focus();
+  }, [focusRequest]);
+  const startReply = useCallback(
+    (original: Message) => {
+      onReplyTargetChange(channel.id, {
+        messageId: original.id,
+        authorAccountId: original.authorAccountId,
+        text: truncateQuote(original.text),
+      });
+      setFocusRequest((count) => count + 1);
+    },
+    [onReplyTargetChange, channel.id],
+  );
+  const cancelReply = useCallback(() => {
+    onReplyTargetChange(channel.id, undefined);
+    setFocusRequest((count) => count + 1);
+  }, [onReplyTargetChange, channel.id]);
+  const replyBar = activeReply && {
+    name: activeReply.authorAccountId === ownAccountId ? user.name : authorName(activeReply.authorAccountId),
+    text: activeReply.text,
+  };
+
   return (
     <>
       <header className="bm-header">
@@ -658,6 +726,7 @@ function ChannelView({
             onJoin={join}
             editing={editing}
             editingId={activeEditingId}
+            onReply={replyEnabled ? startReply : undefined}
             ref={listRef}
           />
           <NewMessageAnnouncer
@@ -706,8 +775,22 @@ function ChannelView({
           focusOnMount={joinedFromBar}
           channelName={name}
           onEditLast={editEnabled ? editNewest : undefined}
+          reply={replyBar}
+          onCancelReply={cancelReply}
+          ref={composerRef}
           onSend={(text, blocks) => {
-            pending.send(channel.id, text, blocks);
+            pending.send(
+              channel.id,
+              text,
+              blocks,
+              activeReply && {
+                messageId: activeReply.messageId,
+                deleted: false,
+                authorAccountId: activeReply.authorAccountId,
+                text: activeReply.text,
+              },
+            );
+            if (activeReply) onReplyTargetChange(channel.id, undefined);
           }}
         />
       ) : null}

@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/shared/http';
 import { applyLiveMessage } from './live-cache';
 import { messagesKey } from './queries';
-import type { Message, MessagingApi } from './api';
+import type { Message, MessageQuote, MessagingApi } from './api';
 import type { Block } from './rich-text/blocks';
 
 /**
@@ -16,6 +16,8 @@ export type PendingMessage = {
   text: string;
   /** The rich text blocks, when the message was written in the rich text composer. */
   blocks?: Block[] | undefined;
+  /** The quote of the message this one replies to, as it was when the person sent it (drawn until the server answers). */
+  replyTo?: MessageQuote | undefined;
   createdAt: string;
   status: 'sending' | 'failed' | 'confirmed';
   /** The error code of a failed send. */
@@ -69,6 +71,7 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
           clientMessageId: pending.clientMessageId,
           text: pending.text,
           ...(pending.blocks ? { blocks: pending.blocks } : {}),
+          ...(pending.replyTo ? { replyToMessageId: pending.replyTo.messageId } : {}),
         });
         // A fetch that started before the answer could return a page without the message and overwrite it.
         await queryClient.cancelQueries({ queryKey: messagesKey(orgId, channelId) });
@@ -93,11 +96,12 @@ export function usePendingMessages(api: MessagingApi, orgId: string) {
 
   /** `text` is already normalized (the plain text derived from `blocks`, when there are blocks). */
   const send = useCallback(
-    (channelId: string, text: string, blocks?: Block[]) => {
+    (channelId: string, text: string, blocks?: Block[], replyTo?: MessageQuote) => {
       const pending: PendingMessage = {
         clientMessageId: crypto.randomUUID(),
         text,
         blocks,
+        replyTo,
         createdAt: new Date().toISOString(),
         status: 'sending',
       };

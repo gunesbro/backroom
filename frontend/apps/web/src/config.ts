@@ -48,6 +48,11 @@ export const config = {
    * edited messages and tombstones that arrive are still drawn. On in development.
    */
   messageEditEnabled: import.meta.env.VITE_MESSAGE_EDIT_ENABLED === 'true',
+  /**
+   * Feature flag: replying with a quote (Phase 2 step 9), with the cells' `Features:MessageReply`. Off: no reply
+   * button or bar, but quotes that arrive are still drawn. On in development.
+   */
+  messageReplyEnabled: import.meta.env.VITE_MESSAGE_REPLY_ENABLED === 'true',
   /** The control plane's origin; empty means this origin (the development server proxies /api). */
   controlPlaneUrl: import.meta.env.VITE_CONTROL_PLANE_URL ?? '',
   /** Data regions offered for new organizations, comma-separated region ids. */

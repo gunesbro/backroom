@@ -233,7 +233,11 @@ export function RichField({
       editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
     },
     focus: () => {
-      editorRef.current?.focus(undefined, { defaultSelection: 'rootEnd' });
+      const editor = editorRef.current;
+      editor?.focus(undefined, { defaultSelection: 'rootEnd' });
+      // An editor with nothing in it has no selection to put in the page, so the focus is given to its element.
+      const root = editor?.getRootElement();
+      if (root && !root.contains(document.activeElement)) root.focus({ preventScroll: true });
     },
   }));
 
