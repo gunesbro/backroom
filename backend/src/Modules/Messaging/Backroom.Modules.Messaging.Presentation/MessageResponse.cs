@@ -19,4 +19,5 @@ public sealed record MessageResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeletedAt,
     DateTimeOffset? EditedAt = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MessageQuoteResponse? ReplyTo = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MessageQuoteResponse? ReplyTo = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ReactionResponse>? Reactions = null);

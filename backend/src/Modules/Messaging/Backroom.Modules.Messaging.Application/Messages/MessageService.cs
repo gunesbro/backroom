@@ -42,6 +42,7 @@ internal sealed partial class MessageService(
     RichText richText,
     MessageEdit messageEdit,
     MessageReply messageReply,
+    MessageReactions messageReactions,
     IOrganizationPermissionCheck permissions,
     IMemberNames memberNames,
     TimeProvider timeProvider,
@@ -155,7 +156,7 @@ internal sealed partial class MessageService(
         // then sees its row.
         if (await messages.FindAsync(conversationId, authorAccountId, clientId, cancellationToken) is { } stored)
         {
-            return new SentMessage(stored, Created: false, epoch);
+            return new SentMessage(await WithReactionsAsync(authorAccountId, stored, cancellationToken), Created: false, epoch);
         }
 
         // The quoted message (docs/contracts/phase-2.md, flow 2): one read, after the repeat check so a retry still gets its stored message
@@ -231,7 +232,7 @@ internal sealed partial class MessageService(
             await channels.RestoreLastMessageAsync(organizationId, conversationId, cancellationToken);
             var existing = await messages.FindAsync(conversationId, authorAccountId, clientId, cancellationToken)
                 ?? throw new InvalidOperationException("The message exists by its unique index but could not be read.");
-            return new SentMessage(existing, Created: false, epoch);
+            return new SentMessage(await WithReactionsAsync(authorAccountId, existing, cancellationToken), Created: false, epoch);
         }
 
         if (mentionedReaders.Count > 0)
@@ -273,7 +274,7 @@ internal sealed partial class MessageService(
         }
 
         LogPosted(logger, message.Id, conversationId, organizationId, authorAccountId);
-        return new SentMessage(new MessageEntry(message.Id, seq, seq, clientId, authorAccountId, prepared, storedBlocks, now, DeletedAt: null, ReplyTo: quote), Created: true, epoch);
+        return new SentMessage(new MessageEntry(message.Id, seq, seq, clientId, authorAccountId, prepared, storedBlocks, now, DeletedAt: null, ReplyTo: quote, Reactions: messageReactions.Enabled ? [] : null), Created: true, epoch);
     }
 
     /// <summary>
@@ -323,17 +324,17 @@ internal sealed partial class MessageService(
         if (changedAfter is { } changed)
         {
             found = await messages.ListChangedAfterAsync(conversationId, changed, pageSize + 1, cancellationToken);
-            return found.Count > pageSize
-                ? new MessagePage([.. found.Take(pageSize)], found[pageSize - 1].VersionSeq, current)
-                : new MessagePage(found, null, current);
+            var changedPage = found.Count > pageSize ? [.. found.Take(pageSize)] : found;
+            return new MessagePage(
+                await WithReactionsAsync(accountId, changedPage, cancellationToken), found.Count > pageSize ? found[pageSize - 1].VersionSeq : null, current);
         }
 
         found = after is { } forward
             ? await messages.ListAfterAsync(conversationId, forward, pageSize + 1, cancellationToken)
             : await messages.ListBeforeAsync(conversationId, before ?? long.MaxValue, pageSize + 1, cancellationToken);
-        return found.Count > pageSize
-            ? new MessagePage([.. found.Take(pageSize)], found[pageSize - 1].Seq, current)
-            : new MessagePage(found, null, current);
+        var page = found.Count > pageSize ? [.. found.Take(pageSize)] : found;
+        return new MessagePage(
+            await WithReactionsAsync(accountId, page, cancellationToken), found.Count > pageSize ? found[pageSize - 1].Seq : null, current);
     }
 
     private async Task<(Error? Refusal, MessageQuote? Quote)> ResolveQuoteAsync(Guid replyId, Guid conversationId, CancellationToken cancellationToken)

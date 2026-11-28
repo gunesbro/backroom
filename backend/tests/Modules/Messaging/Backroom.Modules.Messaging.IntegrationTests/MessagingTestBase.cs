@@ -66,6 +66,9 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
     /// <summary><c>Features:MessageReply</c> for the cell of this test class.</summary>
     protected virtual bool MessageReplyEnabled => false;
 
+    /// <summary><c>Features:MessageReactions</c> for the cell of this test class.</summary>
+    protected virtual bool MessageReactionsEnabled => false;
+
     protected PostgresDatabase Database => database;
 
     protected IServiceProvider Services => _cell.Services;
@@ -93,6 +96,7 @@ public abstract class MessagingTestBase(PostgresDatabase database, KeycloakRealm
         builder.Configuration["Features:RichText"] = RichTextEnabled ? "true" : "false";
         builder.Configuration["Features:MessageEdit"] = MessageEditEnabled ? "true" : "false";
         builder.Configuration["Features:MessageReply"] = MessageReplyEnabled ? "true" : "false";
+        builder.Configuration["Features:MessageReactions"] = MessageReactionsEnabled ? "true" : "false";
         builder.Services.AddSingleton<Backroom.BuildingBlocks.Application.Identifiers.IIdGenerator>(IdScript);
         builder.Services.AddMessaging();
         builder.Services.AddMessagingEndpoints();

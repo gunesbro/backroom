@@ -21,6 +21,11 @@
     <ProjectReference Include="..\..\..\Backroom.Testing\Backroom.Testing.csproj" />
   </ItemGroup>
 
+  <!-- The emoji list the web app's picker and the server's one-emoji rule are both tested against. -->
+  <ItemGroup>
+    <None Include="..\..\..\..\..\docs\contracts\test-data\picker-emoji.json" Link="contracts\picker-emoji.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- The development realm, imported into a Keycloak container. -->
   <ItemGroup>
     <None Include="..\..\..\..\src\Aspire\Backroom.AppHost\keycloak-dev\backroom-realm.json" Link="keycloak\backroom-realm.json" CopyToOutputDirectory="PreserveNewest" />

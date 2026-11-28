@@ -7,6 +7,7 @@ namespace Backroom.Modules.Messaging.Application.Messages;
 /// <paramref name="DeletedAt"/> is set and <paramref name="Text"/>, <paramref name="Blocks"/> and <paramref name="EditedAt"/> are <see langword="null"/>.
 /// <paramref name="EditedAt"/> is the time of the latest edit, <see langword="null"/> for a message never edited.
 /// <paramref name="ReplyTo"/> is the quote of a reply (<see langword="null"/> for other messages and for tombstones).
+/// <paramref name="Reactions"/> is the reaction summary (<see langword="null"/> when the reactions flag is off and for tombstones, empty when nobody reacted).
 /// </summary>
 internal sealed record MessageEntry(
     Guid Id,
@@ -19,4 +20,5 @@ internal sealed record MessageEntry(
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeletedAt,
     DateTimeOffset? EditedAt = null,
-    MessageQuote? ReplyTo = null);
+    MessageQuote? ReplyTo = null,
+    IReadOnlyList<ReactionSummary>? Reactions = null);

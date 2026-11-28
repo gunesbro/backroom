@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 using Backroom.BuildingBlocks.Infrastructure.Persistence;
@@ -12,7 +13,7 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
     // The quote of a reply comes with the page: one LEFT JOIN by primary key on the original (at most one row per message of the page, no
     // second statement, no N+1). q.id is null when the original row is gone, which reads as a deleted original. left() bounds what is read
     // (code points; the quote is then cut to its length in characters).
-    private const string Columns = "m.id, m.seq, m.version_seq, m.client_message_id, m.author_account_id, m.text, m.created_at, m.deleted_at, m.blocks, m.edited_at, m.reply_to_message_id, q.id, q.deleted_at, q.author_account_id, left(q.text, 400)";
+    private const string Columns = "m.id, m.seq, m.version_seq, m.client_message_id, m.author_account_id, m.text, m.created_at, m.deleted_at, m.blocks, m.edited_at, m.reply_to_message_id, q.id, q.deleted_at, q.author_account_id, left(q.text, 400), m.reaction_summary";
 
     private const string QuoteJoin = "LEFT JOIN messaging.messages q ON q.id = m.reply_to_message_id";
 
@@ -110,11 +111,56 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
     // whether or not the update finds a live row; an already deleted message has no rows in them anyway.
     private const string DeleteSql = """
         WITH erased_mentions AS (DELETE FROM messaging.message_mentions WHERE message_id = $1),
-             erased_links AS (DELETE FROM messaging.message_links WHERE message_id = $1)
+             erased_links AS (DELETE FROM messaging.message_links WHERE message_id = $1),
+             erased_reactions AS (DELETE FROM messaging.reactions WHERE message_id = $1)
         UPDATE messaging.messages
-        SET text = NULL, blocks = NULL, edited_at = NULL, reply_to_message_id = NULL, version_seq = $2, deleted_at = $3
+        SET text = NULL, blocks = NULL, edited_at = NULL, reply_to_message_id = NULL, reaction_summary = NULL, version_seq = $2, deleted_at = $3
         WHERE id = $1 AND deleted_at IS NULL
         """;
+
+    // The limits and the insert in one statement, under the conversation row lock the caller holds. "mine" counts the person's reactions on the
+    // message (primary key prefix); "msg" reads the message's stored summary, whose length is the number of distinct emoji and which names the
+    // emoji it holds. 0 added, 1 already there, 2 person limit, 3 emoji limit.
+    private const string AddReactionSql = """
+        WITH mine AS (
+            SELECT count(*)::int AS total, coalesce(bool_or(emoji = $4), false) AS has
+            FROM messaging.reactions
+            WHERE message_id = $2 AND account_id = $3),
+        msg AS (
+            SELECT coalesce(jsonb_array_length(reaction_summary), 0) AS distinct_emoji,
+                   coalesce(reaction_summary @> jsonb_build_array(jsonb_build_object('emoji', $4::text)), false) AS known
+            FROM messaging.messages
+            WHERE id = $2),
+        ins AS (
+            INSERT INTO messaging.reactions (org_id, message_id, account_id, emoji, created_at)
+            SELECT $1, $2, $3, $4, $5
+            FROM mine, msg
+            WHERE NOT mine.has AND mine.total < 20 AND (msg.known OR msg.distinct_emoji < 50)
+            RETURNING 1)
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM ins) THEN 0 WHEN mine.has THEN 1 WHEN mine.total >= 20 THEN 2 ELSE 3 END
+        FROM mine
+        """;
+
+    private const string RemoveReactionSql = "DELETE FROM messaging.reactions WHERE message_id = $1 AND account_id = $2 AND emoji = $3";
+
+    // One aggregate over the rows of one message (primary key prefix, at most people x 20 rows): count and the earliest three reactors per
+    // emoji, emoji in the order of their first reaction (then by code point). No row left gives NULL.
+    private const string RefreshReactionSummarySql = """
+        UPDATE messaging.messages
+        SET version_seq = $2,
+            reaction_summary = (
+                SELECT jsonb_agg(jsonb_build_object('emoji', r.emoji, 'count', r.total, 'sample', to_jsonb(r.sample)) ORDER BY r.first_at, r.emoji COLLATE "C")
+                FROM (
+                    SELECT emoji, count(*)::int AS total, min(created_at) AS first_at, (array_agg(account_id ORDER BY created_at, account_id))[1:3] AS sample
+                    FROM messaging.reactions
+                    WHERE message_id = $1
+                    GROUP BY emoji) r)
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING reaction_summary
+        """;
+
+    // reactedByMe for a page: the primary key (message_id, account_id, emoji) serves the array of message ids and the account.
+    private const string ListReactedBySql = "SELECT message_id, emoji FROM messaging.reactions WHERE message_id = ANY($1) AND account_id = $2";
 
     private const string PreviewSql = """
         SELECT id, conversation_id, text
@@ -281,6 +327,70 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
+    public async Task<ReactionAdd> AddReactionAsync(Guid organizationId, Guid messageId, Guid accountId, string emoji, DateTimeOffset createdAt, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(AddReactionSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = organizationId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = emoji });
+        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset> { TypedValue = createdAt });
+        return (ReactionAdd)(int)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException("The reaction statement returned no row."));
+    }
+
+    public async Task<bool> RemoveReactionAsync(Guid messageId, Guid accountId, string emoji, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(RemoveReactionSql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
+        command.Parameters.Add(new NpgsqlParameter<string> { TypedValue = emoji });
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    public async Task<IReadOnlyList<ReactionSummary>> RefreshReactionSummaryAsync(Guid messageId, long versionSeq, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(RefreshReactionSummarySql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = messageId });
+        command.Parameters.Add(new NpgsqlParameter<long> { TypedValue = versionSeq });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0) ? ParseSummary(reader.GetString(0)) : [];
+    }
+
+    public async Task<IReadOnlyList<(Guid MessageId, string Emoji)>> ListReactedByAsync(IReadOnlyCollection<Guid> messageIds, Guid accountId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(messageIds);
+        await using var command = new NpgsqlCommand(ListReactedBySql, session.Connection, session.Transaction);
+        command.Parameters.Add(new NpgsqlParameter<Guid[]> { TypedValue = [.. messageIds] });
+        command.Parameters.Add(new NpgsqlParameter<Guid> { TypedValue = accountId });
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var found = new List<(Guid, string)>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            found.Add((reader.GetGuid(0), reader.GetString(1)));
+        }
+
+        return found;
+    }
+
+    // The stored summary: [{"emoji", "count", "sample": [account ids]}]; reactedByMe is the reader's and is filled by the service.
+    private static List<ReactionSummary> ParseSummary(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var summary = new List<ReactionSummary>(document.RootElement.GetArrayLength());
+        foreach (var item in document.RootElement.EnumerateArray())
+        {
+            var sample = new List<Guid>(ReactionSummary.MaxSample);
+            foreach (var account in item.GetProperty("sample").EnumerateArray())
+            {
+                sample.Add(account.GetGuid());
+            }
+
+            summary.Add(new ReactionSummary(item.GetProperty("emoji").GetString()!, item.GetProperty("count").GetInt32(), ReactedByMe: false, sample));
+        }
+
+        return summary;
+    }
+
     public async Task<IReadOnlyList<MessagePreviewSource>> ListForPreviewAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(messageIds);
@@ -325,6 +435,7 @@ internal sealed class MessageStore(DatabaseSession session) : IMessageStore
             reader.GetFieldValue<DateTimeOffset>(6),
             deletedAt,
             deletedAt is null && !reader.IsDBNull(9) ? reader.GetFieldValue<DateTimeOffset>(9) : null,
-            deletedAt is null ? ReadQuote(reader) : null);
+            deletedAt is null ? ReadQuote(reader) : null,
+            deletedAt is null ? (reader.IsDBNull(15) ? [] : ParseSummary(reader.GetString(15))) : null);
     }
 }

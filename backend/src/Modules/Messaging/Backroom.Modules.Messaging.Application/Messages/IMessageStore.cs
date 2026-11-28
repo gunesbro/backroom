@@ -56,4 +56,22 @@ internal interface IMessageStore
     /// deleted, <c>deleted_at</c> and <c>version_seq</c> set. <see langword="false"/> if it was already deleted. The caller holds the conversation row lock.
     /// </summary>
     Task<bool> DeleteAsync(Guid messageId, long versionSeq, DateTimeOffset deletedAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds the reaction in one statement that also checks the limits against the stored rows and the message's summary (so the caller
+    /// must hold the conversation row lock: the limits are exact only while changes to the message run one at a time).
+    /// </summary>
+    Task<ReactionAdd> AddReactionAsync(Guid organizationId, Guid messageId, Guid accountId, string emoji, DateTimeOffset createdAt, CancellationToken cancellationToken);
+
+    /// <summary>Removes the account's reaction; <see langword="false"/> if there was none.</summary>
+    Task<bool> RemoveReactionAsync(Guid messageId, Guid accountId, string emoji, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Rebuilds the stored summary of a live message from its reaction rows (one aggregate over the rows of one message), sets the
+    /// message's <c>version_seq</c> and returns the new summary (empty when no reaction is left). The caller holds the conversation row lock.
+    /// </summary>
+    Task<IReadOnlyList<ReactionSummary>> RefreshReactionSummaryAsync(Guid messageId, long versionSeq, CancellationToken cancellationToken);
+
+    /// <summary>The (message, emoji) pairs among <paramref name="messageIds"/> the account reacted with: one statement for a page (primary key range per message).</summary>
+    Task<IReadOnlyList<(Guid MessageId, string Emoji)>> ListReactedByAsync(IReadOnlyCollection<Guid> messageIds, Guid accountId, CancellationToken cancellationToken);
 }

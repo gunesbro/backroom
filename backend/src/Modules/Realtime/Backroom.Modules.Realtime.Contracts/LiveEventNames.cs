@@ -12,6 +12,7 @@ public static class LiveEventNames
     public const string MessagePostedV2 = "MessagePosted.v2";
     public const string MessageEdited = "MessageEdited";
     public const string MessageDeleted = "MessageDeleted";
+    public const string ReactionsChanged = "ReactionsChanged";
     public const string ChannelCreated = "ChannelCreated";
     public const string SessionRevoked = "SessionRevoked";
     public const string PresenceChanged = "PresenceChanged";
