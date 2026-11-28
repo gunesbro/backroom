@@ -41,6 +41,7 @@ export default defineConfig({
     // A test makes several waits of 3 s (5 s on CI, see src/testing/setup.ts), so the limit of one test must be well
     // above one wait; 5 s locally cut tests off on a busy machine.
     testTimeout: 15_000,
+    hookTimeout: 15_000,
     setupFiles: ['./src/testing/setup.ts'],
   },
 });
