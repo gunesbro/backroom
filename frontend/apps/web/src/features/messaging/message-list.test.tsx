@@ -432,3 +432,188 @@ describe('Loading pages from the rows in view', () => {
     expect(onLoadEarlier).not.toHaveBeenCalled();
   });
 });
+
+describe('Jump to latest in the normal list', () => {
+  function view(rows: readonly Row[], props: { detached?: boolean; onJumpToLatest?: () => void } = {}) {
+    return (
+      <LocaleProvider locale="en">
+        <MessageList
+          channelName="general"
+          rows={rows}
+          hasEarlier={false}
+          loadingEarlier={false}
+          onLoadEarlier={vi.fn()}
+          hasNewer={false}
+          loadingNewer={false}
+          onLoadNewer={vi.fn()}
+          authorName={() => 'Veli'}
+          ownAccountId={undefined}
+          ownName="Alice"
+          locale="en"
+          onRetry={vi.fn()}
+          onDiscard={vi.fn()}
+          onJoin={vi.fn()}
+          detached={props.detached}
+          onJumpToLatest={props.onJumpToLatest}
+        />
+      </LocaleProvider>
+    );
+  }
+  const scrollFeed = (feed: HTMLElement, top: number) => {
+    act(() => {
+      feed.scrollTop = top;
+      fireEvent.scroll(feed);
+    });
+  };
+  const button = () => screen.queryByRole('button', { name: 'Jump to latest' });
+  // The feed is 400 px tall: the threshold is 600 px above the bottom.
+  const bottomOf = (feed: HTMLElement) => feed.scrollHeight - 400;
+
+  it('ScrolledUpBeyondOneAndAHalfListHeights_ShowsTheButtonAndHidesItNearTheBottom', () => {
+    render(view(range(1, 60)));
+    const feed = screen.getByRole('feed');
+    expect(button()).toBeNull();
+
+    scrollFeed(feed, bottomOf(feed) - 700);
+    expect(button()).toBeInTheDocument();
+
+    scrollFeed(feed, bottomOf(feed) - 500);
+    expect(button()).toBeNull();
+  });
+
+  it('PressedInTheNormalList_ScrollsToTheEndAndFollowsNewMessagesAgain', () => {
+    const onJumpToLatest = vi.fn();
+    const rows = range(1, 60);
+    const scrollTo = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    const matchMedia = vi.fn().mockReturnValue({ matches: false });
+    vi.stubGlobal('matchMedia', matchMedia);
+    const rendered = render(view(rows, { onJumpToLatest }));
+    const feed = screen.getByRole('feed');
+    scrollFeed(feed, 0);
+
+    fireEvent.click(button() as HTMLElement);
+    expect(onJumpToLatest).not.toHaveBeenCalled();
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+    scrollFeed(feed, feed.scrollHeight);
+    expect(button()).toBeNull();
+
+    rendered.rerender(view([...rows, rowOf(61)], { onJumpToLatest }));
+    expect(feed.scrollTop).toBe(feed.scrollHeight);
+    scrollTo.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('NewMessageDuringTheSmoothScrollToTheEnd_IsFollowed', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    const rows = range(1, 60);
+    const rendered = render(view(rows));
+    const feed = screen.getByRole('feed');
+    scrollFeed(feed, 0);
+    fireEvent.click(button() as HTMLElement);
+
+    // Half way: far from the end, which alone would stop following.
+    scrollFeed(feed, 800);
+    rendered.rerender(view([...rows, rowOf(61)]));
+
+    expect(feed.scrollTop).toBe(feed.scrollHeight);
+    vi.unstubAllGlobals();
+  });
+
+  it('PressedWhileTheNewestRowIsDrawn_FocusesItRightAway', () => {
+    const rows = range(1, 60);
+    render(
+      <LocaleProvider locale="en">
+        <MessageList
+          channelName="general"
+          rows={rows}
+          hasEarlier={false}
+          loadingEarlier={false}
+          onLoadEarlier={vi.fn()}
+          hasNewer={false}
+          loadingNewer={false}
+          onLoadNewer={vi.fn()}
+          authorName={() => 'Veli'}
+          ownAccountId={undefined}
+          ownName="Alice"
+          locale="en"
+          onRetry={vi.fn()}
+          onDiscard={vi.fn()}
+          onJoin={vi.fn()}
+          editingId="m-60"
+        />
+      </LocaleProvider>,
+    );
+    const feed = screen.getByRole('feed');
+    scrollFeed(feed, 0);
+    const jump = button() as HTMLElement;
+    act(() => {
+      jump.focus();
+    });
+
+    fireEvent.click(jump);
+
+    expect(document.activeElement).toBe(article('message 60'));
+  });
+
+  it('ResizedSoTheViewIsFarFromTheEnd_ShowsTheButton', () => {
+    const callbacks: ((entries: unknown[]) => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: (entries: unknown[]) => void) {
+          callbacks.push(callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    render(view(range(1, 60)));
+    const feed = screen.getByRole('feed');
+    scrollFeed(feed, bottomOf(feed) - 500);
+    expect(button()).toBeNull();
+
+    Object.defineProperty(feed, 'clientHeight', { configurable: true, get: () => 200 });
+    act(() => {
+      for (const callback of callbacks) callback([]);
+    });
+
+    expect(button()).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('PressedWhileDetachedWithoutAHandler_ShowsNoButton', () => {
+    render(view(range(1, 60), { detached: true }));
+    const feed = screen.getByRole('feed');
+    scrollFeed(feed, bottomOf(feed));
+
+    expect(button()).toBeNull();
+  });
+
+  it('PressedWithReducedMotion_ScrollsWithoutAnimation', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+    const scrollTo = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    render(view(range(1, 60)));
+    const feed = screen.getByRole('feed');
+    scrollFeed(feed, 0);
+
+    fireEvent.click(button() as HTMLElement);
+
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'auto' }));
+    scrollTo.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('PressedWhileDetached_AsksTheOwnerForTheNewestViewAndDoesNotScroll', () => {
+    const onJumpToLatest = vi.fn();
+    const scrollTo = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    render(view(range(1, 60), { detached: true, onJumpToLatest }));
+    scrollTo.mockClear();
+
+    fireEvent.click(button() as HTMLElement);
+
+    expect(onJumpToLatest).toHaveBeenCalledTimes(1);
+    expect(scrollTo).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+  });
+});
