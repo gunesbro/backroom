@@ -29,7 +29,7 @@ public sealed class RealtimeOptions
     /// <summary>At most one delivered <c>Typing</c> per account and conversation per this interval on a node (the contract's 3 s); extra calls are dropped silently.</summary>
     public TimeSpan TypingInterval { get; set; } = TimeSpan.FromSeconds(3);
 
-    /// <summary>Entries of a node's typing throttle (each lives one interval); a full table drops further calls.</summary>
+    /// <summary>Hard limit of a node's typing throttle table (expired entries are swept once per interval when it is half full); a full table drops further calls.</summary>
     public int MaxTypingEntries { get; set; } = 50_000;
 
     /// <summary>Connections one account may hold open on one node; further ones are closed.</summary>

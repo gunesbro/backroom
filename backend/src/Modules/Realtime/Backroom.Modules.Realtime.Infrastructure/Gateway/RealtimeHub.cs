@@ -188,7 +188,7 @@ internal sealed partial class RealtimeHub(
             // An access check is a database transaction, so checked calls count like subscribe calls: a client that keeps asking is cut off.
             if (!state.TryCountCall(timeProvider.GetUtcNow(), options.Value.SubscribeWindow, options.Value.MaxSubscribeCallsPerWindow))
             {
-                RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "rate_limited"));
+                RealtimeTelemetry.RejectedTyping.Add(1, new KeyValuePair<string, object?>("reason", "rate_limited"));
                 Context.Abort();
                 throw new HubException(RateLimited);
             }
@@ -200,7 +200,7 @@ internal sealed partial class RealtimeHub(
 
         if (!await CheckAccessAsync(state.AccountId, orgId, conversationId, post: true, cancellationToken))
         {
-            RealtimeTelemetry.RejectedSubscriptions.Add(1, new KeyValuePair<string, object?>("reason", "not_found"));
+            RealtimeTelemetry.RejectedTyping.Add(1, new KeyValuePair<string, object?>("reason", "not_found"));
             await state.Gate.WaitAsync(cancellationToken);
             try
             {

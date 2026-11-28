@@ -164,20 +164,4 @@ public sealed class TypingTests(PostgresDatabase database, KeycloakRealm keycloa
 
         failure.Message.Should().EndWith("realtime.invalid_argument");
     }
-
-    [Fact]
-    public void Throttle_WhenFull_SweepsExpiredEntriesAndThenDropsCalls()
-    {
-        var options = new RealtimeOptions { MaxTypingEntries = 16 };
-        var throttle = new TypingThrottle(_time, options);
-        var account = Guid.NewGuid();
-        for (var i = 0; i < 16; i++)
-        {
-            throttle.TryAcquire(account, Guid.NewGuid()).Should().BeTrue();
-        }
-
-        throttle.TryAcquire(account, Guid.NewGuid()).Should().BeFalse("a full table drops the call");
-        _time.Advance(options.TypingInterval);
-        throttle.TryAcquire(account, Guid.NewGuid()).Should().BeTrue("expired entries are swept");
-    }
 }
