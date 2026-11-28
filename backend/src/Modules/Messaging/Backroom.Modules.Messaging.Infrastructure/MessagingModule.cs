@@ -42,6 +42,7 @@ public static class MessagingModule
         services.TryAddSingleton(provider => new RichText(bool.TryParse(provider.GetRequiredService<IConfiguration>()[RichText.Flag], out var enabled) && enabled));
         services.TryAddSingleton(provider => new MessageEdit(bool.TryParse(provider.GetRequiredService<IConfiguration>()[MessageEdit.Flag], out var enabled) && enabled));
         services.TryAddSingleton(provider => new MessageReply(bool.TryParse(provider.GetRequiredService<IConfiguration>()[MessageReply.Flag], out var enabled) && enabled));
+        services.TryAddSingleton(provider => new MessageReactions(bool.TryParse(provider.GetRequiredService<IConfiguration>()[MessageReactions.Flag], out var enabled) && enabled));
         services.TryAddScoped<IChannelStore, ChannelStore>();
         services.TryAddScoped<IConversationStore, ConversationStore>();
         services.TryAddScoped<IConversationReadAccess, ConversationReadAccess>();

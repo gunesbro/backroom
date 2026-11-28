@@ -124,7 +124,7 @@ internal sealed partial class MessageService
             now.ToString("O", CultureInfo.InvariantCulture), epoch));
 
         LogEdited(logger, messageId, head.ConversationId, organizationId, accountId);
-        return new SentMessage(edited, Created: false, epoch);
+        return new SentMessage(await WithReactionsAsync(accountId, edited, cancellationToken), Created: false, epoch);
     }
 
     /// <summary>

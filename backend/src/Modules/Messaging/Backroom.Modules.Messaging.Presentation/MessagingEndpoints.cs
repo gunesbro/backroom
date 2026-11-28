@@ -54,6 +54,15 @@ public static class MessagingEndpoints
             .PublishLiveEventsAfterCommit()
             .InOrganization()
             .RequireRateLimiting(MessageDeleteRateLimitPolicy.Name);
+        // Reactions (behind Features:MessageReactions): one limit for adding and removing, 30 per 10 seconds per account and organization.
+        endpoints.MapPut("/api/v1/orgs/{orgId:guid}/messages/{messageId:guid}/reactions/{emoji}", AddReactionAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization()
+            .RequireRateLimiting(ReactionRateLimitPolicy.Name);
+        endpoints.MapDelete("/api/v1/orgs/{orgId:guid}/messages/{messageId:guid}/reactions/{emoji}", RemoveReactionAsync)
+            .PublishLiveEventsAfterCommit()
+            .InOrganization()
+            .RequireRateLimiting(ReactionRateLimitPolicy.Name);
         endpoints.MapPost("/api/v1/orgs/{orgId:guid}/conversations/{conversationId:guid}/join", JoinAsync)
             .PublishLiveEventsAfterCommit()
             .InOrganization();
@@ -99,6 +108,7 @@ public static class MessagingEndpoints
         {
             options.AddPolicy<string, MessageEditRateLimitPolicy>(MessageEditRateLimitPolicy.Name);
             options.AddPolicy<string, MessageDeleteRateLimitPolicy>(MessageDeleteRateLimitPolicy.Name);
+            options.AddPolicy<string, ReactionRateLimitPolicy>(ReactionRateLimitPolicy.Name);
         });
 
     private static async Task<IResult> EditMessageAsync(
@@ -116,6 +126,14 @@ public static class MessagingEndpoints
         var result = await messages.DeleteAsync(account.AccountId, messageId, cancellationToken);
         return result.Error == MessageService.EpochUnconfirmed ? EpochUnconfirmed(httpContext) : result.ToHttpResult();
     }
+
+    private static async Task<IResult> AddReactionAsync(
+        Guid messageId, string emoji, ICurrentAccount account, MessageService messages, HttpContext httpContext, CancellationToken cancellationToken) =>
+        ToHttpResult(await messages.AddReactionAsync(account.AccountId, messageId, emoji, cancellationToken), httpContext);
+
+    private static async Task<IResult> RemoveReactionAsync(
+        Guid messageId, string emoji, ICurrentAccount account, MessageService messages, HttpContext httpContext, CancellationToken cancellationToken) =>
+        ToHttpResult(await messages.RemoveReactionAsync(account.AccountId, messageId, emoji, cancellationToken), httpContext);
 
     private static async Task<IResult> ListChannelsAsync(Guid? after, int? limit, ChannelService channels, CancellationToken cancellationToken)
     {
@@ -263,12 +281,15 @@ public static class MessagingEndpoints
     private static MessageQuoteResponse? ToQuote(MessageQuote? quote) =>
         quote is null ? null : new(quote.MessageId, quote.AuthorAccountId, quote.Text, quote.Deleted);
 
+    private static ReactionResponse[]? ToReactions(IReadOnlyList<ReactionSummary>? reactions) =>
+        reactions is null ? null : [.. reactions.Select(reaction => new ReactionResponse(reaction.Emoji, reaction.Count, reaction.ReactedByMe, reaction.Sample))];
+
     // A tombstone answers with its numbers and times only (docs/adr/0011): no author, no client id, no content.
     private static MessageResponse ToResponse(MessageEntry message) => message.DeletedAt is null
-        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt, ToQuote(message.ReplyTo))
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt, ToQuote(message.ReplyTo), ToReactions(message.Reactions))
         : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt, null);
 
     private static SentMessageResponse ToResponse(MessageEntry message, string epoch) => message.DeletedAt is null
-        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt, epoch, ToQuote(message.ReplyTo))
+        ? new(message.Id, message.Seq, message.VersionSeq, message.ClientMessageId, message.AuthorAccountId, message.Text, message.Blocks, message.CreatedAt, null, message.EditedAt, epoch, ToQuote(message.ReplyTo), ToReactions(message.Reactions))
         : new(message.Id, message.Seq, message.VersionSeq, null, null, null, null, message.CreatedAt, message.DeletedAt, null, epoch);
 }

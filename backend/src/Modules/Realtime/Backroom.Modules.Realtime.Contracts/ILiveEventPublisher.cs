@@ -20,6 +20,9 @@ public interface ILiveEventPublisher
     /// <summary>Sends <c>MessageDeleted</c> to the conversation's group.</summary>
     Task PublishAsync(MessageDeletedPayload payload, CancellationToken cancellationToken);
 
+    /// <summary>Sends <c>ReactionsChanged</c> to the conversation's group.</summary>
+    Task PublishAsync(ReactionsChangedPayload payload, CancellationToken cancellationToken);
+
     /// <summary>Sends <c>ChannelCreated</c> to the organization's group.</summary>
     Task PublishAsync(ChannelCreatedPayload payload, CancellationToken cancellationToken);
 

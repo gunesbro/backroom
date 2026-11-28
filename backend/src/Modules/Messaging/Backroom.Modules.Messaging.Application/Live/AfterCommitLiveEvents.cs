@@ -19,6 +19,7 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
     private readonly List<MembershipChangedPayload> _memberships = [];
     private readonly List<MessageEditedPayload> _edited = [];
     private readonly List<MessageDeletedPayload> _deleted = [];
+    private readonly List<ReactionsChangedPayload> _reactions = [];
 
     public void Add(MessagePostedPayload payload) => _messages.Add(payload);
 
@@ -38,6 +39,8 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
 
     public void Add(MessageDeletedPayload payload) => _deleted.Add(payload);
 
+    public void Add(ReactionsChangedPayload payload) => _reactions.Add(payload);
+
     public void AddRemoval(Guid orgId, Guid conversationId, Guid accountId) => _removals.Add((orgId, conversationId, accountId));
 
     public async Task FlushAsync(CancellationToken cancellationToken)
@@ -50,6 +53,7 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
         var memberships = _memberships.ToArray();
         var edited = _edited.ToArray();
         var deleted = _deleted.ToArray();
+        var reactions = _reactions.ToArray();
         _messages.Clear();
         _messagesV2.Clear();
         _channels.Clear();
@@ -58,6 +62,7 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
         _memberships.Clear();
         _edited.Clear();
         _deleted.Clear();
+        _reactions.Clear();
 
         // Removals first: a removed account must not get what follows.
         foreach (var (orgId, conversationId, accountId) in removals)
@@ -155,6 +160,20 @@ internal sealed partial class AfterCommitLiveEvents(ILiveEventPublisher publishe
 #pragma warning restore CA1031
             {
                 LogConversationEventFailed(logger, LiveEventNames.MessageDeleted, exception.GetType().Name, message.OrgId, message.ConversationId);
+            }
+        }
+
+        foreach (var reaction in reactions)
+        {
+            try
+            {
+                await publisher.PublishAsync(reaction, cancellationToken);
+            }
+#pragma warning disable CA1031 // See above.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                LogConversationEventFailed(logger, LiveEventNames.ReactionsChanged, exception.GetType().Name, reaction.OrgId, reaction.ConversationId);
             }
         }
 

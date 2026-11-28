@@ -66,6 +66,6 @@ internal sealed partial class MessageService
 
         long? olderCursor = older.Count > takeOlder ? (takeOlder > 0 ? older[takeOlder - 1].Seq : anchor.Seq) : null;
         long? newerCursor = newer.Count > takeNewer ? (takeNewer > 0 ? newer[takeNewer - 1].Seq : anchor.Seq) : null;
-        return new MessageAround(items, anchor, olderCursor, newerCursor, current);
+        return new MessageAround(await WithReactionsAsync(accountId, items, cancellationToken), anchor, olderCursor, newerCursor, current);
     }
 }

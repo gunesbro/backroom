@@ -14,6 +14,7 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
     private readonly List<MembershipChangedPayload> _memberships = [];
     private readonly List<MessageEditedPayload> _edited = [];
     private readonly List<MessageDeletedPayload> _deleted = [];
+    private readonly List<ReactionsChangedPayload> _reactions = [];
 
     public bool Fail { get; set; }
 
@@ -148,6 +149,26 @@ internal sealed class RecordingLiveEventPublisher : ILiveEventPublisher
         lock (_lock)
         {
             _edited.Add(payload);
+        }
+    }
+
+    public IReadOnlyList<ReactionsChangedPayload> Reactions
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _reactions];
+            }
+        }
+    }
+
+    public async Task PublishAsync(ReactionsChangedPayload payload, CancellationToken cancellationToken)
+    {
+        await BeforeAsync();
+        lock (_lock)
+        {
+            _reactions.Add(payload);
         }
     }
 

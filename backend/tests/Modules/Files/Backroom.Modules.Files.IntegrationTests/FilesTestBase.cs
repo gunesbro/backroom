@@ -383,6 +383,8 @@ public abstract class FilesTestBase(PostgresDatabase database, KeycloakRealm key
 
         public Task PublishAsync(MessageDeletedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
+        public Task PublishAsync(ReactionsChangedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task PublishAsync(MembershipChangedPayload payload, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task RemoveFromConversationAsync(Guid orgId, Guid conversationId, Guid accountId, CancellationToken cancellationToken) =>
