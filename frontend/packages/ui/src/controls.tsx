@@ -195,6 +195,18 @@ export type MenuEntry =
   | { kind: 'separator'; id: string }
   | { kind: 'group'; id: string; label: string; entries: readonly MenuEntry[] };
 
+/** The visible box of the nearest scrolling ancestor (the viewport when there is none). */
+function scrollBounds(element: HTMLElement): { top: number; bottom: number } {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === 'auto' || overflow === 'scroll' || overflow === 'hidden') {
+      const box = node.getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom };
+    }
+  }
+  return { top: 0, bottom: window.innerHeight };
+}
+
 /**
  * A button that opens a menu (WAI-ARIA menu button): Enter, Space or the down arrow open it on the first item; the
  * arrows, Home and End move; Escape closes it and returns focus; Tab or a click outside closes it.
@@ -219,7 +231,8 @@ export function MenuButton({
   /** Shown above the items, not part of the menu (the signed-in account, for example). */
   header?: ReactNode;
   entries: readonly MenuEntry[];
-  placement?: 'below' | 'above';
+  /** 'auto' opens below and flips above when it does not fit below in the nearest scrolling ancestor but does above. */
+  placement?: 'below' | 'above' | 'auto';
 }) {
   const menuId = useId();
   const descriptionId = useId();
@@ -227,6 +240,8 @@ export function MenuButton({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [flipped, setFlipped] = useState(false);
 
   const items = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []);
 
@@ -246,6 +261,22 @@ export function MenuButton({
       document.removeEventListener('pointerdown', outside);
     };
   }, [open, close]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const anchor = wrapperRef.current;
+    if (placement !== 'auto' || !panel || !anchor) return;
+    const bounds = scrollBounds(anchor);
+    const box = panel.getBoundingClientRect();
+    const button = anchor.getBoundingClientRect();
+    const fitsBelow = box.bottom <= bounds.bottom;
+    const fitsAbove = button.top - box.height - 8 >= bounds.top;
+    if (!fitsBelow && fitsAbove) setFlipped(true);
+    return () => {
+      setFlipped(false);
+    };
+  }, [open, placement]);
 
   const menuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
@@ -366,7 +397,14 @@ export function MenuButton({
         </span>
       )}
       {open && (
-        <div className={classes('ph-menu', `ph-menu--${placement}`, menuClassName)}>
+        <div
+          className={classes(
+            'ph-menu',
+            `ph-menu--${placement === 'auto' ? (flipped ? 'above' : 'below') : placement}`,
+            menuClassName,
+          )}
+          ref={panelRef}
+        >
           {header}
           <div id={menuId} ref={menuRef} role="menu" aria-label={label} onKeyDown={menuKeyDown}>
             {render(entries)}

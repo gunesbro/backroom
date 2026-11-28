@@ -273,7 +273,7 @@ describe('Message menu placement', () => {
     const articles = within(log).getAllByRole('article');
     const last = articles[articles.length - 1] as HTMLElement;
     await openMenu(last);
-    expect(within(last).getByRole('menu').closest('.ph-menu')).toHaveClass('ph-menu--above');
+    expect(within(last).getByRole('menu').closest('.ph-menu')).toHaveClass('ph-menu--below');
   });
 });
 

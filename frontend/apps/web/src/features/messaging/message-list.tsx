@@ -73,8 +73,6 @@ const ESTIMATED_ROW_HEIGHT = 64;
 const FOLLOW_DISTANCE = 80;
 /** Earlier messages are asked for once the oldest drawn row is this close to the top of the list. */
 const LOAD_EARLIER_WITHIN = 3;
-/** The last rows, whose menu opens upward (a menu is about three rows tall). */
-const NEAR_END = 3;
 const ROW_KEY_ATTRIBUTE = 'data-row-key';
 
 /**
@@ -407,7 +405,6 @@ export function MessageList({
                 row={row}
                 tabStop={row.key === tabStopKey}
                 position={item.index + 1}
-                nearEnd={item.index >= rows.length - NEAR_END}
                 authorName={authorName}
                 mentionName={mentionName}
                 ownAccountId={ownAccountId}
@@ -453,10 +450,8 @@ const MESSAGE_ACTIONS: readonly {
 function MessageActions({
   message,
   editing,
-  menuAbove,
 }: {
   message: Message | undefined;
-  menuAbove: boolean;
   editing: MessageEditing | undefined;
 }) {
   const t = useTranslate(messages);
@@ -493,7 +488,7 @@ function MessageActions({
             label={t(action.key)}
             button={<Icon name={action.icon} size={16} />}
             menuClassName="bm-actions__menu"
-            placement={menuAbove ? 'above' : 'below'}
+            placement="auto"
             entries={entries}
           />
         ) : (
@@ -510,7 +505,6 @@ const MessageRow = memo(function MessageRow({
   row,
   tabStop,
   position,
-  nearEnd,
   authorName,
   mentionName,
   ownAccountId,
@@ -527,8 +521,6 @@ const MessageRow = memo(function MessageRow({
   tabStop: boolean;
   /** One-based place in the feed (aria-posinset); the size is unknown, as more pages load. */
   position: number;
-  /** One of the last rows: its menu opens upward, as the scroll container would clip it below. */
-  nearEnd: boolean;
   authorName: (accountId: string) => string;
   /** The name of a mentioned member if the client knows it. */
   mentionName?: ((accountId: string) => string | undefined) | undefined;
@@ -657,7 +649,6 @@ const MessageRow = memo(function MessageRow({
         <MessageActions
           message={manageable ? message : undefined}
           editing={manageable ? editing : undefined}
-          menuAbove={nearEnd}
         />
       )}
       <Avatar name={name} toneKey={authorId} shape="square" size="lg" />

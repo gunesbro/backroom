@@ -72,18 +72,61 @@ test('MessageMenu_WhenOpenedOverTheNextRow_StaysAboveItAndTakesThePointer', asyn
   await expect(menu).toHaveCount(0);
 });
 
-// The last message is at the bottom of the scroll container: its menu must stay reachable there.
-test('MessageMenu_WhenOpenedOnTheLastMessage_IsNotClippedByTheList', async ({ page }) => {
+// The last message is at the bottom of the scroll container: its menu must flip upward and stay inside it.
+test('MessageMenu_WhenOpenedOnTheLastMessageOfALongList_OpensUpwardInsideTheList', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 });
   await page.goto('/e2e/message-list.html?own=last');
   await page.getByRole('feed').waitFor();
   const last = page.getByRole('article').last();
   await last.scrollIntoViewIfNeeded();
   await last.hover();
-  await last.getByRole('button', { name: 'More' }).click();
-  const item = page.getByRole('menu').getByRole('menuitem').last();
+  const more = last.getByRole('button', { name: 'More' });
+  await more.click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
   const log = await page.getByRole('feed').boundingBox();
-  const box = await item.boundingBox();
-  if (!log || !box) throw new Error('No box.');
-  expect(box.y + box.height).toBeLessThanOrEqual(log.y + log.height + 1);
+  const box = await menu.boundingBox();
+  const button = await more.boundingBox();
+  if (!log || !box || !button) throw new Error('No box.');
+  expect(box.y + box.height).toBeLessThanOrEqual(button.y + 1);
+  expect(box.y).toBeGreaterThanOrEqual(log.y);
+});
+
+// In a short list there is no room above the first message: the menu stays below it.
+test('MessageMenu_WhenOpenedInAOneMessageList_OpensDownward', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto('/e2e/message-list.html?count=1');
+  await page.getByRole('feed').waitFor();
+  const only = page.getByRole('article').first();
+  await only.hover();
+  const more = only.getByRole('button', { name: 'More' });
+  await more.click();
+  const box = await page.getByRole('menu').boundingBox();
+  const button = await more.boundingBox();
+  if (!box || !button) throw new Error('No box.');
+  expect(box.y).toBeGreaterThanOrEqual(button.y + button.height);
+});
+
+// A focused row must not lift over the next row's action bar, which hangs up into it.
+test('MessageActions_WhenTheRowAboveIsFocused_TheBarOfTheHoveredRowStaysOnTop', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto('/e2e/message-list.html');
+  await page.getByRole('feed').waitFor();
+  const upper = page.locator('[data-row-key="c-198"]');
+  const lower = page.locator('[data-row-key="c-199"]');
+  await upper.scrollIntoViewIfNeeded();
+  await upper.click({ position: { x: 100, y: 10 } });
+  await expect(upper).toBeFocused();
+  await lower.hover();
+  const bar = lower.locator('.bm-actions');
+  await expect(bar).toBeVisible();
+  const box = await bar.boundingBox();
+  if (!box) throw new Error('No box.');
+  const x = box.x + box.width / 2;
+  const y = box.y + 3;
+  const inside = await page.evaluate(
+    ([px, py]) => document.elementFromPoint(px ?? 0, py ?? 0)?.closest('.bm-actions') !== null,
+    [x, y],
+  );
+  expect(inside).toBe(true);
 });

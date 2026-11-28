@@ -423,10 +423,14 @@
 
 /*
  * Rows are absolutely positioned and transformed, so each is its own stacking context and a later row paints over an
- * earlier one, including over the menu that hangs out of the earlier row. The row holding the focus (an open menu keeps
- * it on its item) goes above its neighbours; the menu then covers the next row and takes the pointer.
+ * earlier one. The row whose action bar is mounted goes above its neighbours (the bar hangs up into the row above),
+ * and the row with an open menu above that, so the menu covers the next row and takes the pointer.
  */
-.bm-row:focus-within {
+.bm-row:has(.bm-actions) {
+  z-index: 1;
+}
+
+.bm-row:has([aria-expanded='true']) {
   z-index: 2;
 }
 
