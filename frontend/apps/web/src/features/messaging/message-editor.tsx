@@ -85,22 +85,24 @@ export function MessageEditor({
         save();
       }}
     >
-      <RichField
-        ref={richRef}
-        label={t('editMessage')}
-        placeholder=""
-        describedBy={[hintId, showCounter && counterId, empty && emptyId, error && errorId]
-          .filter(Boolean)
-          .join(' ')}
-        invalid={over}
-        initialBlocks={initial}
-        onChange={(next: RichValue) => {
-          baseline.current ??= JSON.stringify(next.blocks);
-          setBlocks(next.blocks);
-        }}
-        onSubmit={save}
-        onCancel={cancel}
-      />
+      <div className="bm-edit__field">
+        <RichField
+          ref={richRef}
+          label={t('editMessage')}
+          placeholder=""
+          describedBy={[hintId, showCounter && counterId, empty && emptyId, error && errorId]
+            .filter(Boolean)
+            .join(' ')}
+          invalid={over}
+          initialBlocks={initial}
+          onChange={(next: RichValue) => {
+            baseline.current ??= JSON.stringify(next.blocks);
+            setBlocks(next.blocks);
+          }}
+          onSubmit={save}
+          onCancel={cancel}
+        />
+      </div>
       <div className="bm-edit__bar">
         <p id={hintId} className="bm-composer__hint">
           {t('editHint')}
