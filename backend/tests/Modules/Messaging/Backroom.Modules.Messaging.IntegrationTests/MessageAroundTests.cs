@@ -139,6 +139,19 @@ public sealed class MessageAroundTests(PostgresDatabase database, KeycloakRealm 
     }
 
     [Fact]
+    public async Task Around_AtTheMaximumLimit_AnswersFortyNineOlderTheAnchorAndFiftyNewerAsync()
+    {
+        var (organizationId, channelId) = await ChannelAsync();
+        var ids = await SendManyAsync(organizationId, channelId, 150);
+
+        var body = await AroundAsync(organizationId, channelId, ids[75], "limit=100");
+
+        Seqs(body).Should().Equal(Enumerable.Range(27, 100).Reverse().Select(number => (long)number));
+        body["before"]!.GetValue<long>().Should().Be(27);
+        body["after"]!.GetValue<long>().Should().Be(126);
+    }
+
+    [Fact]
     public async Task Around_ADeletedAnchor_IsItsTombstoneInPlaceAsync()
     {
         var (organizationId, channelId) = await ChannelAsync();

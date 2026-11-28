@@ -44,6 +44,7 @@ internal sealed partial class MessageService
         // The anchor takes one place; the older side gets the smaller half. One more than a side can show tells whether it continues.
         var others = pageSize - 1;
         var olderWanted = others / 2;
+        // Two bounded keyset reads (at most 2 * limit rows, each on the (conversation_id, seq) index) instead of one UNION: the split depends on how many rows each side has, which only the two counts tell.
         var older = await messages.ListBeforeAsync(conversationId, anchor.Seq, others + 1, cancellationToken);
         var newer = await messages.ListAfterAsync(conversationId, anchor.Seq, others + 1, cancellationToken);
 
