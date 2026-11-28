@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { rememberSeq } from './seq-memory';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { ApiError } from '@/shared/http';
 import type { ConversationPage, Message, MessageCursor, MessagePage, MessagingApi } from './api';
 
@@ -185,6 +185,18 @@ export function useChannelMessages(api: MessagingApi, orgId: string, channelId: 
       (data) => data && { ...data, pageParams: data.pageParams.with(0, undefined) },
     );
   }, [fetchPreviousPage, queryClient, orgId, channelId]);
+
+  // Opening a channel always starts at its newest messages: a window in the history is dropped when the view closes
+  // (switching away, or the view reopening), so the next open reads the newest messages.
+  useEffect(
+    () => () => {
+      const queryKey = messagesKey(orgId, channelId);
+      if (!isDetached(queryClient.getQueryData<MessagePages>(queryKey))) return;
+      void queryClient.cancelQueries({ queryKey, exact: true });
+      queryClient.removeQueries({ queryKey, exact: true });
+    },
+    [queryClient, orgId, channelId],
+  );
 
   return { ...query, fetchNewer, jumpTo, returnToLatest, detached: isDetached(query.data) };
 }

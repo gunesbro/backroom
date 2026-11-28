@@ -35,6 +35,7 @@ const ORG = '0b6f3c6e-6a49-4c1e-9d0a-3f1f0c2b7a11';
 const OWN_ID = '00000000-0000-4000-8000-000000000001';
 const OTHER_ID = '00000000-0000-4000-8000-000000000002';
 const GENERAL = { id: 'c-general', name: 'general', createdAt: '2026-11-20T09:00:00Z' };
+const RANDOM = { id: 'c-random', name: 'random', createdAt: '2026-11-20T09:05:00Z' };
 const EPOCH = 'e1';
 const QUOTE_NAME = 'Replied message: Veli Yılmaz: message 100';
 
@@ -113,13 +114,13 @@ function serveCell() {
       }),
     ),
     http.get(`${CELL}/api/v1/orgs/${ORG}/conversations`, () =>
-      HttpResponse.json({ items: [GENERAL], next: null }),
+      HttpResponse.json({ items: [GENERAL, RANDOM], next: null }),
     ),
     http.get(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId`, ({ params }) =>
       HttpResponse.json({
         id: params.channelId,
         kind: 'public_channel',
-        name: GENERAL.name,
+        name: params.channelId === RANDOM.id ? RANDOM.name : GENERAL.name,
         description: null,
         createdAt: GENERAL.createdAt,
         archivedAt: null,
@@ -128,7 +129,13 @@ function serveCell() {
         role: 'member',
       }),
     ),
-    http.get(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, ({ request }) => {
+    http.get(`${CELL}/api/v1/orgs/${ORG}/conversations/:channelId/messages`, ({ request, params }) => {
+      if (params.channelId === RANDOM.id) {
+        return HttpResponse.json({
+          items: [{ ...message(1), id: 'r-1', text: 'random message' }],
+          next: null,
+        });
+      }
       const url = new URL(request.url);
       requested.push(url);
       const query = url.searchParams;
@@ -366,7 +373,11 @@ describe('Jump to an original that is not loaded', () => {
     await waitFor(() => {
       expect(latestButton()).toBeNull();
     });
-    expect(within(log).queryByText('message 100')).toBeNull();
+    expect(
+      within(log)
+        .queryAllByText('message 100')
+        .filter((text) => !text.closest('.bm-reply-quote')),
+    ).toHaveLength(0);
     await findInLog(log, 'message 160');
     await waitFor(() => {
       expect(rowOf(log, 'message 160')).toHaveFocus();
@@ -542,6 +553,26 @@ describe('Jump to an original that is not loaded', () => {
       expect(latestButton()).toBeNull();
     });
     expect(await findInLog(log, 'message 160')).toBeInTheDocument();
+  });
+
+  it('ChannelSwitch_AwayAndBack_OpensAtTheNewestMessages', async () => {
+    renderWorkspace();
+    await jumpToOriginal();
+
+    fireEvent.click(screen.getByRole('button', { name: 'random' }));
+    const random = await screen.findByRole('feed', { name: 'Messages in #random' });
+    await within(random).findByText('random message');
+    fireEvent.click(screen.getByRole('button', { name: 'general' }));
+
+    const log = await openLog();
+    expect(
+      within(log)
+        .queryAllByText('message 100')
+        .filter((text) => !text.closest('.bm-reply-quote')),
+    ).toHaveLength(0);
+    expect(latestButton()).toBeNull();
+    // The newest messages were read again, not drawn from the dropped window.
+    expect(requested.filter((url) => url.search === '?limit=50')).toHaveLength(2);
   });
 
   it('Quote_WhenTheFlagIsOff_IsTextAndNothingIsRead', async () => {
