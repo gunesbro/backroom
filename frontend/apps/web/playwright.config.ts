@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Browser smoke tests of the web app: real Chromium against the Vite development server, no backend. The pages under
 // e2e/ render one piece of the app in isolation. Run with `pnpm -C frontend test:e2e`
-// (browsers: `pnpm -C frontend/apps/web exec playwright install chromium`).
+// (browsers: `pnpm -C frontend/apps/web exec playwright install chromium`). CI runs them in the
+// browser-smoke job of frontend.yml, without retries: a flaky test is fixed, not retried.
 // Another port when 5179 is taken: BACKROOM_E2E_PORT.
 const PORT = Number(process.env.BACKROOM_E2E_PORT ?? 5179);
 
@@ -11,7 +12,7 @@ export default defineConfig({
   testMatch: '*.e2e.ts',
   forbidOnly: Boolean(process.env.CI),
   reporter: 'list',
-  use: { baseURL: `http://localhost:${String(PORT)}` },
+  use: { baseURL: `http://localhost:${String(PORT)}`, trace: 'retain-on-failure' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: `pnpm exec vite --port ${String(PORT)} --strictPort`,
