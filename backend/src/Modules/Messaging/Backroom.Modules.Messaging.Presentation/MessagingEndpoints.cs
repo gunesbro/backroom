@@ -143,12 +143,22 @@ public static class MessagingEndpoints
         long? before,
         long? after,
         [FromQuery(Name = "changed_after")] long? changedAfter,
+        Guid? around,
         int? limit,
         ICurrentAccount account,
         MessageService messages,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (around is { } anchorId)
+        {
+            var aroundResult = await messages.ListAroundAsync(account.AccountId, conversationId, anchorId, epoch, before, after, changedAfter, limit, cancellationToken);
+            return IsEpochUnconfirmed(aroundResult)
+                ? EpochUnconfirmed(httpContext)
+                : aroundResult.ToHttpResult(page => TypedResults.Ok(new MessagesAroundResponse(
+                    [.. page.Messages.Select(ToResponse)], page.Before, page.After, new MessageAnchorResponse(page.Anchor.Id, page.Anchor.Seq), page.Epoch)));
+        }
+
         var result = await messages.ListAsync(account.AccountId, conversationId, epoch, before, after, changedAfter, limit, cancellationToken);
         return IsEpochUnconfirmed(result)
             ? EpochUnconfirmed(httpContext)

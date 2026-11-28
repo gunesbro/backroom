@@ -119,7 +119,77 @@ describe('createMessagingApi listMessages', () => {
 
     const page = await api.listMessages('o', 'c', { after: 99 });
 
-    expect(page).toEqual({ messages: [], next: null });
+    expect(page).toEqual({ messages: [], next: null, newest: true });
+  });
+
+  it('ListMessages_WithAfterAndMoreNewer_IsNotTheNewest', async () => {
+    answer({ items: [message(11)], next: 11 });
+
+    const page = await api.listMessages('o', 'c', { after: 10 });
+
+    expect(page.newest).toBe(false);
+  });
+
+  it('ListMessages_Around_AsksWithoutAnEpochAndReadsTheCursorsAndTheEpoch', async () => {
+    const fetchSpy = answer({
+      items: [message(13), message(12), message(11)],
+      before: 11,
+      after: 13,
+      anchor: { id: 'm12', seq: 12 },
+      epoch: 'e7',
+    });
+
+    const page = await api.listMessages('o', 'c', { around: 'm12' });
+
+    expect(fetchSpy.mock.calls[0]?.[0] as string).toBe(
+      'https://cell.example.test/api/v1/orgs/o/conversations/c/messages?limit=50&around=m12',
+    );
+    expect(page).toEqual({
+      messages: [message(13), message(12), message(11)],
+      next: 11,
+      epoch: 'e7',
+      newest: false,
+    });
+  });
+
+  it('ListMessages_AroundWithNothingNewer_IsTheNewest', async () => {
+    answer({
+      items: [message(2), message(1)],
+      before: null,
+      after: null,
+      anchor: { id: 'm1', seq: 1 },
+      epoch: 'e7',
+    });
+
+    const page = await api.listMessages('o', 'c', { around: 'm1' });
+
+    expect(page.newest).toBe(true);
+    expect(page.next).toBeNull();
+  });
+
+  it('ListMessages_WithACursorOfAnEpoch_SendsItAndKeepsItOnThePage', async () => {
+    const fetchSpy = answer({ items: [message(9)], next: null });
+
+    const page = await api.listMessages('o', 'c', { before: 10, epoch: 'e7' });
+
+    expect(fetchSpy.mock.calls[0]?.[0] as string).toBe(
+      'https://cell.example.test/api/v1/orgs/o/conversations/c/messages?limit=50&before=10&epoch=e7',
+    );
+    expect(page.epoch).toBe('e7');
+  });
+
+  it('ListMessages_Around_EncodesTheMessageId', async () => {
+    const fetchSpy = answer({
+      items: [],
+      before: null,
+      after: null,
+      anchor: { id: 'x', seq: 1 },
+      epoch: 'e',
+    });
+
+    await api.listMessages('o', 'c', { around: 'a&b=c' });
+
+    expect(new URL(fetchSpy.mock.calls[0]?.[0] as string).searchParams.get('around')).toBe('a&b=c');
   });
 });
 

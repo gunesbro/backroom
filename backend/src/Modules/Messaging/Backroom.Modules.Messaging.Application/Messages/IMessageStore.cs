@@ -18,6 +18,9 @@ internal interface IMessageStore
     /// <summary>The message the author sent to the channel with that client message id, if any.</summary>
     Task<MessageEntry?> FindAsync(Guid channelId, Guid authorAccountId, Guid clientMessageId, CancellationToken cancellationToken);
 
+    /// <summary>The message (a tombstone included) if it is in the conversation, else <see langword="null"/>: unknown and foreign ids look the same.</summary>
+    Task<MessageEntry?> FindInConversationAsync(Guid conversationId, Guid messageId, CancellationToken cancellationToken);
+
     /// <summary>Messages (tombstones included) with a sequence number below <paramref name="before"/>, newest first, at most <paramref name="count"/>.</summary>
     Task<IReadOnlyList<MessageEntry>> ListBeforeAsync(Guid channelId, long before, int count, CancellationToken cancellationToken);
 

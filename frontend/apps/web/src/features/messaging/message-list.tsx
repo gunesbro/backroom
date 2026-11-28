@@ -54,6 +54,8 @@ export type MessageListHandle = {
    * it on the list's own tab stop instead.
    */
   focusRow: (key: string) => void;
+  /** The rows are about to become the newest messages again: the list then follows them from the end. */
+  followLatest: () => void;
 };
 
 export type Row =
@@ -78,6 +80,8 @@ const LOAD_EARLIER_WITHIN = 3;
 const ROW_KEY_ATTRIBUTE = 'data-row-key';
 /** How long the original of a quote stays highlighted after a jump to it. */
 const FLASH_MS = 1600;
+/** How long a jump waits for its scroll to report before the list may load pages again without it. */
+const SETTLE_MS = 500;
 
 /**
  * The messages of a channel, oldest first, virtualized (TanStack Virtual): only the rows near the view are in the
@@ -103,6 +107,9 @@ export function MessageList({
   editing,
   editingId,
   onReply,
+  detached = false,
+  onJumpToLatest,
+  onJumpUnloaded,
   ref,
 }: {
   channelName: string;
@@ -130,6 +137,17 @@ export function MessageList({
   editingId?: string | undefined;
   /** Replies to a message (the action bar's button); absent without replying: no button. */
   onReply?: ((message: Message) => void) | undefined;
+  /**
+   * The rows are a window in the history, not the newest messages (after a jump, or after reading far back): the list
+   * does not follow new messages, and offers to go back to the newest ones (`onJumpToLatest`).
+   */
+  detached?: boolean | undefined;
+  onJumpToLatest?: (() => void) | undefined;
+  /**
+   * Goes to a quoted original that is not in the rows (the owner replaces them with a window around it); the list
+   * scrolls to it, marks it and moves the focus as for a loaded one once it is in the rows. Absent: such a quote is text.
+   */
+  onJumpUnloaded?: ((messageId: string) => Promise<boolean>) | undefined;
   ref?: Ref<MessageListHandle>;
 }) {
   const t = useTranslate(messages);
@@ -137,6 +155,11 @@ export function MessageList({
   const following = useRef(true);
   // Loading earlier messages waits until the list has been scrolled to its end once.
   const armed = useRef(false);
+  // A jump has just moved the view and its scroll has not landed yet: the drawn range is stale.
+  const settling = useRef(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Counts the jumps whose scroll was given up on: the loading checks run again then.
+  const [settled, setSettled] = useState(0);
   // The row at the top of the view after the last change, and where it was: rows added or dropped above it move it.
   const previous = useRef<{ rows: readonly Row[]; anchor?: { key: string; start: number } }>({ rows });
 
@@ -193,10 +216,31 @@ export function MessageList({
     [rows, virtualizer],
   );
 
+  // A detached list never follows; once the newest messages are back after the person asked for them, it does.
+  const followNext = useRef(false);
+  // "Jump to latest" had the focus: it moves to the newest message, as the button goes away.
+  const focusLatest = useRef(false);
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
     const before = previous.current;
+    if (detached) {
+      following.current = false;
+    } else if (followNext.current) {
+      followNext.current = false;
+      following.current = true;
+      const last = rows.at(-1);
+      // Also ends a scroll to an original that is still settling, which would otherwise pull the view back to it.
+      if (last) virtualizer.scrollToIndex(rows.length - 1, { align: 'end' });
+      if (focusLatest.current && last) {
+        focusLatest.current = false;
+        const lastElement = element.querySelector<HTMLElement>(
+          `[${ROW_KEY_ATTRIBUTE}="${CSS.escape(last.key)}"]`,
+        );
+        if (lastElement) lastElement.focus({ preventScroll: true });
+        else pendingFocus.current = last.key;
+      }
+    }
     if (following.current) {
       element.scrollTop = element.scrollHeight;
     } else if (before.rows !== rows && before.anchor) {
@@ -210,7 +254,7 @@ export function MessageList({
 
     previous.current = { rows, ...anchorAt(element.scrollTop) };
     if (element.scrollHeight <= element.clientHeight) armed.current = true;
-  }, [rows, total, virtualizer, anchorAt]);
+  }, [rows, total, virtualizer, anchorAt, detached]);
 
   const items = virtualizer.getVirtualItems();
   // Day keys and texts are formatted once per message time and language, not on every scroll; today and yesterday
@@ -271,10 +315,15 @@ export function MessageList({
           pendingFocus.current = target;
         }
       },
+      followLatest: () => {
+        followNext.current = true;
+      },
     }),
     [virtualizer],
   );
-  // The messages that are in the list: a quote can go to its original only when it is one of them.
+  // The messages that are in the list: a quote can go to its original when it is one of them, or when the owner can
+  // bring it in.
+  const canJumpUnloaded = onJumpUnloaded !== undefined;
   const loadedIds = useMemo(
     () => new Set(rows.flatMap((row) => (row.message ? [row.message.id] : []))),
     [rows],
@@ -284,18 +333,49 @@ export function MessageList({
   useEffect(
     () => () => {
       clearTimeout(flashTimer.current);
+      clearTimeout(settleTimer.current);
     },
     [],
   );
+  const onJumpUnloadedRef = useRef(onJumpUnloaded);
+  onJumpUnloadedRef.current = onJumpUnloaded;
+  /** The original asked for that is not in the rows yet; the latest request wins. */
+  const pendingJump = useRef<{ messageId: string }>(undefined);
   /** Goes to the original of a quote and marks it for a moment; the keyboard's focus follows. */
   const jump = useCallback(
     (messageId: string, keyboard: boolean) => {
       const at = rowsRef.current.findIndex((row) => row.message?.id === messageId);
       const key = rowsRef.current[at]?.key;
-      if (key === undefined) return;
+      pendingJump.current = undefined;
+      if (key === undefined) {
+        const load = onJumpUnloadedRef.current;
+        if (!load) return;
+        // The rows are replaced by a window around the original, so the quote that was used goes away with them:
+        // the focus moves to the original however the quote was used.
+        const request = { messageId };
+        pendingJump.current = request;
+        void load(messageId).then((shown) => {
+          if (!shown && pendingJump.current === request) pendingJump.current = undefined;
+        });
+        return;
+      }
       // Going to the row is a move away from the end: the list must not snap back to following new messages.
       following.current = false;
+      const from = scrollRef.current?.scrollTop ?? 0;
+      const target = virtualizer.getOffsetForIndex(at, 'center')?.[0];
       virtualizer.scrollToIndex(at, { align: 'center' });
+      // The rows drawn until the scroll lands are those of the old position (the end, or the top): they must not ask
+      // for newer or earlier pages. The next scroll event (the jump's own) lets them ask again; a scroll that does not
+      // move (the row is already there) has none, and a scroll that never reports is given up after a moment.
+      clearTimeout(settleTimer.current);
+      settling.current = target !== undefined && Math.abs(target - from) >= 1;
+      if (settling.current) {
+        settleTimer.current = setTimeout(() => {
+          settling.current = false;
+          clearTimeout(settleTimer.current);
+          setSettled((count) => count + 1);
+        }, SETTLE_MS);
+      }
       clearTimeout(flashTimer.current);
       setFlashId(messageId);
       flashTimer.current = setTimeout(() => {
@@ -310,6 +390,15 @@ export function MessageList({
     },
     [virtualizer],
   );
+  // The window around an original asked for has arrived: go to it as to a loaded one, with the focus.
+  useLayoutEffect(() => {
+    const request = pendingJump.current;
+    if (!request || !rows.some((row) => row.message?.id === request.messageId)) return;
+    // The row that had the focus (the reply whose quote was used) is gone with the old rows: the focus goes to the
+    // original, not to the row now nearest to where that one was.
+    focusedKey.current = undefined;
+    jump(request.messageId, true);
+  }, [rows, jump]);
   const onLogFocus = (event: FocusEvent<HTMLElement>) => {
     const key = event.target.closest(`[${ROW_KEY_ATTRIBUTE}]`)?.getAttribute(ROW_KEY_ATTRIBUTE);
     focusedKey.current = key ?? undefined;
@@ -382,6 +471,7 @@ export function MessageList({
   useEffect(() => {
     if (
       armed.current &&
+      !settling.current &&
       hasEarlier &&
       !loadingEarlier &&
       firstIndex !== undefined &&
@@ -389,10 +479,11 @@ export function MessageList({
     ) {
       onLoadEarlier();
     }
-  }, [firstIndex, hasEarlier, loadingEarlier, onLoadEarlier]);
+  }, [firstIndex, hasEarlier, loadingEarlier, onLoadEarlier, settled]);
   useEffect(() => {
     if (
       armed.current &&
+      !settling.current &&
       hasNewer &&
       !loadingNewer &&
       lastIndex !== undefined &&
@@ -400,78 +491,103 @@ export function MessageList({
     ) {
       onLoadNewer();
     }
-  }, [lastIndex, rows.length, hasNewer, loadingNewer, onLoadNewer]);
+  }, [lastIndex, rows.length, hasNewer, loadingNewer, onLoadNewer, settled]);
 
   return (
-    <div
-      ref={scrollRef}
-      className="bm-log"
-      role="feed"
-      // The list is virtualized and long: a separate live region announces new messages.
-      aria-label={t('messagesLabel', { name: channelName })}
-      aria-busy={loadingEarlier || loadingNewer}
-      onKeyDown={onRowKeyDown}
-      onFocus={onLogFocus}
-      onBlur={onLogBlur}
-      onScroll={(event) => {
-        const element = event.currentTarget;
-        previous.current = { rows, ...anchorAt(element.scrollTop) };
-        following.current = element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_DISTANCE;
-        if (element.scrollTop > 0 || following.current) armed.current = true;
-      }}
-    >
-      {loadingEarlier && <p className="bm-log__status">{t('loadingEarlier')}</p>}
-      <ol className="bm-rows" role="none" style={{ height: total }}>
-        {items.map((item) => {
-          const row = rows[item.index];
-          if (!row) return null;
-          // A day divider above the first message of each day (docs/design: Main, "Bugün").
-          const day = dayOf(createdAtOf(row));
-          const previous = rows[item.index - 1];
-          const newDay = !previous || dayOf(createdAtOf(previous)).key !== day.key;
-          const dayLabel = day.key === today ? t('today') : day.key === yesterday ? t('yesterday') : day.text;
-          return (
-            <li
-              key={item.key}
-              role="none"
-              ref={virtualizer.measureElement}
-              data-index={item.index}
-              className="bm-row"
-              style={{ transform: `translateY(${String(item.start)}px)` }}
-            >
-              {newDay && (
-                <p className="bm-day">
-                  <span>{dayLabel}</span>
-                </p>
-              )}
-              <MessageRow
-                row={row}
-                tabStop={row.key === tabStopKey}
-                position={item.index + 1}
-                authorName={authorName}
-                mentionName={mentionName}
-                ownAccountId={ownAccountId}
-                ownName={ownName}
-                locale={locale}
-                onRetry={onRetry}
-                onDiscard={onDiscard}
-                onJoin={onJoin}
-                editing={editing}
-                isEditing={editingId !== undefined && row.message?.id === editingId}
-                onReply={onReply}
-                onJump={jump}
-                quoteLoaded={
-                  row.message?.replyTo !== undefined &&
-                  row.message.replyTo !== null &&
-                  loadedIds.has(row.message.replyTo.messageId)
-                }
-                flash={flashId !== undefined && row.message?.id === flashId}
-              />
-            </li>
-          );
-        })}
-      </ol>
-    </div>
+    <>
+      <div
+        ref={scrollRef}
+        className="bm-log"
+        role="feed"
+        // The list is virtualized and long: a separate live region announces new messages.
+        aria-label={t('messagesLabel', { name: channelName })}
+        aria-busy={loadingEarlier || loadingNewer}
+        onKeyDown={onRowKeyDown}
+        onFocus={onLogFocus}
+        onBlur={onLogBlur}
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          settling.current = false;
+          clearTimeout(settleTimer.current);
+          previous.current = { rows, ...anchorAt(element.scrollTop) };
+          following.current =
+            !detached && element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_DISTANCE;
+          if (element.scrollTop > 0 || following.current) armed.current = true;
+        }}
+      >
+        {loadingEarlier && <p className="bm-log__status">{t('loadingEarlier')}</p>}
+        <ol className="bm-rows" role="none" style={{ height: total }}>
+          {items.map((item) => {
+            const row = rows[item.index];
+            if (!row) return null;
+            // A day divider above the first message of each day (docs/design: Main, "Bugün").
+            const day = dayOf(createdAtOf(row));
+            const previous = rows[item.index - 1];
+            const newDay = !previous || dayOf(createdAtOf(previous)).key !== day.key;
+            const dayLabel =
+              day.key === today ? t('today') : day.key === yesterday ? t('yesterday') : day.text;
+            return (
+              <li
+                key={item.key}
+                role="none"
+                ref={virtualizer.measureElement}
+                data-index={item.index}
+                className="bm-row"
+                style={{ transform: `translateY(${String(item.start)}px)` }}
+              >
+                {newDay && (
+                  <p className="bm-day">
+                    <span>{dayLabel}</span>
+                  </p>
+                )}
+                <MessageRow
+                  row={row}
+                  tabStop={row.key === tabStopKey}
+                  position={item.index + 1}
+                  authorName={authorName}
+                  mentionName={mentionName}
+                  ownAccountId={ownAccountId}
+                  ownName={ownName}
+                  locale={locale}
+                  onRetry={onRetry}
+                  onDiscard={onDiscard}
+                  onJoin={onJoin}
+                  editing={editing}
+                  isEditing={editingId !== undefined && row.message?.id === editingId}
+                  onReply={onReply}
+                  onJump={jump}
+                  quoteReachable={
+                    row.message?.replyTo !== undefined &&
+                    row.message.replyTo !== null &&
+                    (canJumpUnloaded || loadedIds.has(row.message.replyTo.messageId))
+                  }
+                  flash={flashId !== undefined && row.message?.id === flashId}
+                />
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+      {detached && onJumpToLatest && (
+        // After the log in the page, so Tab reaches it between the messages and the composer; it floats over the
+        // log's foot. Its focus goes to the newest message once it has done its work (and is gone).
+        <div className="bm-latest">
+          <button
+            type="button"
+            className="bm-latest__button"
+            onClick={(event) => {
+              const hadFocus = event.currentTarget === document.activeElement;
+              followNext.current = true;
+              focusLatest.current = hadFocus;
+              onJumpToLatest();
+            }}
+          >
+            <Icon name="chevronDown" size={16} />
+            {t('jumpToLatest')}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -575,7 +691,7 @@ const MessageRow = memo(function MessageRow({
   isEditing,
   onReply,
   onJump,
-  quoteLoaded,
+  quoteReachable,
   flash,
 }: {
   row: Row;
@@ -597,8 +713,8 @@ const MessageRow = memo(function MessageRow({
   isEditing: boolean;
   onReply: ((message: Message) => void) | undefined;
   onJump: (messageId: string, keyboard: boolean) => void;
-  /** The original of this row's quote is in the list. */
-  quoteLoaded: boolean;
+  /** The original of this row's quote is in the list, or can be brought into it. */
+  quoteReachable: boolean;
   /** This row is the original the person just jumped to. */
   flash: boolean;
 }) {
@@ -675,7 +791,9 @@ const MessageRow = memo(function MessageRow({
     return (
       <div
         ref={rowRef}
-        className="bm-message bm-message--deleted"
+        className={
+          flash ? 'bm-message bm-message--deleted bm-message--flash' : 'bm-message bm-message--deleted'
+        }
         role="article"
         aria-labelledby={headId}
         aria-posinset={position}
@@ -764,7 +882,7 @@ const MessageRow = memo(function MessageRow({
             quote={quote}
             authorId={quoteAuthor}
             name={quoteAuthor !== '' && quoteAuthor === ownAccountId ? ownName : authorName(quoteAuthor)}
-            canJump={quoteLoaded}
+            canJump={quoteReachable}
             onJump={onJump}
           />
         )}

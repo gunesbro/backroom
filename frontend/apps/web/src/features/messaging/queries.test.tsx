@@ -25,7 +25,7 @@ function fakeApi() {
       return Promise.resolve({ messages: seqs.map(message), next: seqs.at(-1) ?? null });
     }
 
-    const top = cursor ? cursor.before - 1 : 200;
+    const top = cursor && 'before' in cursor ? cursor.before - 1 : 200;
     for (let seq = top; seq >= 1 && seqs.length < PAGE; seq -= 1) seqs.push(seq);
     const last = seqs.at(-1) ?? 1;
     return Promise.resolve({ messages: seqs.map(message), next: last > 1 ? last : null });

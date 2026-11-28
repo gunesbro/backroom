@@ -21,6 +21,9 @@ export default defineConfig({
   },
   test: {
     name: 'ops',
+    env: { BACKROOM_TEST_CI: process.env.CI ? '1' : '' },
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
     environment: 'jsdom',
     setupFiles: ['./src/testing/setup.ts'],
   },

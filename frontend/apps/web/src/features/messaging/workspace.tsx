@@ -41,6 +41,7 @@ import { BrowseChannelsDialog } from './browse-channels-dialog';
 import {
   conversationKey,
   conversationsKey,
+  isResyncRequired,
   MAX_MEMBER_PAGES,
   messagesKey,
   oldestFirst,
@@ -149,6 +150,21 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
     else leaving.current.delete(conversationId);
   }, []);
   const channelIds = useMemo(() => channels.channels.map((channel) => channel.id), [channels.channels]);
+  // A deleted message is nobody's reply target any more, in any channel (ids are unique): its author must not stay in
+  // a bar, also while a jump's window does not hold it. Unsent replies to it lose its author and text too.
+  const { markOriginalDeleted } = pending;
+  const originalDeleted = useCallback(
+    (messageId: string) => {
+      markOriginalDeleted(messageId);
+      setReplyTargets((current) => {
+        if (!Object.values(current).some((target) => target.messageId === messageId)) return current;
+        return Object.fromEntries(
+          Object.entries(current).filter(([, target]) => target.messageId !== messageId),
+        );
+      });
+    },
+    [markOriginalDeleted],
+  );
   const live = useLiveUpdates({
     cell: organization.cell,
     api,
@@ -158,7 +174,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
     ownAccountId: user.accountId,
     detailedId: infoFor,
     onRemoved: drop,
-    onMessageDeleted: pending.markOriginalDeleted,
+    onMessageDeleted: originalDeleted,
   });
   const { clearActivity } = live;
   const select = useCallback(
@@ -226,6 +242,7 @@ function OrganizationWorkspace({ organization, switcher, account }: WorkspacePro
               channel={selected}
               joined={channelIds.includes(selected.id)}
               pending={pending}
+              onOriginalDeleted={originalDeleted}
               replyTarget={replyTargets[selected.id]}
               onReplyTargetChange={setReplyTarget}
               otherNames={otherNames}
@@ -315,6 +332,7 @@ function ChannelView({
   channel,
   joined,
   pending,
+  onOriginalDeleted,
   replyTarget,
   onReplyTargetChange,
   otherNames,
@@ -329,6 +347,8 @@ function ChannelView({
   /** The channel is in the person's own list (the sidebar). */
   joined: boolean;
   pending: ReturnType<typeof usePendingMessages>;
+  /** A message was deleted: replies being written to it, and reply targets naming it, forget it. */
+  onOriginalDeleted: (messageId: string) => void;
   /** The message the next one replies to, if the person chose one. */
   replyTarget: ReplyTarget | undefined;
   onReplyTargetChange: (channelId: string, target: ReplyTarget | undefined) => void;
@@ -344,6 +364,8 @@ function ChannelView({
   const t = useTranslate(messages);
   const { user } = useAuth();
   const query = useChannelMessages(api, orgId, channel.id);
+  // A window in the history (after a jump to a message, or reading far back): no live messages, no unsent rows.
+  const { detached } = query;
   // Names of the organization's members, loaded page by page only while an author on screen is unknown.
   const members = useOrganizationMembers(api, orgId);
   // The channel's kind, archive state and member count; the messages do not wait for it.
@@ -411,14 +433,16 @@ function ChannelView({
     const known = new Set(confirmed.map((message) => message.id));
     const knownClient = new Set(confirmed.map((message) => message.clientMessageId));
     // Confirmed messages not in a fetched page yet are shown from the pending list (only next to the newest page).
-    const overlay = query.hasPreviousPage
+    const overlay = detached
       ? []
       : pendingHere.flatMap((item) =>
           item.message && !known.has(item.message.id)
             ? [{ key: rowKey(item.message), message: item.message, overlay: true }]
             : [],
         );
-    const unsent = pendingHere
+    // Unsent messages belong after the newest ones: a window in the history does not show them (they stay pending,
+    // and come back with the newest messages).
+    const unsent = (detached ? [] : pendingHere)
       .filter((item) => item.status !== 'confirmed' && !knownClient.has(item.clientMessageId))
       .map((item) => ({
         key: rowKey({ authorAccountId: ownAccountId ?? '', clientMessageId: item.clientMessageId, id: '' }),
@@ -429,7 +453,7 @@ function ChannelView({
       return { key: rowKey(message), message };
     });
     return [...confirmedRows, ...overlay, ...unsent];
-  }, [confirmed, pendingHere, query.hasPreviousPage, ownAccountId, rowKeys]);
+  }, [confirmed, pendingHere, detached, ownAccountId, rowKeys]);
   // Remember what was committed: only the messages in the list, and only when something changed.
   useLayoutEffect(() => {
     // Recording what React committed is the point of this effect; it sets state only when the keys changed.
@@ -479,7 +503,36 @@ function ChannelView({
   const loadNewer = useCallback(() => {
     void fetchNewer();
   }, [fetchNewer]);
-  const { retry: retryMessage, discard: discardMessage, markOriginalDeleted } = pending;
+  // Going to the original of a quote that is not loaded (with replying, Phase 2 step 9): the view becomes a window
+  // around it. An original that cannot be read any more leaves the view as it is, with a short notice.
+  const { jumpTo, returnToLatest, cancelJump } = query;
+  const [jumpNotice, setJumpNotice] = useState<'gone' | 'failed'>();
+  const jumpUnloaded = useCallback(
+    async (messageId: string) => {
+      setJumpNotice(undefined);
+      const result = await jumpTo(messageId);
+      // A jump overtaken by another, by a return to the newest messages or by a send has nothing to say.
+      if (result === 'gone' || result === 'failed') setJumpNotice(result);
+      return result === 'shown';
+    },
+    [jumpTo],
+  );
+  const jumpToLatest = useCallback(() => {
+    setJumpNotice(undefined);
+    void returnToLatest();
+  }, [returnToLatest]);
+  // A cursor of another epoch (a restored cell, ADR 0011): what is held cannot be continued, so the view starts over
+  // from the newest messages, as when the channel is opened. Until step 15 the client keeps no epoch of its own: the
+  // newest view's reads carry none, so only the cursors of a jump's window (which carry its answer's epoch) can be
+  // told apart here; the contract's comparison of a cached epoch is not done yet.
+  const resync = isResyncRequired(query.error);
+  useEffect(() => {
+    if (!resync) return;
+    listRef.current?.followLatest();
+    void returnToLatest();
+  }, [resync, returnToLatest]);
+  const { retry: retryMessage, discard: discardMessage } = pending;
+  const markOriginalDeleted = onOriginalDeleted;
   const retry = useCallback(
     (clientMessageId: string) => {
       retryMessage(channel.id, clientMessageId);
@@ -619,19 +672,19 @@ function ChannelView({
   );
   /** ArrowUp in the empty composer: the person's newest own message in the loaded list, if it can be edited. */
   const editNewest = useCallback(() => {
-    if (query.hasPreviousPage || ownAccountId === undefined) return;
+    if (detached || ownAccountId === undefined) return;
     const newest = confirmed.findLast(
       (message) => !message.deletedAt && message.authorAccountId === ownAccountId,
     );
     if (newest && editableBlocks(newest.blocks, newest.text) !== null) startEdit(newest.id);
-  }, [query.hasPreviousPage, ownAccountId, confirmed, startEdit]);
+  }, [detached, ownAccountId, confirmed, startEdit]);
 
   // A delete can be learned without a live event (a read, a catch-up, a refused edit): unsent and just-sent replies
   // to a message that is a tombstone in the loaded list must forget its author and text all the same.
-  const quotedIds = pendingHere.flatMap((item) => [
-    item.replyTo?.messageId,
-    item.message?.replyTo?.messageId,
-  ]);
+  const quotedIds = [
+    replyTarget?.messageId,
+    ...pendingHere.flatMap((item) => [item.replyTo?.messageId, item.message?.replyTo?.messageId]),
+  ];
   const deletedQuotedIds = confirmed
     .filter((message) => message.deletedAt && quotedIds.includes(message.id))
     .map((message) => message.id)
@@ -644,17 +697,23 @@ function ChannelView({
   const composerShown = !archived && !previewing && stateKnown;
   const replyEnabled = config.messageReplyEnabled && composerShown;
   const composerRef = useRef<ComposerHandle>(null);
-  // The target holds only the original's id: its author and text are read from the loaded list when the bar is drawn,
-  // so an edit shows in the bar and a deleted original never stays in it.
-  const original = useMemo(
-    () => (replyTarget ? rows.find((row) => row.message?.id === replyTarget.messageId)?.message : undefined),
-    [replyTarget, rows],
-  );
+  // The target holds the original's id and author: its text is read from the loaded list when the bar is drawn, so
+  // an edit shows in the bar and a deleted original never stays in it. In a window in the history (a jump) that does
+  // not hold it, the bar stays with the author's name and no excerpt.
+  const original = useMemo<Pick<Message, 'id' | 'authorAccountId' | 'text' | 'deletedAt'> | undefined>(() => {
+    if (!replyTarget) return undefined;
+    const loaded = rows.find((row) => row.message?.id === replyTarget.messageId)?.message;
+    if (loaded || !detached || replyTarget.authorAccountId === undefined) return loaded;
+    return { id: replyTarget.messageId, authorAccountId: replyTarget.authorAccountId, text: '' };
+  }, [replyTarget, rows, detached]);
   // An original that is not in the loaded list (or is a tombstone) ends the reply quietly, once the list is there.
   // Known limit: this also happens when the page that held the original is evicted (`maxPages`) or when a reset
   // reloads only the newest page; the person then picks the message again.
+  // A window in the history (a jump) may not hold it: the target stays until the newest messages are back.
   const targetGone =
-    replyTarget !== undefined && query.data !== undefined && (!original || Boolean(original.deletedAt));
+    replyTarget !== undefined &&
+    query.data !== undefined &&
+    (original ? Boolean(original.deletedAt) : !detached);
   // A send that the server refused because its original is gone ends the reply to that original too.
   const targetRefused =
     replyTarget !== undefined &&
@@ -676,7 +735,7 @@ function ChannelView({
   }, [focusRequest]);
   const startReply = useCallback(
     (target: Message) => {
-      onReplyTargetChange(channel.id, { messageId: target.id });
+      onReplyTargetChange(channel.id, { messageId: target.id, authorAccountId: target.authorAccountId });
       setFocusRequest((count) => count + 1);
     },
     [onReplyTargetChange, channel.id],
@@ -752,13 +811,33 @@ function ChannelView({
             editing={editing}
             editingId={activeEditingId}
             onReply={replyEnabled ? startReply : undefined}
+            detached={detached}
+            onJumpToLatest={jumpToLatest}
+            onJumpUnloaded={config.messageReplyEnabled ? jumpUnloaded : undefined}
             ref={listRef}
           />
+          {/* Always in the page, so a screen reader hears the text when it appears. */}
+          <p className="bm-jump-notice" role="status">
+            {jumpNotice && (
+              <>
+                {jumpNotice === 'gone' ? t('messageUnavailable') : t('generic')}{' '}
+                <button
+                  type="button"
+                  className="ph-link"
+                  onClick={() => {
+                    setJumpNotice(undefined);
+                  }}
+                >
+                  {t('close')}
+                </button>
+              </>
+            )}
+          </p>
           <NewMessageAnnouncer
             rows={rows}
             ownAccountId={ownAccountId}
             authorName={authorName}
-            active={!query.hasPreviousPage}
+            active={!detached}
           />
         </>
       )}
@@ -816,6 +895,14 @@ function ChannelView({
               },
             );
             if (activeReply) onReplyTargetChange(channel.id, undefined);
+            // The new message goes after the newest ones: a window in the history makes way for them.
+            // A jump still on its way is abandoned: its window must not replace the newest messages after the send.
+            if (detached) {
+              listRef.current?.followLatest();
+              jumpToLatest();
+            } else {
+              cancelJump();
+            }
           }}
         />
       ) : null}

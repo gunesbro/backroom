@@ -73,7 +73,7 @@ internal sealed partial class MessageService(
         Error.Validation("messaging.reply_invalid", "A reply must quote an existing message of the same conversation that is not deleted; the reason names what was refused.");
 
     public static readonly Error PageInvalid =
-        Error.Validation("messaging.page_invalid", "Use only one of before, after and changed_after, a cursor of 0 or more, and a page size between 1 and 100.");
+        Error.Validation("messaging.page_invalid", "Use only one of before, after, changed_after and around, a cursor of 0 or more, and a page size between 1 and 100.");
 
     public static readonly Error ResyncRequired =
         Error.Conflict("messaging.resync_required", "The cursor does not belong to this cell's current state; run a full resync.");
