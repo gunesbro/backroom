@@ -21,6 +21,9 @@ public static class RealtimeTelemetry
     internal static readonly Counter<long> PublishFailures =
         s_meter.CreateCounter<long>("backroom.realtime.publish_failures", "{event}", "Live events dropped (Valkey failed, timed out or the node was saturated).");
 
+    internal static readonly Counter<long> DroppedTyping =
+        s_meter.CreateCounter<long>("backroom.realtime.dropped_typing", "{call}", "Typing calls dropped by the throttle (at most one delivered per account and conversation per 3 s).");
+
     internal static readonly Counter<long> RevokedRequests =
         s_meter.CreateCounter<long>("backroom.realtime.revoked_requests", "{request}", "Requests and hub connects refused because the token's session was revoked.");
 

@@ -17,6 +17,9 @@ namespace Backroom.Modules.Realtime.Infrastructure;
 
 public static class RealtimeModule
 {
+    /// <summary>The feature flag of the hub's <c>Typing</c> method (docs/contracts/phase-2.md, step 10).</summary>
+    public const string TypingFlag = "Features:Typing";
+
     /// <summary>The module's organization-scoped schema (the inbox of its consumer), for the migrator.</summary>
     public static IServiceCollection AddRealtimeDatabase(this IServiceCollection services) =>
         services.AddModuleDbContext<RealtimeDbContext>(RealtimeDbContext.Schema, organizationScoped: true);
@@ -37,7 +40,11 @@ public static class RealtimeModule
             .ValidateOnStart();
         services.AddOptions<RealtimeOptions>()
             .BindConfiguration(RealtimeOptions.SectionName)
-            .Configure<IConfiguration>((options, configuration) => options.CellId = configuration["Cell:Id"] ?? options.CellId)
+            .Configure<IConfiguration>((options, configuration) =>
+            {
+                options.CellId = configuration["Cell:Id"] ?? options.CellId;
+                options.TypingEnabled = configuration.GetValue<bool>(TypingFlag);
+            })
             .Validate(
                 options => !string.IsNullOrWhiteSpace(options.CellId) && !options.CellId.Contains(':', StringComparison.Ordinal),
                 "Cell:Id is required and must not contain ':'.")
@@ -48,13 +55,15 @@ public static class RealtimeModule
                     && options.MaxConcurrentPublishes is > 0 and <= 10_000
                     && options.MaxSubscribeCallsPerWindow is > 0 and <= 10_000
                     && options.MaxRefusedSubscribesPerConnection is > 0 and <= 10_000
-                    && options.MaxWatchedPerConnection is > 0 and <= 1000,
+                    && options.MaxWatchedPerConnection is > 0 and <= 1000
+                    && options.MaxTypingEntries is >= 16 and <= 1_000_000,
                 "The Realtime limits are out of range.")
             .Validate(
                 options => options.PublishTimeout > TimeSpan.Zero
                     && options.CommandTimeout > TimeSpan.Zero
                     && options.SubscribeWindow > TimeSpan.Zero
                     && options.ActivityInterval > TimeSpan.Zero && options.ActivityInterval <= TimeSpan.FromMinutes(1)
+                    && options.TypingInterval > TimeSpan.Zero && options.TypingInterval <= TimeSpan.FromMinutes(1)
                     && options.KeepAliveInterval > TimeSpan.Zero
                     && options.ClientTimeoutInterval >= options.KeepAliveInterval * 2
                     && options.HandshakeTimeout > TimeSpan.Zero
@@ -113,6 +122,7 @@ public static class RealtimeModule
         ArgumentNullException.ThrowIfNull(services);
         // Presence replaces this when the module is added (AddPresenceTracking); without it the hub refuses the presence methods.
         services.TryAddSingleton<IPresenceTracker, NoPresenceTracker>();
+        services.TryAddSingleton(provider => new TypingThrottle(provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<IOptions<RealtimeOptions>>().Value));
         services.AddHostedService<GroupRemovalListener>();
         services.AddHostedService<SessionRevocationListener>();
         return services;

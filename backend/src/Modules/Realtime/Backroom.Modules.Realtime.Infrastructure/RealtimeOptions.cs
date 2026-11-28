@@ -23,6 +23,15 @@ public sealed class RealtimeOptions
     /// <summary>At most one <c>ReportActivity</c> per connection this often; extra reports are dropped.</summary>
     public TimeSpan ActivityInterval { get; set; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>Whether <c>Typing</c> is on (<c>Features:Typing</c>); off, the hub method is refused as not found.</summary>
+    public bool TypingEnabled { get; set; }
+
+    /// <summary>At most one delivered <c>Typing</c> per account and conversation per this interval on a node (the contract's 3 s); extra calls are dropped silently.</summary>
+    public TimeSpan TypingInterval { get; set; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>Entries of a node's typing throttle (each lives one interval); a full table drops further calls.</summary>
+    public int MaxTypingEntries { get; set; } = 50_000;
+
     /// <summary>Connections one account may hold open on one node; further ones are closed.</summary>
     public int MaxConnectionsPerAccount { get; set; } = 20;
 
