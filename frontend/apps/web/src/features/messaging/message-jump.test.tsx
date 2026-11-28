@@ -72,6 +72,8 @@ type Cell = {
   holdAround?: Promise<void> | undefined;
   /** Held until this settles: the answer to the next after read. */
   holdAfter?: Promise<void> | undefined;
+  /** Held until this settles: the answer to the next read without a cursor or with `before`. */
+  holdBefore?: Promise<void> | undefined;
   /** What a read with an epoch answers instead of the messages, if anything. */
   epochStatus?: { status: number; code: string };
 };
@@ -215,7 +217,11 @@ function serveCell() {
       const seqs: number[] = [];
       for (let seq = first; seq >= 1 && seqs.length < limit; seq -= 1) seqs.push(seq);
       const last = seqs.at(-1) ?? 1;
-      return HttpResponse.json({ items: seqs.map(wire), next: last > 1 ? last : null, epoch: EPOCH });
+      const body = { items: seqs.map(wire), next: last > 1 ? last : null, epoch: EPOCH };
+      const hold = cell.holdBefore;
+      cell.holdBefore = undefined;
+      await hold;
+      return HttpResponse.json(body);
     }),
   );
 }
@@ -263,6 +269,19 @@ beforeAll(() => {
   // jsdom has no layout: the log is 400 px tall, a row 40 px, and scrollTop can be set.
   const tops = new WeakMap<Element, number>();
   const isLog = (element: Element) => element.getAttribute('role') === 'feed';
+  // As a browser does: the position stays inside the content, and a scroll that moves it reports itself with a scroll
+  // event a moment later (jsdom sends none), which is how the list's virtualizer learns where it is.
+  const moveTo = (element: HTMLElement, value: number) => {
+    const max = isLog(element)
+      ? Math.max(element.scrollHeight - element.clientHeight, 0)
+      : Number.POSITIVE_INFINITY;
+    const next = Math.min(Math.max(value, 0), max);
+    if (next === (tops.get(element) ?? 0)) return;
+    tops.set(element, next);
+    setTimeout(() => {
+      element.dispatchEvent(new Event('scroll'));
+    }, 0);
+  };
   Object.defineProperties(HTMLElement.prototype, {
     offsetHeight: {
       configurable: true,
@@ -286,7 +305,7 @@ beforeAll(() => {
     scrollTo: {
       configurable: true,
       value: function (this: HTMLElement, options: { top?: number }) {
-        tops.set(this, options.top ?? 0);
+        moveTo(this, options.top ?? 0);
       },
     },
     scrollTop: {
@@ -295,7 +314,7 @@ beforeAll(() => {
         return tops.get(this) ?? 0;
       },
       set: function (this: HTMLElement, value: number) {
-        tops.set(this, value);
+        moveTo(this, value);
       },
     },
   });
@@ -467,8 +486,8 @@ describe('Jump to an original that is not loaded', () => {
 
     scrollLog(log, 'top');
     await within(log).findByText('message 75');
-    const before = reads('before').at(-1);
-    expect(before?.searchParams.get('before')).toBe('76');
+    const before = reads('before').find((url) => url.searchParams.get('before') === '76');
+    expect(before).toBeDefined();
     expect(before?.searchParams.get('epoch')).toBe(EPOCH);
 
     scrollLog(log, 'end');
@@ -583,10 +602,11 @@ describe('Jump to an original that is not loaded', () => {
 
     scrollLog(log, 'top');
 
-    expect(await findInLog(log, 'message 160')).toBeInTheDocument();
     await waitFor(() => {
       expect(latestButton()).toBeNull();
     });
+    await settle();
+    expect(await findInLog(log, 'message 160')).toBeInTheDocument();
   });
 
   it('Send_WhileDetached_ReturnsToTheNewestMessages', async () => {
@@ -1035,6 +1055,50 @@ describe('Jump to an original that is not loaded', () => {
 
     const quote = screen.getByRole('button', { name: 'Replied message: Veli Yılmaz' });
     expect(quote.querySelector('.bm-reply-quote__text')).toBeNull();
+  });
+
+  it('Jump_WhileARefetchOfTheNewestMessagesIsOnItsWay_KeepsTheWindow', async () => {
+    const queryClient = renderWorkspace();
+    const log = await openLog();
+    const hold = deferred();
+    cell.holdBefore = hold.promise;
+    // A refetch of the newest view (focus, reconnect, an invalidation) is still on its way when the person jumps.
+    void queryClient.refetchQueries({ queryKey: messagesKey(ORG, GENERAL.id) });
+    await waitFor(() => {
+      expect(requested.filter((url) => url.search === '?limit=50')).toHaveLength(2);
+    });
+
+    fireEvent.click(within(log).getByRole('button', { name: QUOTE_NAME }));
+    await waitFor(() => {
+      expect(rowOf(log, 'message 100')).toHaveFocus();
+    });
+    hold.resolve();
+    await settle();
+
+    expect(rowsSaying(log, 'message 100')).toHaveLength(1);
+    expect(latestButton()).toBeVisible();
+  });
+
+  it('Jump_WhileEarlierMessagesOfTheNewestViewAreLoading_KeepsTheWindow', async () => {
+    renderWorkspace();
+    const log = await openLog();
+    const hold = deferred();
+    cell.holdBefore = hold.promise;
+    scrollLog(log, 'top');
+    await waitFor(() => {
+      expect(reads('before')).toHaveLength(1);
+    });
+    scrollLog(log, 'end');
+
+    fireEvent.click(await within(log).findByRole('button', { name: QUOTE_NAME }));
+    await waitFor(() => {
+      expect(rowOf(log, 'message 100')).toHaveFocus();
+    });
+    hold.resolve();
+    await settle();
+
+    expect(rowsSaying(log, 'message 100')).toHaveLength(1);
+    expect(latestButton()).toBeVisible();
   });
 
   it('Quote_WhenTheFlagIsOff_IsTextAndNothingIsRead', async () => {

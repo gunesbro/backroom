@@ -80,8 +80,6 @@ const LOAD_EARLIER_WITHIN = 3;
 const ROW_KEY_ATTRIBUTE = 'data-row-key';
 /** How long the original of a quote stays highlighted after a jump to it. */
 const FLASH_MS = 1600;
-/** How long a jump waits for its scroll to report before the list may load pages again without it. */
-const SETTLE_MS = 500;
 
 /**
  * The messages of a channel, oldest first, virtualized (TanStack Virtual): only the rows near the view are in the
@@ -155,11 +153,11 @@ export function MessageList({
   const following = useRef(true);
   // Loading earlier messages waits until the list has been scrolled to its end once.
   const armed = useRef(false);
-  // A jump has just moved the view and its scroll has not landed yet: the drawn range is stale.
-  const settling = useRef(false);
-  const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  // Counts the jumps whose scroll was given up on: the loading checks run again then.
-  const [settled, setSettled] = useState(0);
+  // The row a jump scrolls to, until the drawn rows include it or a scroll event reports where the list is: until then
+  // the drawn rows may be those of the old position (the end, or the top), which must not ask for pages. No timer: on a
+  // busy device the scroll lands late, and rows drawn from the old position are still wrong then.
+  // A ref, so the effects of the very commit that drew the jump's rows already see it.
+  const settleKey = useRef<string>(undefined);
   // The row at the top of the view after the last change, and where it was: rows added or dropped above it move it.
   const previous = useRef<{ rows: readonly Row[]; anchor?: { key: string; start: number } }>({ rows });
 
@@ -333,7 +331,6 @@ export function MessageList({
   useEffect(
     () => () => {
       clearTimeout(flashTimer.current);
-      clearTimeout(settleTimer.current);
     },
     [],
   );
@@ -361,21 +358,8 @@ export function MessageList({
       }
       // Going to the row is a move away from the end: the list must not snap back to following new messages.
       following.current = false;
-      const from = scrollRef.current?.scrollTop ?? 0;
-      const target = virtualizer.getOffsetForIndex(at, 'center')?.[0];
       virtualizer.scrollToIndex(at, { align: 'center' });
-      // The rows drawn until the scroll lands are those of the old position (the end, or the top): they must not ask
-      // for newer or earlier pages. The next scroll event (the jump's own) lets them ask again; a scroll that does not
-      // move (the row is already there) has none, and a scroll that never reports is given up after a moment.
-      clearTimeout(settleTimer.current);
-      settling.current = target !== undefined && Math.abs(target - from) >= 1;
-      if (settling.current) {
-        settleTimer.current = setTimeout(() => {
-          settling.current = false;
-          clearTimeout(settleTimer.current);
-          setSettled((count) => count + 1);
-        }, SETTLE_MS);
-      }
+      settleKey.current = key;
       clearTimeout(flashTimer.current);
       setFlashId(messageId);
       flashTimer.current = setTimeout(() => {
@@ -468,30 +452,40 @@ export function MessageList({
   };
   const firstIndex = items[0]?.index;
   const lastIndex = items.at(-1)?.index;
+  /** Pages may load from the drawn rows only once they are those around the jump's row (or no jump is pending). */
+  const landed = useCallback(() => {
+    const key = settleKey.current;
+    const at = key === undefined ? -1 : rowsRef.current.findIndex((row) => row.key === key);
+    if (at < 0) return true;
+    if (firstIndex === undefined || lastIndex === undefined || at < firstIndex || at > lastIndex)
+      return false;
+    settleKey.current = undefined;
+    return true;
+  }, [firstIndex, lastIndex]);
   useEffect(() => {
     if (
       armed.current &&
-      !settling.current &&
       hasEarlier &&
       !loadingEarlier &&
       firstIndex !== undefined &&
-      firstIndex <= LOAD_EARLIER_WITHIN
+      firstIndex <= LOAD_EARLIER_WITHIN &&
+      landed()
     ) {
       onLoadEarlier();
     }
-  }, [firstIndex, hasEarlier, loadingEarlier, onLoadEarlier, settled]);
+  }, [firstIndex, hasEarlier, loadingEarlier, onLoadEarlier, landed]);
   useEffect(() => {
     if (
       armed.current &&
-      !settling.current &&
       hasNewer &&
       !loadingNewer &&
       lastIndex !== undefined &&
-      lastIndex >= rows.length - 1 - LOAD_EARLIER_WITHIN
+      lastIndex >= rows.length - 1 - LOAD_EARLIER_WITHIN &&
+      landed()
     ) {
       onLoadNewer();
     }
-  }, [lastIndex, rows.length, hasNewer, loadingNewer, onLoadNewer, settled]);
+  }, [lastIndex, rows.length, hasNewer, loadingNewer, onLoadNewer, landed]);
 
   return (
     <>
@@ -507,8 +501,8 @@ export function MessageList({
         onBlur={onLogBlur}
         onScroll={(event) => {
           const element = event.currentTarget;
-          settling.current = false;
-          clearTimeout(settleTimer.current);
+          // A scroll event says where the list really is: the drawn rows are right from now on.
+          settleKey.current = undefined;
           previous.current = { rows, ...anchorAt(element.scrollTop) };
           following.current =
             !detached && element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_DISTANCE;
